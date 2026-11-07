@@ -1,0 +1,29 @@
+#include <zephyr/dt-bindings/gpio/gpio.h>
+
+/ {
+	chosen {
+		/delete-property/ zephyr,console;
+		/delete-property/ zephyr,shell-uart;
+	};
+};
+
+&spi2 {
+	status = "okay";
+	cs-gpios = <&gpio0 10 GPIO_ACTIVE_LOW>;
+	espforge_sd: sdhc@0 {
+		compatible = "zephyr,sdhc-spi-slot";
+		reg = <0>;
+		status = "okay";
+		spi-max-frequency = <10000000>;
+		mmc {
+			compatible = "zephyr,sdmmc-disk";
+			disk-name = "SD";
+			status = "okay";
+		};
+	};
+};
+
+/* SPI3's default pins overlap some modules' internal flash/PSRAM signals. */
+&spi3 {
+	status = "disabled";
+};

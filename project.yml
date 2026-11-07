@@ -1,0 +1,38 @@
+:project:
+  :name: ESPForge Firmware Tests
+  :ceedling_version: 1.1.10
+  :build_root: build/ceedling
+  :use_mocks: TRUE
+  :release_build: FALSE
+
+:paths:
+  :test:
+    - +:firmware/tests/**
+  :source:
+    - firmware/src
+  :include:
+    - firmware/src
+
+:files:
+  :source:
+    - -:firmware/src/main.c
+    - -:firmware/src/status.c
+    - -:firmware/src/wireless.c
+    - -:firmware/src/storage.c
+
+:cmock:
+  :mock_prefix: mock_
+  :when_ptr: :compare_ptr
+  :plugins:
+    - ignore
+    - ignore_arg
+    - return_thru_ptr
+
+:flags:
+  :test:
+    :compile:
+      :*:
+        - -std=c11
+        - -Wall
+        - -Wextra
+        - -Werror

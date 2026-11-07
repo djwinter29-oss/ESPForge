@@ -53,3 +53,16 @@ dkms.conf
 
 # debug information files
 *.dwo
+
+# Local builds, environments, and credentials
+build/
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+host/dotnet/**/bin/
+host/dotnet/**/obj/
+firmware/secrets.conf
+.bundle/
+vendor/bundle/

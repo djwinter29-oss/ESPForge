@@ -1,0 +1,13 @@
+manifest:
+  version: "1.2"
+  projects:
+    - name: zephyr
+      url: https://github.com/zephyrproject-rtos/zephyr
+      revision: v4.2.0
+      import:
+        name-allowlist:
+          - hal_espressif
+          - fatfs
+          - mbedtls
+  self:
+    path: espforge
