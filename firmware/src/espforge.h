@@ -3,7 +3,9 @@
 
 #include <stddef.h>
 
+#ifndef ESPFORGE_VERSION
 #define ESPFORGE_VERSION "0.1.0"
+#endif
 #define ESPFORGE_STATUS_SIZE 512
 #define ESPFORGE_REQUEST_SIZE 512
 

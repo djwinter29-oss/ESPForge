@@ -1,0 +1,163 @@
+name: Publish .NET Packages
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag in vMAJOR.MINOR.PATCH form
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Standalone host (${{ matrix.rid }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            rid: linux-x64
+          - os: windows-2025
+            rid: win-x64
+          - os: macos-15
+            rid: osx-arm64
+    steps:
+      - name: Checkout package source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || github.sha }}
+          persist-credentials: false
+
+      - name: Validate package version
+        id: version
+        env:
+          RELEASE_TAG: ${{ inputs.tag || format('v{0}', inputs.version) }}
+        run: |
+          version=$(bash tools/firmware/release-version.sh "$RELEASE_TAG")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Setup Python for archive validation
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+
+      - name: Publish self-contained host
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          RID: ${{ matrix.rid }}
+        run: >-
+          dotnet publish host/dotnet/ESPForge/ESPForge.csproj -c Release -r "$RID" --self-contained true
+          -p:Version="$VERSION" -p:RestorePackagesPath="$PWD/build/nuget/"
+          -p:PublishDir="$PWD/build/host-release/"
+
+      - name: Archive and smoke-test extracted host without hardware
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          RID: ${{ matrix.rid }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import shutil
+          import socket
+          import subprocess
+          import tempfile
+          import time
+          import urllib.error
+          import urllib.request
+
+          version, rid = os.environ["VERSION"], os.environ["RID"]
+          source_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          root = Path("build/host-release").resolve()
+          assets = {path.name: path.read_bytes() for path in Path("host/web").iterdir()
+                    if path.suffix in (".html", ".js", ".css")}
+          libraries = json.loads((root / "ESPForge.deps.json").read_text())["libraries"]
+          assert f"ESPForge/{version}" in libraries, "Package version does not match release"
+          shutil.copyfile("LICENSE", root / "LICENSE")
+          notices = [path for path in Path("build/nuget").rglob("*")
+                     if path.is_file() and ("license" in path.name.lower()
+                                            or "notice" in path.name.lower())]
+          assert notices, "Restored dependency license notices are missing"
+          for path in notices:
+              destination = root / "licenses" / path.relative_to("build/nuget")
+              destination.parent.mkdir(parents=True, exist_ok=True)
+              shutil.copyfile(path, destination)
+          (root / "RELEASE.txt").write_text(
+              f"ESPForge {version} ({rid})\nSource: {source_sha}\n"
+              "Run ESPForge --demo for a SIMULATED preview, or ESPForge --device PORT.\n"
+              "On Windows use ESPForge.exe. Open http://127.0.0.1:8002/.\n"
+              "No .NET installation is required. Only loopback hosting is supported.\n"
+              "Software checks do not qualify physical UART, Wi-Fi, BLE or SD behavior.\n",
+              encoding="utf-8")
+          Path("build/packages").mkdir(parents=True, exist_ok=True)
+          archive = shutil.make_archive(f"build/packages/espforge-host-v{version}-{rid}",
+                                        "zip" if rid.startswith("win-") else "gztar", root_dir=root)
+          with tempfile.TemporaryDirectory() as directory:
+              shutil.unpack_archive(archive, directory)
+              deployed = {path.name: path.read_bytes()
+                          for path in (Path(directory) / "wwwroot").iterdir()
+                          if path.suffix in (".html", ".js", ".css")}
+              assert deployed == assets, "Published shared dashboard assets differ from source"
+              executable = Path(directory) / ("ESPForge.exe" if rid.startswith("win-") else "ESPForge")
+              with socket.socket() as listener:
+                  listener.bind(("127.0.0.1", 0))
+                  port = listener.getsockname()[1]
+              process = subprocess.Popen([str(executable), "--demo", "--port", str(port)], cwd=directory)
+              try:
+                  for attempt in range(100):
+                      assert process.poll() is None, "Standalone host exited before readiness"
+                      try:
+                          with urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=1) as response:
+                              assert b"ESPForge Host" in response.read()
+                          break
+                      except urllib.error.URLError:
+                          time.sleep(0.1)
+                  else:
+                      raise RuntimeError("Standalone dashboard did not become ready")
+                  for name, content in assets.items():
+                      with urllib.request.urlopen(f"http://127.0.0.1:{port}/{name}", timeout=2) as response:
+                          assert response.read() == content, name
+                          assert response.headers["X-Content-Type-Options"] == "nosniff", name
+                  with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/host", timeout=2) as response:
+                      assert json.load(response) == {"name": ".NET", "demo": True}
+                  request = urllib.request.Request(
+                      f"http://127.0.0.1:{port}/api/request", data=b'{"op":"status"}',
+                      headers={"Content-Type": "application/json"})
+                  with urllib.request.urlopen(request, timeout=2) as response:
+                      reply = json.load(response)
+                      assert reply["ok"] is True and reply["status"]["product"] == "ESPForge"
+              finally:
+                  if process.poll() is None:
+                      process.terminate()
+                  try:
+                      process.wait(timeout=10)
+                  except subprocess.TimeoutExpired:
+                      process.kill()
+                      process.wait(timeout=10)
+          PY
+
+      - name: Attach standalone package
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-host-${{ matrix.rid }}
+          path: build/packages/*
+          if-no-files-found: error

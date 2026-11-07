@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {demoStatus, validateStatus, validateWifi, requestLine} from "../protocol.js";
-import {SerialTransport} from "../transports.js";
+import {SerialTransport, BleTransport, BridgeTransport, DemoTransport} from "../transports.js";
 
 test("status shape requires real typed protocol fields", () => {
   assert.equal(validateStatus(demoStatus()).protocol, 1);
@@ -63,4 +63,45 @@ test("Web Serial surfaces malformed JSON and device frame rejection", async () =
     await transport.readLoop();
     await rejected;
   }
+});
+
+test("Web Serial closes safely after its read loop fails", async () => {
+  const transport = new SerialTransport();
+  let closed = 0;
+  transport.opened = true;
+  transport.port = {async close() { closed++; }};
+  transport.reader = {
+    async read() { throw new Error("Unplugged"); },
+    releaseLock() {},
+    async cancel() { throw new Error("Already released reader"); },
+  };
+  transport.writer = {releaseLock() {}};
+  transport.readTask = transport.readLoop();
+  await transport.readTask;
+  await transport.close();
+  await transport.close();
+  assert.equal(closed, 1);
+});
+
+test("failed serial open is not treated as an open port during cleanup", async () => {
+  const transport = new SerialTransport();
+  transport.port = {async close() { assert.fail("Port was not opened"); }};
+  await transport.close();
+});
+
+test("transport capabilities explicitly distinguish simulation and read-only BLE", async () => {
+  assert.equal(new SerialTransport().simulated, false);
+  assert.equal(new BleTransport().writable, false);
+  assert.equal(new BleTransport().simulated, false);
+  const demo = new DemoTransport();
+  assert.equal(demo.simulated, true);
+  assert.equal(demo.writable, false);
+  const oldFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async () => ({ok: true, json: async () => ({name: "Python", demo: true})});
+    const bridge = new BridgeTransport();
+    await bridge.connect();
+    assert.equal(bridge.simulated, true);
+    assert.equal(bridge.writable, false);
+  } finally { globalThis.fetch = oldFetch; }
 });

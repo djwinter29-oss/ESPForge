@@ -7,7 +7,7 @@ From the repository root:
 dotnet run --project host/dotnet/ESPForge -- --device /dev/ttyUSB0
 ```
 
-Open <http://127.0.0.1:8002/> and click Connect. Windows uses the actual `COM` port.
+Open <http://127.0.0.1:8002/> and click **Select board**. Windows uses the actual `COM` port.
 Use `--port` for another HTTP port; only loopback binding is supported.
 The process owns one serial handle, with DTR/RTS disabled, and serializes board requests.
 Do not run it against a port already in use by Direct, Python, a terminal, or the flasher.
@@ -27,6 +27,10 @@ dotnet build/dotnet/ESPForge.dll --demo
 ```
 
 The published framework-dependent app requires .NET 10 ASP.NET Core runtime.
+[Tagged release packages](../../../docs/deployment/release.md) instead provide self-contained
+`linux-x64`, `win-x64` and `osx-arm64` hosts with web assets and dependency notices.
+Extract the archive, then run `./ESPForge --demo` (`ESPForge.exe --demo` on Windows),
+or use `--device PORT` for a real board. These packages require no installed .NET runtime.
 Checks: `dotnet run --project host/dotnet/ESPForge.Tests`.
 
 See [host development](../../../docs/development/host-tools.md),

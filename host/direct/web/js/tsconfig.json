@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "lib": ["ES2022", "DOM"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "noEmit": true,
+    "noImplicitAny": false,
+    "target": "ES2022"
+  },
+  "files": [
+    "protocol/constants.mjs", "protocol/codec.mjs", "timers.mjs",
+    "transport/transport.mjs", "transport/serial.mjs", "transport/ble.mjs", "transport/demo.mjs",
+    "state/reducer.mjs", "state/store.mjs", "state/selectors.mjs", "state/errors.mjs",
+    "board/polling.mjs", "board/commands.mjs", "board/session.mjs",
+    "ui/dom.mjs", "ui/messages.mjs", "ui/dashboard.mjs",
+    "ui/sections/controls.mjs", "ui/sections/device.mjs", "ui/sections/configuration.mjs",
+    "ui/sections/diagnostics.mjs", "ui/sections/storage.mjs", "ui/sections/wireless-form.mjs"
+  ]
+}

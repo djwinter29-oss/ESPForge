@@ -1,6 +1,8 @@
 import {SERVICE_UUID, STATUS_UUID, requestLine, validateStatus, demoStatus} from "./protocol.js";
 
 export class SerialTransport {
+  label = "USB-UART / connected";
+  simulated = false;
   writable = true;
   id = 0;
   pending = null;
@@ -10,6 +12,7 @@ export class SerialTransport {
     if (!navigator.serial) throw new Error("Web Serial requires desktop Chrome/Edge and HTTPS or localhost");
     this.port = await navigator.serial.requestPort();
     await this.port.open({baudRate: 115200, bufferSize: 4096});
+    this.opened = true;
     this.writer = this.port.writable.getWriter();
     this.reader = this.port.readable.getReader();
     this.readTask = this.readLoop();
@@ -50,6 +53,7 @@ export class SerialTransport {
         this.pending = null;
       }
       this.reader.releaseLock();
+      this.reader = null;
     }
   }
 
@@ -82,16 +86,18 @@ export class SerialTransport {
 
   async close() {
     if (!this.port) return;
-    if (this.reader) {
-      await this.reader.cancel();
-      await this.readTask;
-    }
+    if (this.reader) await this.reader.cancel();
+    await this.readTask;
     this.writer?.releaseLock();
-    await this.port.close();
+    this.writer = null;
+    if (this.opened) await this.port.close();
+    this.opened = false;
   }
 }
 
 export class BleTransport {
+  label = "Bluetooth LE / read-only";
+  simulated = false;
   writable = false;
   async connect() {
     if (!navigator.bluetooth) throw new Error("Web Bluetooth is unavailable on this browser/OS");
@@ -113,6 +119,7 @@ export class BridgeTransport {
     const response = await fetch("/api/host");
     if (!response.ok) throw new Error("Host server unavailable");
     const host = await response.json();
+    this.simulated = host.demo === true;
     this.label = host.name + (host.demo ? " - SIMULATED" : "");
     this.writable = !host.demo;
   }
@@ -130,6 +137,7 @@ export class BridgeTransport {
 }
 
 export class DemoTransport {
+  simulated = true;
   writable = false;
   label = "SIMULATED - no hardware connected";
   async connect() {}

@@ -10,7 +10,7 @@ python -m pip install -r host/python/requirements.txt
 python host/python/server.py --device /dev/ttyUSB0
 ```
 
-Open <http://127.0.0.1:8001/> and click Connect. On Windows use `COM4` (or the actual port)
+Open <http://127.0.0.1:8001/> and click **Select board**. On Windows use `COM4` (or the actual port)
 and `.venv\Scripts\activate`. `--port` changes the HTTP port. The server always binds to loopback.
 Close other serial applications first. DTR/RTS are disabled; bridge/driver behavior still needs hardware validation.
 
@@ -23,6 +23,9 @@ python host/python/server.py --demo
 Demo cannot provision Wi-Fi and is never selected implicitly after a connection failure.
 Ctrl+C closes the server and serial handle. Keep the checkout's sibling `host/web/` assets;
 this is a repository application, not a pip-distributed package.
+Tagged [releases](../../docs/deployment/release.md) provide a source ZIP with this sibling
+layout intact. Extract it, install the requirements and use the same launch commands.
+There is no PyPI publishing workflow yet.
 
 Checks: `python -m unittest discover -s host/python/tests -v`.
 See [host development](../../docs/development/host-tools.md), [protocol](../../docs/reference/protocol.md)

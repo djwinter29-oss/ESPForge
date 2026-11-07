@@ -11,12 +11,14 @@ strategy; this is an ESP-specific implementation, not a compatible firmware port
 | --- | --- |
 | Target | ESP32-S3-DevKitC, default N8 / 8 MB flash, Zephyr PROCPU |
 | Firmware | Pinned Zephyr 4.2.0 / SDK 0.17.2, bounded UART JSON management |
+| Firmware unit tests | Pinned Ceedling / Unity / CMock, native credential and status-contract tests |
 | Radios | **Wi-Fi and BLE enabled on every boot**, software coexistence, RAM-only Wi-Fi setup |
 | Storage | SPI SD-card driver + FAT mount, **no automatic formatting or write tests** |
 | Direct dashboard | Static browser, Web Serial and read-only Web Bluetooth |
 | Python dashboard | Loopback web server + pyserial |
 | .NET dashboard | Loopback ASP.NET Core server + System.IO.Ports |
-| Layout | Device information, board configuration, live diagnostics, storage, Wi-Fi setup, pin configuration |
+| Layout | PicoForge-inspired light dashboard: identity metrics, board configuration, collapsible pins, diagnostics, storage and Wi-Fi setup |
+| GitHub automation | Cross-platform host checks, Ceedling, Zephyr build artifacts, tagged release packages and verified Direct Pages deployment |
 
 **Start here:** [getting started](docs/guides/getting-started.md) ·
 [hardware/wiring](docs/guides/hardware.md) · [documentation index](docs/README.md).
@@ -32,13 +34,13 @@ From this checkout:
 
 ```sh
 # Direct: open http://127.0.0.1:8000/host/direct/ and choose Simulated preview
-python3 -m http.server 8000 --bind 127.0.0.1
+bash tools/host/run-direct.sh --port 8000
 
-# Python: open http://127.0.0.1:8001/ and click Connect
+# Python: open http://127.0.0.1:8001/ and click Select board
 python3 -m pip install -r host/python/requirements.txt
 python3 host/python/server.py --demo
 
-# .NET 10: open http://127.0.0.1:8002/ and click Connect
+# .NET 10: open http://127.0.0.1:8002/ and click Select board
 dotnet run --project host/dotnet/ESPForge -- --demo
 ```
 
@@ -49,6 +51,10 @@ Only one serial client may own the board at a time.
 ## Build and extend
 
 Follow [workspace setup, build and flashing](docs/guides/getting-started.md).
+When the board arrives, upload over USB-to-UART with
+`bash espforge/tools/firmware/flash.sh --port /dev/ttyUSB0` from the initialized workspace.
+Run hardware-free C tests with `bundle exec ceedling test:all` after
+[installing the test tools](docs/development/firmware.md#host-native-unit-tests).
 The layout separates `firmware/`, `host/direct/`, `host/python/`, `host/dotnet/`, shared `host/web/`,
 and `docs/`. Fork the source, keep board pin assignments in overlays, and add product services
 without blocking management. See [architecture](docs/reference/architecture.md).
@@ -56,6 +62,15 @@ without blocking management. See [architecture](docs/reference/architecture.md).
 This initial foundation does not include PicoForge's complete feature set: no persistent settings,
 USB mass storage, benchmarks, file-transfer API, Wi-Fi dashboard transport, or dual-core workload.
 It does provide code and operating documentation for the requested default radios and SD integration.
+
+## GitHub automation
+
+Pull requests and pushes to `main` run shared host/native tests and the pinned ESP32-S3 build.
+Stable `vMAJOR.MINOR.PATCH` tags publish firmware, Direct/Python source archives and standalone
+.NET hosts for Linux, Windows and Apple Silicon, with checksums and qualification limits.
+Direct Pages deploys the verified release archive after repository Pages setup.
+Python is not yet published to PyPI. See the [workflow and release guide](docs/deployment/release.md)
+for a manual preflight, repository settings and release instructions.
 
 ## Validation and security
 

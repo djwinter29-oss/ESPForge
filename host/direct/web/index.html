@@ -1,0 +1,190 @@
+<!doctype html>
+<!--
+SPDX-License-Identifier: BSD-3-Clause
+Copyright (c) 2026 Ji Dong
+-->
+
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'">
+  <meta name="referrer" content="no-referrer">
+  <title>ESPForge Dashboard | Direct</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="stylesheet" href="css/direct.css">
+  <script type="module" src="js/app.mjs"></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="./" aria-label="ESPForge Direct status">
+      <span class="brand-mark">EF</span>
+      <span class="brand-copy"><strong>ESPForge</strong><small>Direct · App v0.0.0-debug</small></span>
+    </a>
+    <div class="connection" id="connection" data-state="disconnected">
+      <span class="connection-light" aria-hidden="true"></span>
+      <span id="connection-label">Disconnected</span>
+    </div>
+  </header>
+
+  <main>
+    <section class="page-heading">
+      <div>
+        <h1>Dashboard</h1>
+      </div>
+      <span class="badge">ESP32-S3 · Zephyr · Wi-Fi + BLE on by default</span>
+    </section>
+
+    <p class="notice" id="preview-banner" role="status" hidden>
+      SIMULATED PREVIEW — no hardware connected. Values are synthetic; board commands are disabled.
+    </p>
+
+    <section aria-labelledby="identity-title">
+      <div class="section-heading">
+        <h2 id="identity-title">Device information</h2>
+        <div class="actions" aria-label="Board controls">
+          <button class="button button-secondary" id="usb-open" type="button"
+            aria-haspopup="dialog">USB</button>
+          <button class="button button-secondary" id="bluetooth-open" type="button"
+            aria-haspopup="dialog">Bluetooth</button>
+          <button class="button button-cancel" id="preview-start" type="button">Preview</button>
+          <button class="button button-danger" id="disconnect" type="button" disabled>Disconnect</button>
+        </div>
+      </div>
+      <div class="identity" aria-label="Hardware identity">
+        <div class="metric"><span>Product</span><strong id="product-name">--</strong></div>
+        <div class="metric"><span>Board model</span><strong id="board-model">--</strong></div>
+        <div class="metric"><span>Firmware version</span><strong id="firmware-version">--</strong></div>
+        <div class="metric"><span>Protocol version</span><strong id="protocol-version">--</strong></div>
+        <div class="metric"><span>Link</span><strong id="link-name">--</strong></div>
+      </div>
+    </section>
+
+    <section class="runtime" aria-labelledby="settings-title">
+      <div class="section-heading">
+        <div>
+          <h2 id="settings-title">Board configuration</h2>
+        </div>
+        <div class="actions">
+          <button class="button" id="wifi-open" type="button" aria-haspopup="dialog" disabled>Configure Wi-Fi</button>
+        </div>
+      </div>
+      <div class="settings-controls">
+        <div class="metric"><span>Operating system</span><strong>Zephyr 4.2.0</strong></div>
+        <div class="metric"><span>Wi-Fi (live)</span><strong id="wifi-enabled">--</strong></div>
+        <div class="metric"><span>Bluetooth (live)</span><strong id="ble-enabled">--</strong></div>
+      </div>
+      <p class="sample-time" id="settings-note">Both radios start enabled at boot. Settings are not persistent;
+        radio switches, Save&amp;Reboot and reboot commands are not implemented.</p>
+      <details class="pin-map-disclosure">
+        <summary>Pin configuration</summary>
+        <div class="pin-tables">
+          <table>
+            <caption id="board-uart-title">Management UART (USB-to-UART bridge)</caption>
+            <thead><tr><th>Signal</th><th>GPIO / setting</th></tr></thead>
+            <tbody id="board-uart">
+              <tr><td>TX</td><td>GPIO43</td></tr>
+              <tr><td>RX</td><td>GPIO44</td></tr>
+              <tr><td>Serial format</td><td>115200 / 8N1</td></tr>
+            </tbody>
+          </table>
+          <table>
+            <caption id="board-storage-title">Storage (SPI2)</caption>
+            <thead><tr><th>Signal</th><th>GPIO / setting</th></tr></thead>
+            <tbody id="board-storage-pins">
+              <tr><td>CS / DAT3</td><td>GPIO10</td></tr>
+              <tr><td>MOSI / CMD</td><td>GPIO11</td></tr>
+              <tr><td>SCLK / CLK</td><td>GPIO12</td></tr>
+              <tr><td>MISO / DAT0</td><td>GPIO13</td></tr>
+              <tr><td>Supply</td><td>3.3 V + common GND</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="sample-time pin-note">Reference wiring for the N8 DevKitC build, not detected wiring. Use the
+          USB-to-UART connector, not native USB. Hardware validation is pending.</p>
+      </details>
+    </section>
+
+    <section class="runtime" aria-labelledby="runtime-title">
+      <div class="section-heading">
+        <div>
+          <h2 id="runtime-title">Live diagnostics</h2>
+        </div>
+        <button class="button button-secondary" id="refresh" type="button" disabled>Refresh status</button>
+      </div>
+      <dl class="runtime-grid runtime-summary">
+        <div><dt>Uptime</dt><dd id="uptime">--</dd></div>
+        <div title="Association is not proof of a DHCP lease or internet access">
+          <dt>Wi-Fi association</dt><dd id="wifi-state">--</dd>
+        </div>
+        <div><dt>Wi-Fi result</dt><dd id="wifi-result">--</dd></div>
+        <div><dt>Bluetooth result</dt><dd id="ble-result">--</dd></div>
+      </dl>
+      <p class="sample-time" id="telemetry-freshness" role="status">telemetry: unavailable</p>
+    </section>
+
+    <section class="runtime" aria-labelledby="memory-title">
+      <div class="section-heading">
+        <div>
+          <h2 id="memory-title">Storage</h2>
+        </div>
+        <span class="badge badge-muted">Hardware testing deferred</span>
+      </div>
+      <dl class="runtime-grid">
+        <div><dt>FAT mount state</dt><dd id="memory-state">--</dd></div>
+        <div><dt>Mount result</dt><dd id="memory-result">--</dd></div>
+        <div><dt>Mount point</dt><dd>/SD:</dd></div>
+        <div><dt>Requested SPI ceiling</dt><dd>10 MHz</dd></div>
+      </dl>
+      <p class="sample-time" id="memory-note">The bus ceiling is configuration, not measured speed. Card identity,
+        file transfer, USB drive handoff, benchmarks and formatting are not implemented.</p>
+    </section>
+
+    <footer class="status-line" id="status-line" role="status" aria-live="polite">
+      <span class="status-mark" aria-hidden="true"></span>
+      <span id="status-message">Select an ESPForge board over USB or Bluetooth</span>
+    </footer>
+  </main>
+
+  <dialog class="confirmation-dialog" id="usb-connection-dialog" aria-labelledby="usb-connection-title">
+    <h2 id="usb-connection-title">Connect through USB</h2>
+    <p>Attach the DevKitC USB-to-UART connector to this computer, then select its serial port in the browser's
+      picker. Close other serial monitors first; only one program can own the port.</p>
+    <p id="usb-connection-status" role="status" aria-live="polite"></p>
+    <div class="dialog-actions">
+      <button class="button" id="usb-connect" type="button">Select board</button>
+      <button class="button button-cancel" id="usb-connection-close" type="button">Close</button>
+    </div>
+  </dialog>
+
+  <dialog class="confirmation-dialog" id="bluetooth-connection-dialog" aria-labelledby="bluetooth-connection-title">
+    <h2 id="bluetooth-connection-title">Connect through Bluetooth</h2>
+    <p>Scan uses this computer's Bluetooth adapter and opens the browser's nearby-device picker. The Bluetooth link
+      is read-only: it shows public status but cannot configure Wi-Fi.</p>
+    <p id="bluetooth-connection-status" role="status" aria-live="polite"></p>
+    <div class="dialog-actions">
+      <button class="button" id="bluetooth-scan" type="button">Scan for boards</button>
+      <button class="button button-cancel" id="bluetooth-connection-close" type="button">Close</button>
+    </div>
+  </dialog>
+
+  <dialog class="confirmation-dialog wireless-dialog" id="wifi-dialog" aria-labelledby="wifi-dialog-title">
+    <h2 id="wifi-dialog-title">Connect to Wi-Fi</h2>
+    <p>Credentials are sent once over USB-UART and stay in board RAM for this boot only. Encoding is not encryption.
+      Changing networks requires a board reboot.</p>
+    <form id="wifi-form" novalidate>
+      <label for="wifi-ssid">Network name (SSID, 2.4 GHz, 1-32 UTF-8 bytes)
+        <input id="wifi-ssid" maxlength="32" autocomplete="off" spellcheck="false" required></label>
+      <label for="wifi-password">WPA2 passphrase (blank for an open network, otherwise 8-63 UTF-8 bytes)
+        <input id="wifi-password" type="password" maxlength="63" autocomplete="new-password"></label>
+      <p id="wifi-status" role="status" aria-live="polite"></p>
+      <div class="dialog-actions">
+        <button class="button" id="wifi-connect" type="submit">Connect for this boot</button>
+        <button class="button button-cancel" id="wifi-cancel" type="button">Cancel</button>
+      </div>
+    </form>
+  </dialog>
+</body>
+</html>

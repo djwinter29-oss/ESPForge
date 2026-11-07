@@ -5,6 +5,7 @@ This starter is intended to be ready for later hardware connection, not qualifie
 | Area | Current boundary |
 | --- | --- |
 | ESP32-S3 target | N8/default DevKitC PROCPU source build; no physical flash/boot observation |
+| Firmware unit tests | Ceedling covers portable credential/status logic with mocked service inputs; no Zephyr execution or UART parser/integration coverage |
 | USB-UART | Host parsing and synthetic peers; real bridge/reset/driver behavior pending |
 | BLE | Firmware GATT build and browser client present; advertising/ATT long reads/reconnect pending on hardware |
 | Wi-Fi | Enabled interface, DHCP and RAM-only connect path; association/coexistence/lease acquisition unmeasured |

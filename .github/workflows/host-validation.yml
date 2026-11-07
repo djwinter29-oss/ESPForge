@@ -1,0 +1,101 @@
+name: Host Validation
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hosts:
+    name: Host tests (${{ matrix.os }}, Python ${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+        python: ["3.10", "3.12"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install Python host dependencies
+        run: python -m pip install --disable-pip-version-check --no-input -r host/python/requirements.txt
+
+      - name: Run Python host tests
+        run: python -m unittest discover -s host/python/tests -v
+
+      - name: Setup Node.js
+        if: matrix.python == '3.12'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22.x"
+
+      - name: Run shared dashboard and Direct transport tests
+        if: matrix.python == '3.12'
+        run: node --test host/web/tests/*.test.js
+
+      - name: Setup .NET
+        if: matrix.python == '3.12'
+        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Build and test .NET host
+        if: matrix.python == '3.12'
+        run: |
+          dotnet build host/dotnet/ESPForge
+          dotnet run --project host/dotnet/ESPForge.Tests
+
+      - name: Check .NET against a synthetic UART
+        if: matrix.os == 'ubuntu-24.04' && matrix.python == '3.12'
+        run: python tools/check_dotnet_serial.py
+
+  firmware-unit:
+    name: Firmware unit tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Ruby and locked gems
+        uses: ruby/setup-ruby@de492cf36cbab201753d720ce4f4e336cd688c94 # v1.336.0
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+
+      - name: Run Ceedling
+        run: bundle exec ceedling test:all
+
+  docs:
+    name: Documentation links
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+
+      - name: Check documentation
+        run: python tools/check_docs.py

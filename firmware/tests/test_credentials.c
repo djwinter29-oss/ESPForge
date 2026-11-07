@@ -71,6 +71,46 @@ void test_decode_rejects_invalid_buffers(void)
 	TEST_ASSERT_EQUAL_INT(-EINVAL, credential_decode("", output, 0));
 }
 
+void test_decode_preserves_utf8_quotes_and_backslashes(void)
+{
+	char output[5];
+	const unsigned char expected[] = {0xc3, 0xa9, '"', '\\', 0};
+
+	TEST_ASSERT_EQUAL_INT(0, credential_decode("c3a9225c", output, sizeof(output)));
+	TEST_ASSERT_EQUAL_MEMORY(expected, output, sizeof(expected));
+}
+
+void test_decode_handles_maximum_password_and_rejects_one_more_byte(void)
+{
+	char hex[129];
+	char output[64];
+	memset(hex, '4', sizeof(hex) - 1);
+	hex[128] = '\0';
+
+	TEST_ASSERT_EQUAL_INT(-EINVAL, credential_decode(hex, output, sizeof(output)));
+	hex[126] = '\0';
+	TEST_ASSERT_EQUAL_INT(0, credential_decode(hex, output, sizeof(output)));
+	TEST_ASSERT_EQUAL_UINT(63, strlen(output));
+	for (size_t i = 0; i < 63; ++i) {
+		TEST_ASSERT_EQUAL_CHAR('D', output[i]);
+	}
+}
+
+void test_decode_preserves_every_non_null_byte(void)
+{
+	const char digits[] = "0123456789abcdef";
+	char hex[3] = {0};
+	char output[2];
+
+	for (unsigned int byte = 1; byte <= 255; ++byte) {
+		hex[0] = digits[byte >> 4];
+		hex[1] = digits[byte & 15];
+		TEST_ASSERT_EQUAL_INT(0, credential_decode(hex, output, sizeof(output)));
+		TEST_ASSERT_EQUAL_UINT8(byte, (unsigned char)output[0]);
+		TEST_ASSERT_EQUAL_CHAR('\0', output[1]);
+	}
+}
+
 void test_validate_accepts_open_network_and_minimum_password(void)
 {
 	TEST_ASSERT_EQUAL_INT(0, credentials_validate("N", ""));

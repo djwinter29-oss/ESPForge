@@ -13,14 +13,16 @@ Python browser ---- loopback Python host ------|-- SPI2 SD / FatFs
 | Layer | Location | Responsibility |
 | --- | --- | --- |
 | Firmware application | `firmware/src/main.c` | Bounded UART framing, command dispatch and error replies |
-| Status contract | `firmware/src/status.c` | Versioned, bounded diagnostics serialization |
+| Status contract | `firmware/src/status.c`, `firmware/src/status_format.c` | Zephyr uptime adapter and portable, bounded diagnostics serialization |
+| Credential rules | `firmware/src/credentials.c` | Portable hex decoding and Wi-Fi credential byte limits |
 | Wireless service | `firmware/src/wireless.c` | Radio initialization, RAM-only credentials, asynchronous Wi-Fi events, BLE GATT |
 | Storage service | `firmware/src/storage.c` | Boot-time mount and visible mount result |
 | Board configuration | `firmware/boards/esp32s3_devkitc.overlay` | SD bus and chip-select assignments |
-| Shared dashboard | `host/web/` | Layout, validated status rendering, transport clients |
+| Shared dashboard | `host/web/` | PicoForge-inspired light layout, validated live metrics, provisioning gates and session-safe transport clients |
 | Direct entry | `host/direct/` | Static, no serial backend required |
 | Python/.NET | `host/python/`, `host/dotnet/ESPForge/` | Single-owner serial bridge on loopback |
 | Dependency selection | `west.yml` | Pinned Zephyr and imported dependency revisions |
+| Native firmware tests | `project.yml`, `Gemfile.lock`, `firmware/tests/` | Pinned Ceedling/Unity/CMock tests of portable production logic |
 
 ## Lifecycle and failure handling
 

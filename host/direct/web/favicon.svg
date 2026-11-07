@@ -1,0 +1,11 @@
+<!--
+SPDX-License-Identifier: BSD-3-Clause
+Copyright (c) 2026 Ji Dong
+-->
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <title>ESPForge</title>
+  <rect width="32" height="32" rx="7" fill="#103c3b"/>
+  <path fill="#c9e779" d="M4 6h10v4H8v4h5v4H8v4h6v4H4z"/>
+  <path fill="#7fd3c7" d="M17 6h11v4h-7v4h6v4h-6v8h-4z"/>
+</svg>

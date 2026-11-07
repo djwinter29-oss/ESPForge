@@ -16,14 +16,20 @@ void tearDown(void)
 
 static void expect_status(int wifi_error, int ble_error, int connected, int sd_error)
 {
+	/* CMock retains these pointers until the production call executes. */
+	static int radio_state[3];
+	radio_state[0] = wifi_error;
+	radio_state[1] = ble_error;
+	radio_state[2] = connected;
+
 	storage_error_ExpectAndReturn(sd_error);
 	wireless_status_Expect(NULL, NULL, NULL);
-	wireless_status_IgnoreArg_wifi_result();
-	wireless_status_IgnoreArg_ble_result();
-	wireless_status_IgnoreArg_is_connected();
-	wireless_status_ReturnThruPtr_wifi_result(&wifi_error);
-	wireless_status_ReturnThruPtr_ble_result(&ble_error);
-	wireless_status_ReturnThruPtr_is_connected(&connected);
+	wireless_status_IgnoreArg_wifi_error();
+	wireless_status_IgnoreArg_ble_error();
+	wireless_status_IgnoreArg_connected();
+	wireless_status_ReturnThruPtr_wifi_error(&radio_state[0]);
+	wireless_status_ReturnThruPtr_ble_error(&radio_state[1]);
+	wireless_status_ReturnThruPtr_connected(&radio_state[2]);
 }
 
 void test_status_matches_exact_wire_contract(void)
