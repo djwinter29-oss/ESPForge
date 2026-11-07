@@ -1,34 +1,56 @@
 #include "espforge.h"
 
-#include <errno.h>
 #include <ff.h>
+#include <zephyr/devicetree.h>
 #include <zephyr/fs/fs.h>
 #include <zephyr/kernel.h>
+#include <zephyr/logging/log.h>
+#include <zephyr/storage/disk_access.h>
+
+LOG_MODULE_REGISTER(ef_storage, LOG_LEVEL_INF);
+
+#define DISK_NAME "SD"
+#define BUS_CLOCK_HZ DT_PROP(DT_NODELABEL(espforge_sd), spi_max_frequency)
 
 static FATFS fatfs;
 static struct fs_mount_t mount = {
 	.type = FS_FATFS,
 	.fs_data = &fatfs,
-	.mnt_point = "/SD:",
+	.mnt_point = "/" DISK_NAME ":",
 };
-static int mount_error = -EAGAIN;
-K_MUTEX_DEFINE(storage_lock);
 
-void storage_init(void)
+/* Written once by ef_storage_init() before the transports start. */
+static bool mounted;
+static uint32_t sector_count;
+static uint8_t filesystem_format;
+
+void ef_storage_init(void)
 {
-	int result = fs_mount(&mount);
+	int err = fs_mount(&mount);
 
-	k_mutex_lock(&storage_lock, K_FOREVER);
-	mount_error = result;
-	k_mutex_unlock(&storage_lock);
+	if (err != 0) {
+		LOG_WRN("SD card mount failed: %d", err);
+		return;
+	}
+	mounted = true;
+	/* FatFs FS_FAT12..FS_EXFAT are 1..4, the Report 10 filesystem_format values. */
+	filesystem_format = fatfs.fs_type <= 4 ? fatfs.fs_type : 0;
+	if (disk_access_ioctl(DISK_NAME, DISK_IOCTL_GET_SECTOR_COUNT, &sector_count) != 0) {
+		sector_count = 0;
+	}
+	LOG_INF("SD card mounted: %u sectors", sector_count);
 }
 
-int storage_error(void)
+void ef_storage_report(uint8_t sequence, uint8_t out[EF_STORAGE_SIZE])
 {
-	int result;
+	ef_storage_t storage = {
+		.sequence = sequence,
+		.initialized = mounted,
+		.capacity_valid = mounted && sector_count != 0,
+		.bus_clock_hz = mounted ? BUS_CLOCK_HZ : 0,
+		.block_count = sector_count,
+		.filesystem_format = filesystem_format,
+	};
 
-	k_mutex_lock(&storage_lock, K_FOREVER);
-	result = mount_error;
-	k_mutex_unlock(&storage_lock);
-	return result;
+	ef_report_storage(&storage, out);
 }

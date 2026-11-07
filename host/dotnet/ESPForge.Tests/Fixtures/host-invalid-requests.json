@@ -1,0 +1,11 @@
+[
+  {"route": "/api/wireless/test", "body": {"ssid": "ESPForge", "password": null}},
+  {"route": "/api/wireless/test", "body": {"ssid": "ESPForge", "passwrod": "password"}},
+  {"route": "/api/wireless/test", "body": {"ssid": "ESPForge", "password": "password", "unknown": true}},
+  {"route": "/api/wireless/test", "body": {"ssid": null, "password": "password"}},
+  {"route": "/api/wireless/test", "body": {"ssid": "ESPForge", "ssid_hex": null}},
+  {"route": "/api/wireless/test", "body": {"ssid": "ESPForge", "password": "short"}},
+  {"route": "/api/wireless/test", "body": {"ssid": "ESPForge", "password": 123}},
+  {"route": "/api/settings", "body": {"system_clock_mhz": 240, "sdcard_profile": 0, "radios": 0, "unknown": true}},
+  {"route": "/api/settings", "body": {"system_clock_mhz": null, "sdcard_profile": 1, "radios": 0}}
+]

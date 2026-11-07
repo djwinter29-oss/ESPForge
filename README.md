@@ -11,8 +11,9 @@ strategy; this is an ESP-specific implementation, not a compatible firmware port
 | --- | --- |
 | Target | ESP32-S3-DevKitC, default N8 / 8 MB flash, Zephyr PROCPU |
 | Firmware | Pinned Zephyr 4.2.0 / SDK 0.17.2, bounded UART JSON management |
-| Firmware unit tests | Pinned Ceedling / Unity / CMock, native credential and status-contract tests |
-| Radios | **Wi-Fi and BLE enabled on every boot**, software coexistence, RAM-only Wi-Fi setup |
+| Firmware unit tests | Pinned Ceedling / Unity / CMock, native credential, status-contract and boot-settings tests |
+| Radios | **Wi-Fi and BLE enabled by default**, software coexistence, saved Wi-Fi credentials |
+| Settings | PicoForge-style [boot settings](docs/reference/settings.md): one CRC-checked flash record for CPU clock, radio switches and credentials |
 | Storage | SPI SD-card driver + FAT mount, **no automatic formatting or write tests** |
 | Direct dashboard | Static browser, Web Serial and read-only Web Bluetooth |
 | Python dashboard | Loopback web server + pyserial |
@@ -33,12 +34,11 @@ Basic monitoring does not require an SD card.
 From this checkout:
 
 ```sh
-# Direct: open http://127.0.0.1:8000/host/direct/ and choose Simulated preview
+# Direct: open http://127.0.0.1:8000/ and choose Preview
 bash tools/host/run-direct.sh --port 8000
 
 # Python: open http://127.0.0.1:8001/ and click Select board
-python3 -m pip install -r host/python/requirements.txt
-python3 host/python/server.py --demo
+bash tools/host/run-python.sh web --demo
 
 # .NET 10: open http://127.0.0.1:8002/ and click Select board
 dotnet run --project host/dotnet/ESPForge -- --demo
@@ -55,11 +55,12 @@ When the board arrives, upload over USB-to-UART with
 `bash espforge/tools/firmware/flash.sh --port /dev/ttyUSB0` from the initialized workspace.
 Run hardware-free C tests with `bundle exec ceedling test:all` after
 [installing the test tools](docs/development/firmware.md#host-native-unit-tests).
-The layout separates `firmware/`, `host/direct/`, `host/python/`, `host/dotnet/`, shared `host/web/`,
+The layout separates `firmware/`, the independent `host/direct/` dashboard, `host/python/`, `host/dotnet/`,
+their shared bridge dashboard `host/web/`,
 and `docs/`. Fork the source, keep board pin assignments in overlays, and add product services
 without blocking management. See [architecture](docs/reference/architecture.md).
 
-This initial foundation does not include PicoForge's complete feature set: no persistent settings,
+This initial foundation does not include PicoForge's complete feature set: no settings editor,
 USB mass storage, benchmarks, file-transfer API, Wi-Fi dashboard transport, or dual-core workload.
 It does provide code and operating documentation for the requested default radios and SD integration.
 

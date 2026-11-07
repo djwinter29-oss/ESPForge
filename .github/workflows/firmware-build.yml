@@ -52,7 +52,7 @@ jobs:
           west update --narrow -o=--depth=1
           python -m pip install --disable-pip-version-check --no-input -r zephyr/scripts/requirements-base.txt
           west blobs fetch hal_espressif
-          west sdk install --version 0.17.2 --toolchains xtensa-espressif_esp32s3_zephyr-elf
+          west sdk install --version 0.17.4 --toolchains xtensa-espressif_esp32s3_zephyr-elf
 
       - name: Build and check required defaults
         run: |
@@ -97,7 +97,7 @@ jobs:
           {
             printf 'Firmware version: %s\n' "${ESPFORGE_VERSION:-$source_version}"
             printf 'Source commit: %s\n' "$(git -C espforge rev-parse HEAD)"
-            printf 'Board: esp32s3_devkitc/esp32s3/procpu\nZephyr SDK: 0.17.2\n'
+            printf 'Board: esp32s3_devkitc/esp32s3/procpu\nZephyr SDK: 0.17.4\n'
             printf 'Software build only; not flashed or hardware-qualified. SD testing is deferred.\n'
           } > "$package/BUILD-INFO.txt"
           cat > "$package/FLASHING.txt" <<'EOF'

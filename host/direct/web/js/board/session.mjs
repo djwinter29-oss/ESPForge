@@ -1,209 +1,94 @@
 // SPDX-License-Identifier: BSD-3-Clause
 // Copyright (c) 2026 Ji Dong
 
-// @ts-check
 /**
- * @file Board session: owns the active transport, serializes link I/O and fences late results by generation so a
- * previous connection can never update the dashboard.
+ * @file Board session facade: wires the connection state machine, command queue, recovery, polling and use cases
+ * around one transport and one domain store, and is the dashboard's only board API. It holds no logic of its own.
  */
-
-import { POLL_INTERVAL_MS } from "../protocol/constants.mjs";
-import { DeviceError, errorMessage, isChooserCancelled } from "../state/errors.mjs";
-import { selectControls } from "../state/selectors.mjs";
-import { CommandRejected, prepareWifiCommand } from "./commands.mjs";
-import { createPoller } from "./polling.mjs";
-
-/**
- * @typedef {import("../transport/transport.mjs").Transport} Transport
- * @typedef {import("../transport/transport.mjs").TransportKind} TransportKind
- * @typedef {{ ok: boolean, message: string }} CommandResult
- */
+import { createDashboardStore } from "../state/store.mjs";
+import { createTimerScope, wait } from "../timers.mjs";
+import { Commands, defaultPendingStore } from "./commands.mjs";
+import { Connection, EMPTY, PHASE } from "./connection.mjs";
+import { Operations } from "./operations.mjs";
+import { Polling } from "./polling.mjs";
+import { Recovery } from "./recovery.mjs";
 
 export class BoardSession {
-  /** @type {Transport | null} */ transport = null;
-  /** @type {Promise<void> | null} */ active = null;
-  generation = 0;
-
   /**
-   * @param {{
-   *   createTransport: (kind: TransportKind) => Transport,
-   *   store: import("../state/store.mjs").DashboardStore,
-   *   timers: import("../timers.mjs").TimerScope,
-   *   now?: () => number,
-   *   pollInterval?: number,
-   * }} options
+   * @param {import("../transport/transport.mjs").Transport} transport Byte pipe to one board.
+   * @param {{store?: ReturnType<typeof createDashboardStore>, now?: () => number, sleep?: Function, timeout?: number,
+   *   pendingStore?: Storage | null, timerScope?: ReturnType<typeof createTimerScope>, wirelessPolling?: boolean}} [options]
+   *   `store` (shared domain store, reset here), `now`, `sleep`, `timeout` (ms per report),
+   *   `pendingStore` (journal storage; default sessionStorage), `timerScope`, `wirelessPolling`.
    */
-  constructor({ createTransport, store, timers, now = Date.now, pollInterval = POLL_INTERVAL_MS }) {
-    this.createTransport = createTransport;
-    this.store = store;
-    this.now = now;
-    this.poller = createPoller({ timers, interval: pollInterval, task: () => this.sample() });
-  }
-
-  /**
-   * @brief Open a link chosen by the user. Must be called from a click so the browser shows its picker.
-   * @param {TransportKind} kind
-   */
-  async connect(kind) {
-    if (!selectControls(this.store.getState()).connect) return;
-    const generation = ++this.generation;
-    const transport = this.createTransport(kind);
+  constructor(transport, { now = () => performance.now(), sleep = wait, timeout = 3000, pendingStore, timerScope,
+    wirelessPolling = true, store } = {}) {
     this.transport = transport;
-    this.store.dispatch({ type: "connecting", kind });
-    try {
-      await transport.connect();
-    } catch (error) {
-      if (generation === this.generation) await this.abandon(transport, error);
-      return;
-    }
-    if (generation !== this.generation) {
-      await transport.close().catch(() => {});
-      return;
-    }
-    transport.addEventListener("disconnect", () => {
-      const failure = /** @type {{ failure?: Error | null }} */ (transport).failure;
-      void this.fail(failure ?? new Error("Board link lost"), generation);
-    });
-    this.store.dispatch({
-      type: "connected",
-      transport: { kind, label: transport.label, writable: transport.writable, simulated: transport.simulated },
-    });
-    await this.poller.start();
+    this.now = now;
+    this.timeout = timeout;
+    this.timers = timerScope?.createChild() ?? createTimerScope();
+    this.sleep = sleep === wait ? (milliseconds, signal) => wait(milliseconds, signal, this.timers) : sleep;
+    this.disposed = false;
+    this.commands = new Commands(this, pendingStore === undefined ? defaultPendingStore() : pendingStore);
+    this.polling = new Polling(this, wirelessPolling);
+    this.recovery = new Recovery(this);
+    this.operations = new Operations(this);
+    const { recoveryError, restored } = this.commands;
+    const initial = { ...EMPTY, link: transport.kind, phase: PHASE.DISCONNECTED, connected: false,
+      reconnecting: false, busy: false, wireless_busy: false, pending_request: restored.request,
+      pending_wireless: restored.wireless,
+      outcome_uncertain: Boolean(recoveryError || restored.request || restored.wireless),
+      error: recoveryError ?? (transport.available ? null : transport.unavailableReason) };
+    this.store = store ?? createDashboardStore(initial);
+    if (store) store.dispatch({ type: "replace", state: initial });
+    this.connection = new Connection(this);
+    this.connection.reconnectUid = restored.uid;
   }
+
+  get state() { return this.store.getState(); }
+  get device() { return this.transport.device; }
+  get connectionSignal() { return this.connection.signal; }
 
   /**
-   * @param {Transport} transport
-   * @param {unknown} error
+   * @brief Commit one named domain event (state/reducer.mjs); board modules are the only callers.
+   * @param {string} type
+   * @param {Partial<import("../state/reducer.mjs").DashboardState>} changes
    */
-  async abandon(transport, error) {
-    const cancelled = isChooserCancelled(error);
-    try {
-      await transport.close();
-      if (this.transport === transport) this.transport = null;
-      if (cancelled) this.store.dispatch({ type: "disconnected", notice: "No board was selected." });
-      else this.store.dispatch({ type: "failed", error: errorMessage(error) });
-    } catch (closeError) {
-      this.store.dispatch({
-        type: "failed", error: `${errorMessage(error)}; cleanup failed: ${errorMessage(closeError)}`,
-        cleanup_pending: true,
-      });
-    }
+  emit(type, changes) {
+    if (!this.disposed) this.store.dispatch({ type, changes });
   }
 
-  /** @brief Close the link on request; a failed close keeps Disconnect available for a retry. */
-  async disconnect() {
-    ++this.generation;
-    this.poller.stop();
-    const transport = this.transport;
-    try {
-      await transport?.close();
-      if (this.transport === transport) this.transport = null;
-      this.store.dispatch({ type: "disconnected" });
-    } catch (error) {
-      this.store.dispatch({ type: "failed", error: `Disconnect failed: ${errorMessage(error)}`, cleanup_pending: true });
-    }
-  }
-
-  /**
-   * @brief Any link failure clears device facts and releases the link; commands are never retried.
-   * @param {unknown} error
-   * @param {number} generation
-   */
-  async fail(error, generation) {
-    if (generation !== this.generation) return;
-    ++this.generation;
-    this.poller.stop();
-    const transport = this.transport;
-    this.store.dispatch({ type: "failed", error: errorMessage(error) });
-    try {
-      await transport?.close();
-      if (this.transport === transport) this.transport = null;
-    } catch (closeError) {
-      if (this.transport === transport) {
-        this.store.dispatch({
-          type: "failed", error: `${errorMessage(error)}; cleanup failed: ${errorMessage(closeError)}`,
-          cleanup_pending: true,
-        });
-      }
-    }
-  }
-
-  /**
-   * @brief Run one link operation at a time for the current generation.
-   * @param {number} generation
-   * @param {(transport: Transport) => Promise<void>} operation
-   */
-  async exclusive(generation, operation) {
-    while (this.active) await this.active;
-    const transport = this.transport;
-    if (generation !== this.generation || !transport) return;
-    const run = (async () => {
-      this.store.dispatch({ type: "busy", busy: true });
-      try {
-        await operation(transport);
-      } catch (error) {
-        await this.fail(error, generation);
-      } finally {
-        if (generation === this.generation) this.store.dispatch({ type: "busy", busy: false });
-      }
-    })();
-    this.active = run;
-    try {
-      await run;
-    } finally {
-      if (this.active === run) this.active = null;
-    }
-  }
-
-  async sample() {
-    if (this.active) return;
-    const generation = this.generation;
-    await this.exclusive(generation, async transport => {
-      const status = await transport.status();
-      if (generation === this.generation) this.store.dispatch({ type: "sample", status, at: this.now() });
-    });
-  }
-
-  refresh() {
-    return this.poller.trigger();
-  }
-
-  /**
-   * @brief Submit Wi-Fi credentials once for this boot. Local rejections and board error replies keep the link.
-   * @param {unknown} input
-   * @return {Promise<CommandResult>}
-   */
-  async connectWifi(input) {
-    let credentials;
-    try {
-      credentials = prepareWifiCommand(this.store.getState(), input);
-    } catch (error) {
-      if (error instanceof CommandRejected) return { ok: false, message: error.message };
-      throw error;
-    }
-    const generation = this.generation;
-    /** @type {CommandResult | null} */
-    let result = null;
-    await this.exclusive(generation, async transport => {
-      this.store.dispatch({ type: "busy", busy: true, command: "wifi" });
-      try {
-        await transport.wifiConnect(credentials);
-        result = { ok: true, message: "Request accepted, not yet connected. Watch Wi-Fi association and result." };
-        this.store.dispatch({ type: "notice", message: result.message });
-      } catch (error) {
-        if (!(error instanceof DeviceError)) throw error;
-        result = { ok: false, message: error.message };
-      }
-    });
-    if (generation === this.generation) void this.refresh();
-    return result ?? { ok: false, message: this.store.getState().error ?? "Board disconnected" };
-  }
-
+  /** @brief Detach every listener and timer so a replaced session cannot write state or touch the device. */
   dispose() {
-    ++this.generation;
-    this.poller.stop();
-    const transport = this.transport;
-    this.transport = null;
-    transport?.close().catch(() => {});
+    this.disposed = true;
+    this.connection.dispose();
+    this.polling.receipts.cancel();
+    this.timers.dispose();
+    void this.transport.dispose().catch(error => console.error("Could not close the board transport", error));
   }
+
+  connect(options) { return this.connection.connect(options); }
+  disconnect() { return this.connection.disconnect(); }
+  /** @param {number} opcode @param {import("./commands.mjs").CommandOptions} [options] */
+  command(opcode, options) { return this.commands.command(opcode, options); }
+  expireReports(suspended) { this.polling.expireReports(suspended); }
+  readWireless(signal) { return this.polling.readWireless(signal); }
+  pollWireless() { this.polling.pollWireless(); }
+  reboot(confirmed) { return this.operations.reboot(confirmed); }
+  saveSettings(settings) { return this.operations.saveSettings(settings); }
+  /** @param {import("./operations.mjs").ConfigurationIntent} intent */
+  saveConfiguration(intent) { return this.operations.saveConfiguration(intent); }
+  scanWireless(signal) { return this.operations.scanWireless(signal); }
+  /**
+   * @param {import("./operations.mjs").WirelessPair} settings
+   * @param {(progress: import("../state/reducer.mjs").ReasonValue) => void} [onProgress]
+   * @param {AbortSignal} [signal]
+   */
+  testWireless(settings, onProgress, signal) { return this.operations.testWireless(settings, onProgress, signal); }
+  cancelWireless(signal) { return this.operations.cancelWireless(signal); }
+  /**
+   * @param {import("./operations.mjs").WirelessConfiguration & {board: import("./operations.mjs").BootSettings}} settings
+   * @param {AbortSignal} [signal]
+   */
+  saveWireless(settings, signal) { return this.operations.saveWireless(settings, signal); }
 }

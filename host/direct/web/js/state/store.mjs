@@ -2,37 +2,45 @@
 // Copyright (c) 2026 Ji Dong
 
 // @ts-check
-/** @file Minimal observable store; the board session dispatches and the dashboard subscribes. */
+/**
+ * @file Minimal observable store; the domain store is owned by BoardSession and the UI store by the dashboard.
+ */
 
-import { dashboardReducer, INITIAL_STATE } from "./reducer.mjs";
+import { dashboardReducer, uiReducer } from "./reducer.mjs";
+/** @typedef {import("./reducer.mjs").DashboardState} DashboardState */
 
 /**
- * @template State, Action
- * @param {(state: State, action: Action) => State} reducer
+ * @brief Create a store around a reducer.
+ * @template State
+ * @param {(state: State, action: import("./reducer.mjs").StateAction<State>) => State} reducer
  * @param {State} initial
  */
 export function createStore(reducer, initial) {
   let state = initial;
-  /** @type {Set<(state: State) => void>} */
   const listeners = new Set();
   return {
     getState: () => state,
-    /** @param {Action} action */
+    /** @param {import("./reducer.mjs").StateAction<State>} action */
     dispatch(action) {
-      const next = reducer(state, action);
-      if (next === state) return state;
-      state = next;
+      state = reducer(state, action);
       for (const listener of listeners) listener(state);
       return state;
     },
     /** @param {(state: State) => void} listener */
     subscribe(listener) {
       listeners.add(listener);
-      return () => { listeners.delete(listener); };
+      return () => listeners.delete(listener);
     },
   };
 }
 
-/** @typedef {ReturnType<typeof createDashboardStore>} DashboardStore */
+/** @param {DashboardState} [initial] */
+export const createDashboardStore = (initial = {}) => createStore(dashboardReducer, initial);
 
-export const createDashboardStore = () => createStore(dashboardReducer, { ...INITIAL_STATE });
+/** @brief Initial dashboard-only state; reset whenever the board disconnects. */
+/** @type {Readonly<import("./reducer.mjs").UiState>} */
+export const UI_INITIAL = Object.freeze({
+  settings_dirty: false, wireless_form_busy: false, settings_message: null, action_error: null,
+});
+
+export const createUiStore = () => createStore(uiReducer, { ...UI_INITIAL });

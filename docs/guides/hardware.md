@@ -2,16 +2,22 @@
 
 ## Initial target
 
-The starter targets `esp32s3_devkitc/esp32s3/procpu` in Zephyr 4.2.0.
+The starter targets `esp32s3_devkitc/esp32s3/procpu` in Zephyr 4.3.2.
 Its default DTS describes an ESP32-S3-WROOM module with 8 MB flash (N8).
 No PSRAM is assumed or enabled. Other S3 development boards and N4/N16/PSRAM module variants
 need a matching DTS/flash configuration and their own build/flash validation; do not assume compatibility
 from the ESP32-S3 chip name alone.
 
-Use the connector connected to the board's USB-to-UART bridge for management and flashing.
-UART0 is GPIO43 TX / GPIO44 RX at 115200 baud, 8 data bits, no parity, 1 stop bit, no flow control.
-The separate native USB connector is **not** a management interface in this starter.
-No USB HID, CDC ACM, or mass-storage gadget is implemented.
+The DevKitC has two USB-C connectors, and ESPForge uses both:
+
+| Connector | ESP32-S3 interface | Used for |
+| --- | --- | --- |
+| **USB** | Native USB OTG (GPIO19 D- / GPIO20 D+) | Management: USB HID, VID:PID `CAFE:4021`, read by the Python and .NET dashboards and by Direct over WebHID |
+| **UART** | USB-to-UART bridge to UART0 (GPIO43 TX / GPIO44 RX) | Flashing through the ROM bootloader, and the Zephyr console/log at 115200 baud, 8N1 |
+
+Connect both when you flash and manage the board from one computer. The USB connector exposes only the HID
+interface: there is no CDC ACM console and no mass-storage gadget. After a Control key has been saved over USB,
+Bluetooth LE management needs only power; see the [wireless guide](wireless.md).
 
 ## SD-card SPI wiring
 

@@ -19,31 +19,35 @@ are ignored build products, not firmware dependencies.
 
 ```sh
 # One suite
-bundle exec ceedling test:credentials
-bundle exec ceedling test:status_format
+bundle exec ceedling test:control
+bundle exec ceedling test:wireless_auth
 
 # Regenerate runners/mocks and rebuild tests
 bundle exec ceedling clobber test:all
 ```
 
 The root [project.yml](../../project.yml) selects production C from `firmware/src/`
-and tests from `firmware/tests/`. Zephyr-facing `main.c`, `status.c`, `wireless.c`
-and `storage.c` are excluded from the native build:
+and tests from `firmware/tests/`. Zephyr glue (`main.c`, `board.c`, `usb_hid.c`, `ble.c`,
+`wifi.c`, `telemetry.c`, `storage.c`, `boot_flash.c` and `system_clock.c`) is excluded from
+the native build. The portable protocol core talks to it only through [ef_platform.h](../../firmware/src/ef_platform.h):
 
 | Suite | Production logic exercised |
 | --- | --- |
-| `test_credentials.c` | Hex decoding, embedded-NUL rejection, output capacity, SSID/password byte limits, UTF-8 and open-network credentials |
-| `test_status_format.c` | Exact JSON contract, radio/error reporting, 64-bit uptime, numeric limits, buffer boundaries |
+| `test_control.c` | Shared opcode dispatcher: status/error replies, Wi-Fi base/key staging, test/cancel/scan, settings, reboot, resync and unsupported opcodes |
+| `test_hid_reports.c` | Exact USB HID/BLE report byte layouts, little-endian fields and flags |
+| `test_wireless_auth.c` | HMAC-SHA-256 command authentication, nonces, replay rejection and key-change handling |
+| `test_wireless_stage.c` | Staged Wi-Fi credentials, password rules, expiry, tested flag and key-only commits |
+| `test_sha256.c` | SHA-256/HMAC vectors |
+| `test_boot_config.c` | [Boot settings](../reference/settings.md) record layout, CRC-32, validation, staging, discard, save failure and next-boot snapshots over an in-memory flash fake |
 
-Status tests use CMock-generated `espforge.h` mocks for radio state and mount-result
-inputs. **They do not compile the SD driver, mount a card, format, write or test SD storage.**
-The Zephyr application calls these same portable modules; tests do not duplicate them.
-Native compilation enables C11 and treats compiler warnings as errors.
+Platform hooks are CMock-generated mocks. **The tests do not compile the SD driver, mount a card,
+format, write or test SD storage.** The Zephyr application calls these same portable modules;
+tests do not duplicate them. Native compilation enables C11 and treats compiler warnings as errors.
 
 Add portable logic tests here and mock only narrow service interfaces. Do not recreate
 Zephyr internals with large fake headers. Use Zephyr ztest/Twister for future kernel
-or driver integration tests; no ztest suite is configured yet. UART framing/Zephyr JSON
-parsing, real BLE/Wi-Fi behavior and flash/boot remain outside this native suite.
+or driver integration tests; no ztest suite is configured yet. USB/BLE stacks, real Wi-Fi behavior,
+flash programming, clock changes and boot remain outside this native suite.
 
 The `firmware-unit` job in [Host Validation](../../.github/workflows/host-validation.yml)
 runs the same command independently of the reusable [ESP32-S3 build](../../.github/workflows/firmware-build.yml).
@@ -52,7 +56,7 @@ Both must pass for firmware changes; a native test pass is not target-build or h
 ## Zephyr target build
 
 Follow [workspace setup](../guides/getting-started.md#1-prepare-a-zephyr-workspace) before building.
-Zephyr 4.2.0 and imported module commits are selected by `west.yml`; SDK 0.17.2 is the initial toolchain.
+Zephyr 4.3.2 and imported module commits are selected by `west.yml`; SDK 0.17.4 is the toolchain.
 Run the build script from anywhere within the initialized workspace, with its Python venv activated:
 
 ```sh
@@ -68,10 +72,12 @@ west build -p always -b esp32s3_devkitc/esp32s3/procpu espforge/firmware \
 ```
 
 Inspect generated `build/firmware/zephyr/.config` and `zephyr.dts`, not just source intent.
-Required defaults include Wi-Fi, BLE, software coexistence, SPI SDHC, SDMMC disk and FatFs.
-Both FAT mkfs options must remain disabled. Console/logging are disabled on UART0 to preserve framing;
-initialization and mount failures are exposed as status result codes. `PRINTK` is required by dependencies,
-but no UART console backend is enabled.
+Required defaults include Wi-Fi, BLE, software coexistence, SPI SDHC, SDMMC disk, FatFs and
+the `device_next` USB stack with HID. Both FAT mkfs options must remain disabled.
+The management protocol runs over the ESP32-S3 native USB connector (USB HID, VID:PID `CAFE:4021`)
+and BLE GATT, as described in the [ESPForge profile](../reference/espforge-profile.md).
+The UART connector carries only the Zephyr console/log output and the ROM bootloader used for flashing;
+it has no management protocol.
 
 The reusable build also freezes the resolved west manifest and attaches binaries, configuration,
 dependency licenses and software-only flashing instructions. PRs and tagged releases use this same
@@ -92,5 +98,5 @@ This is a manual operator tool, with no dedicated automated test suite or CI tes
 Use `--help` and `--dry-run` to inspect it before uploading to hardware.
 
 Do not connect an SD card or run storage tests for software-only setup.
-Compilation does not validate initialization, UART electrical behavior, coexistence, or filesystem reliability.
+Compilation does not validate initialization, USB enumeration, BLE/Wi-Fi coexistence, or filesystem reliability.
 Record software evidence separately from future hardware observations in [validation records](../validation/records/README.md).

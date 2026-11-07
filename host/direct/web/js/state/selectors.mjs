@@ -1,127 +1,72 @@
 // SPDX-License-Identifier: BSD-3-Clause
 // Copyright (c) 2026 Ji Dong
 
-// @ts-check
-/** @file Pure view models derived from dashboard state; "--" always means "not reported now". */
+/**
+ * @file Single source of operation readiness. BoardSession guards and every view gate derive from these functions
+ * so buttons and device writes cannot disagree.
+ */
+import { CAP } from "../protocol/constants.mjs";
+import { REASON } from "./errors.mjs";
 
-import { RESULT_CODES } from "../protocol/constants.mjs";
-
+const { COMMAND_BLOCKED: BLOCKED, CAPABILITY_UNAVAILABLE: NO_CAPABILITY } = REASON;
 /** @typedef {import("./reducer.mjs").DashboardState} DashboardState */
+/** @typedef {"reboot" | "settings" | "wireless"} Operation */
 
-const UNKNOWN = "--";
-
-/** @param {number} ms */
-export function formatUptime(ms) {
-  const total = Math.floor(ms / 1000);
-  const days = Math.floor(total / 86400);
-  const clock = [Math.floor(total / 3600) % 24, Math.floor(total / 60) % 60, total % 60]
-    .map((value, index) => (index ? String(value).padStart(2, "0") : String(value))).join(":");
-  return days ? `${days}d ${clock}` : clock;
-}
+/** @brief True while a control request or an accepted wireless lifecycle has no known outcome.
+ * @param {DashboardState} state */
+export const commandPending = state => Boolean(state.pending_request || state.pending_wireless);
 
 /**
- * @param {number} code
- * @param {keyof typeof RESULT_CODES} table
- */
-export function formatResult(code, table) {
-  const meaning = /** @type {Record<number, string>} */ (RESULT_CODES[table])[code];
-  return meaning ? `${code} (${meaning})` : `${code} (error)`;
-}
-
-/** @param {boolean} enabled */
-const onOff = enabled => (enabled ? "Enabled" : "Disabled");
-
-/** @param {DashboardState} state */
-export function selectConnection(state) {
-  if (state.link === "connecting") return { state: "connecting", label: "Connecting…" };
-  if (state.link === "error") return { state: "error", label: "Error" };
-  if (state.link === "connected" && state.transport) {
-    return { state: state.transport.simulated ? "simulated" : "connected", label: state.transport.label };
-  }
-  return { state: "disconnected", label: "Disconnected" };
-}
-
-/** @param {DashboardState} state */
-export function selectIdentity(state) {
-  const status = state.status;
-  return {
-    "product-name": status?.product ?? UNKNOWN,
-    "board-model": status?.board ?? UNKNOWN,
-    "firmware-version": status?.firmware ?? UNKNOWN,
-    "protocol-version": status ? `v${status.protocol}` : UNKNOWN,
-    "link-name": state.link === "connected" && state.transport ? state.transport.label : UNKNOWN,
-  };
-}
-
-/** @param {DashboardState} state */
-export function selectConfiguration(state) {
-  const status = state.status;
-  return {
-    "wifi-enabled": status ? onOff(status.wifi_enabled) : UNKNOWN,
-    "ble-enabled": status ? onOff(status.ble_enabled) : UNKNOWN,
-  };
-}
-
-/** @param {DashboardState} state */
-export function selectDiagnostics(state) {
-  const status = state.status;
-  if (!status) return { uptime: UNKNOWN, "wifi-state": UNKNOWN, "wifi-result": UNKNOWN, "ble-result": UNKNOWN };
-  return {
-    uptime: formatUptime(status.uptime_ms),
-    "wifi-state": status.wifi_connected ? "Associated" : "Not associated",
-    "wifi-result": formatResult(status.wifi_error, "wifi"),
-    "ble-result": formatResult(status.ble_error, "ble"),
-  };
-}
-
-/** @param {DashboardState} state */
-export function selectStorage(state) {
-  const status = state.status;
-  return {
-    "memory-state": status ? (status.sd_mounted ? "Mounted" : "Not mounted") : UNKNOWN,
-    "memory-result": status ? formatResult(status.sd_error, "sd") : UNKNOWN,
-  };
-}
-
-/**
+ * @brief Whether the single command queue may accept a request, ignoring the wireless workflow lock (the session
+ * admits only the workflow that holds it).
  * @param {DashboardState} state
- * @param {(at: number) => string} formatTime
  */
-export function selectFreshness(state, formatTime) {
-  if (!state.status || state.sampled_at === null) return "telemetry: unavailable";
-  const source = state.transport?.simulated ? "simulated sample" : "device sample";
-  return `telemetry: ${source} at ${formatTime(state.sampled_at)} · polled every second`;
+export function commandBlocked(state) {
+  return Boolean(state.busy || commandPending(state) || state.outcome_uncertain || state.reboot_pending
+    || !state.connected);
 }
 
-/** @param {DashboardState} state */
-export function selectControls(state) {
-  const idle = state.link === "disconnected" || (state.link === "error" && !state.cleanup_pending);
-  const connected = state.link === "connected";
+/**
+ * @brief Derive operation readiness from a domain snapshot.
+ * @param {DashboardState} state Domain state snapshot.
+ * @return Readiness flags: storageReady (a fresh storage report) and per-operation gates.
+ */
+export function deriveOperationEligibility(state) {
+  const bluetooth = state.link === "ble";
+  const caps = state.hardware?.capabilities ?? 0;
+  const storageReady = state.freshness?.[10] === "fresh" && Boolean(state.memory);
+  const blocked = commandBlocked(state) || Boolean(state.wireless_busy);
   return {
-    connect: idle,
-    disconnect: connected || state.cleanup_pending,
-    refresh: connected,
-    wifi: connected && state.command !== "wifi" && Boolean(state.transport?.writable),
-    preview: Boolean(connected && state.transport?.simulated),
+    blocked,
+    storageReady,
+    settingsReady: !blocked && storageReady,
+    wirelessReady: !blocked && !bluetooth && storageReady && Boolean(caps & CAP.WIRELESS),
+    connectionLocked: Boolean(state.connected || state.reconnecting || commandPending(state)
+      || state.outcome_uncertain),
   };
 }
 
-/** @param {DashboardState} state */
-export function selectStatusLine(state) {
-  if (state.error) {
-    const next = state.cleanup_pending ? "Disconnect to release the device." : "Reconnect to continue.";
-    return { message: `${state.error} ${next}`, error: true, active: false };
-  }
-  if (state.link === "connecting") return { message: "Waiting for the browser device picker…", error: false, active: true };
-  if (state.link === "connected") {
-    const message = state.notice ?? (state.transport?.simulated
-      ? "Simulated preview — no hardware connected."
-      : state.transport?.writable
-        ? "Connected over USB-UART. One serial owner at a time; disconnect before flashing."
-        : "Connected over Bluetooth (read-only). Use USB to configure Wi-Fi.");
-    return { message, error: false, active: true };
-  }
-  return {
-    message: state.notice ?? "Select an ESPForge board over USB or Bluetooth", error: false, active: false,
-  };
+/**
+ * @brief Per-operation precondition: return the first failing reason code (state/errors.mjs), or null.
+ */
+/** @type {Record<Operation, (state: DashboardState, eligibility: ReturnType<typeof deriveOperationEligibility>,
+ *   capabilities: number) => string | null>} */
+const RULES = {
+  reboot: (state, e, caps) => !e.storageReady ? REASON.REBOOT_STORAGE
+    : !(caps & CAP.REBOOT) ? NO_CAPABILITY : e.blocked ? BLOCKED : null,
+  settings: (state, e, caps) => !e.storageReady ? REASON.SETTINGS_STORAGE
+    : !(caps & CAP.SETTINGS) ? NO_CAPABILITY : e.blocked ? BLOCKED : null,
+  wireless: (state, e) => e.wirelessReady ? null : REASON.WIRELESS_STORAGE,
+};
+
+/**
+ * @brief The one readiness gate for user operations, shared by BoardSession methods and UI disabling.
+ * @param {DashboardState} state Domain state snapshot.
+ * @param {Operation} operation
+ * @param {ReturnType<typeof deriveOperationEligibility>} [eligibility] Same-snapshot render cache; actions omit it.
+ * @return {{allowed: boolean, reason: string | null}} `reason` is a REASON code; ui/messages.mjs has its text.
+ */
+export function canRun(state, operation, eligibility = deriveOperationEligibility(state)) {
+  const reason = RULES[operation](state, eligibility, state.hardware?.capabilities ?? 0);
+  return { allowed: reason === null, reason };
 }

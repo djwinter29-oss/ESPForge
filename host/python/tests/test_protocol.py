@@ -1,116 +1,283 @@
+# SPDX-License-Identifier: BSD-3-Clause
+# Copyright (c) 2026 Ji Dong
+
 import json
-import os
-import sys
-import threading
+import re
+import struct
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from protocol import BoardClient, ProtocolError, demo_status, validate_request
+from espforge.reports import (
+    build_control_command_report,
+    build_settings_command_report,
+    build_wireless_command_report,
+    ControlOpcode,
+    parse_configuration_report,
+    parse_control_result_report,
+    parse_identity_report,
+    parse_memory_report,
+    parse_status_report,
+    IDENTITY_PAYLOAD_SIZE,
+    CONFIGURATION_PAYLOAD_SIZE,
+    TELEMETRY_PAYLOAD_SIZE,
+    STORAGE_PAYLOAD_SIZE,
+    CONTROL_PAYLOAD_SIZE,
+)
+from espforge.reports.wireless import WIRELESS_STATUS_SIZE
+
+FIRMWARE_HEADER = Path(__file__).resolve().parents[3] / "firmware/src/hid_reports.h"
 
 
-class FakeSerial:
-    def __init__(self, reply: bytes) -> None:
-        self.reply = bytearray(reply)
-        self.writes: list[bytes] = []
-
-    def write(self, value: bytes) -> int:
-        self.writes.append(value)
-        return len(value)
-
-    def read(self, size: int) -> bytes:
-        return bytes([self.reply.pop(0)]) if self.reply else b""
+def status_contract():
+    return json.loads((Path(__file__).parents[2] / "web/tests/status-contract.json").read_text())
 
 
-def fake_client(reply: bytes) -> tuple[BoardClient, FakeSerial]:
-    client = BoardClient.__new__(BoardClient)
-    client._id = 0
-    client._lock = threading.Lock()
-    fake = FakeSerial(reply)
-    client._serial = fake
-    return client, fake
+def identity_report(capabilities=0x8E, mcu=3, board=1, product=3):
+    payload = (
+        bytes([1]) + struct.pack("<H", product) + bytes.fromhex("0123456789ab0000")
+        + bytes([1, 2, 3, mcu, board, 0, capabilities])
+        + struct.pack("<II", 524288, 100000)
+    )
+    return bytes([1]) + payload
+
+
+def configuration_report(clock=240, flags=0x04):
+    payload = bytes([1]) + struct.pack("<H", clock) + bytes([0, 0, 43, 44]) + bytes(
+        [12, 11, 13, 10, 255, 255]) + bytes([flags, 1, 255, 255])
+    return bytes([2]) + payload
+
+
+def telemetry_report(flags=0x05, led_flags=0, temperature=2345, core1=0xFFFF):
+    payload = struct.pack("<BBhQHHIBB", 1, led_flags, temperature, 123456, 1234, core1,
+                          240_000_000, 9, flags)
+    return bytes([3]) + payload
+
+
+def storage_report(flags=0x6F, msc=(0, 0, 0), speed=1, cid=bytes(16)):
+    if flags & 0x40 and flags & 0x08:
+        sample = bytes([1, 2]) + struct.pack("<IBI", 10_000_000, speed, 4096) + cid
+    elif flags & 0x40:
+        sample = bytes([1, 2]) + bytes(9) + cid
+    else:
+        sample = bytes(2 + 9 + 16)
+    payload = bytes([1, 7, flags]) + sample + bytes([3, *msc])
+    return bytes([10]) + payload
+
+
+def control_result(opcode, status, error=0, transaction=11, data=b""):
+    return bytes([20, 1, transaction, opcode, status, error]) + data.ljust(63, b"\0")
 
 
 class ProtocolTests(unittest.TestCase):
-    def test_credentials_and_schema(self) -> None:
-        for value in [
-            {"op": "status"},
-            {"op": "wifi.connect", "ssid": "a" * 32, "psk": "a" * 63},
-            {"op": "wifi.connect", "ssid": "lab", "psk": ""},
-        ]:
-            self.assertEqual(validate_request(value), value)
-        for value in [
-            [], {"op": "unknown"}, {"op": "status", "id": 1},
-            {"op": "wifi.connect", "ssid": "lab"},
-            {"op": "wifi.connect", "ssid": "\u00e9" * 17, "psk": ""},
-            {"op": "wifi.connect", "ssid": "a" * 33, "psk": ""},
-            {"op": "wifi.connect", "ssid": "lab\0", "psk": ""},
-            {"op": "wifi.connect", "ssid": "lab", "psk": "short"},
-        ]:
-            with self.subTest(value=value), self.assertRaises(ProtocolError):
-                validate_request(value)
+    def setUp(self):
+        self.identity = parse_identity_report(identity_report())
 
-    def test_framing_and_stale_response(self) -> None:
-        expected = {"id": 1, "ok": True, "status": demo_status()}
-        client, fake = fake_client(b"ESP-ROM boot\n" + b'{"id":99,"ok":true}\n' + json.dumps(expected).encode() + b"\n")
-        self.assertEqual(client.request({"op": "status"}), expected)
-        self.assertEqual(json.loads(fake.writes[0]), {"id": 1, "op": "status"})
+    def test_report_sizes_match_the_contract(self):
+        self.assertEqual((IDENTITY_PAYLOAD_SIZE, CONFIGURATION_PAYLOAD_SIZE, TELEMETRY_PAYLOAD_SIZE,
+                          STORAGE_PAYLOAD_SIZE, WIRELESS_STATUS_SIZE, CONTROL_PAYLOAD_SIZE),
+                         (26, 17, 22, 34, 48, 68))
 
-    def test_credentials_roundtrip_to_wire_hex(self) -> None:
-        client, fake = fake_client(b'{"id":1,"ok":true,"error":0}\n')
-        value = {"op": "wifi.connect", "ssid": 'lab"\u00e9', "psk": "pass\\word"}
-        client.request(value)
-        wire = json.loads(fake.writes[0])
-        self.assertEqual(bytes.fromhex(wire["ssid_hex"]).decode(), value["ssid"])
-        self.assertEqual(bytes.fromhex(wire["psk_hex"]).decode(), value["psk"])
-        self.assertLessEqual(len(fake.writes[0]), 512)
-        self.assertNotIn("ssid", wire)
+    @unittest.skipUnless(FIRMWARE_HEADER.is_file(), "firmware HID header is unavailable")
+    def test_profile_values_match_firmware_header_when_present(self):
+        macros = dict(re.findall(r"^#define (EF_\w+) (0x[0-9A-Fa-f]+|\d+)u?\b", FIRMWARE_HEADER.read_text(),
+                                 re.MULTILINE))
+        expected = {"EF_PRODUCT_ID": 3, "EF_MCU_ESP32S3": 3, "EF_BOARD_DEVKITC": 1, "EF_IDENTITY_SIZE": 26,
+                    "EF_CONFIG_SIZE": 17, "EF_TELEMETRY_SIZE": 22, "EF_STORAGE_SIZE": 34,
+                    "EF_WIRELESS_SIZE": 48, "EF_CONTROL_SIZE": 68}
+        self.assertEqual({name: int(macros[name], 0) for name in expected if name in macros},
+                         {name: value for name, value in expected.items() if name in macros})
 
-    def test_errors_are_not_fallback_status(self) -> None:
-        for frame in [b"{bad}\n", b'{"id":1,"ok":false,"error":-22}\n',
-                      b'{"id":0,"ok":false,"error":-90}\n', b'{"id":1,"ok":true}\n', b"{" + b"x" * 4096]:
-            with self.subTest(frame=frame[:50]), self.assertRaises(ProtocolError):
-                fake_client(frame)[0].request({"op": "status"})
+    def test_identity_and_board_configuration_decode(self):
+        self.assertEqual(self.identity["device_uid"], "0123456789AB0000")
+        self.assertEqual(self.identity["product_id"], 3)
+        self.assertEqual(self.identity["product_name"], "ESPForge")
+        self.assertEqual(self.identity["mcu"], "ESP32-S3")
+        self.assertEqual(self.identity["board_model"], "ESP32-S3-DevKitC-1")
+        self.assertEqual(self.identity["storage_transport"], "spi")
+        self.assertFalse(self.identity["led_available"])
+        self.assertFalse(self.identity["self_test_supported"])
+        self.assertTrue(self.identity["wireless_supported"])
+        config = parse_configuration_report(configuration_report(), self.identity)
+        self.assertEqual(config["system_clock_mhz"], 240)
+        self.assertEqual(config["sdcard_profile"], 0)
+        self.assertEqual(config["storage_gpios"], (12, 11, 13, 10, 255, 255))
+        self.assertEqual((config["monitor_uart_tx_gpio"], config["monitor_uart_rx_gpio"]), (43, 44))
+        self.assertFalse(config["tcp_cli_enabled"])
+        self.assertLessEqual(set(status_contract()["nested"]["board_configuration"]), set(config))
+        for clock in (0, 80, 160, 240):
+            with self.subTest(clock=clock):
+                self.assertEqual(parse_configuration_report(configuration_report(clock), self.identity)
+                                 ["system_clock_mhz"], clock)
+        raw = identity_report()
+        for framed in (bytes([0]) + raw + bytes(4), raw + bytes(4)):
+            with self.assertRaises(ValueError):
+                parse_identity_report(framed)
+        with self.assertRaises(ValueError):
+            parse_identity_report(raw + bytes(3) + b"\x01")
 
-    def test_timeout_does_not_retry(self) -> None:
-        client, fake = fake_client(b"")
-        with patch("protocol.time.monotonic", side_effect=[0, 6]):
-            with self.assertRaisesRegex(ProtocolError, "not retried"):
-                client.request({"op": "status"})
-        self.assertEqual(len(fake.writes), 1)
+    def test_identity_accepts_only_the_espforge_product_and_profile(self):
+        for product, name in ((2, "PicoForge"), (1, "PicoUart"), (0x1234, "Unknown product (0x1234)")):
+            with self.subTest(product=product):
+                other = parse_identity_report(identity_report(product=product))
+                self.assertFalse(other["supported"])
+                self.assertEqual(other["product_name"], name)
+        for invalid in (identity_report(capabilities=0), identity_report(capabilities=0x8F),
+                        identity_report(capabilities=0xCE), identity_report(capabilities=0xAE),
+                        identity_report(capabilities=0x96), identity_report(mcu=2, board=1)):
+            with self.subTest(report=invalid), self.assertRaises(ValueError):
+                parse_identity_report(invalid)
+        unknown_mcu = parse_identity_report(identity_report(mcu=9, board=0))
+        self.assertEqual(unknown_mcu["mcu"], "unknown (9)")
+        self.assertEqual(unknown_mcu["board_model"], "Unknown / unspecified")
 
-    @unittest.skipUnless(os.name == "posix", "POSIX pseudo-terminal required")
-    def test_real_serial_handle_with_synthetic_peer(self) -> None:
-        import pty
-        import select
+    def test_configuration_rejects_values_outside_the_profile(self):
+        for clock in (150, 200, 250, 1):
+            with self.subTest(clock=clock), self.assertRaisesRegex(ValueError, "profile"):
+                parse_configuration_report(configuration_report(clock), self.identity)
+        sd_profile = bytearray(configuration_report())
+        sd_profile[4] = 1
+        with self.assertRaisesRegex(ValueError, "profile"):
+            parse_configuration_report(sd_profile, self.identity)
+        for flags in (0x00, 0x05, 0x06, 0x24, 0x84):
+            with self.subTest(flags=flags), self.assertRaisesRegex(ValueError, "flags"):
+                parse_configuration_report(configuration_report(flags=flags), self.identity)
+        self.assertEqual(parse_configuration_report(configuration_report(flags=0x1C), self.identity)["radios"], 3)
+        self.assertEqual(parse_configuration_report(configuration_report(flags=0x0C), self.identity)["radios"], 1)
+        high_gpio = bytearray(configuration_report())
+        high_gpio[8] = 49
+        with self.assertRaisesRegex(ValueError, "GPIO"):
+            parse_configuration_report(high_gpio, self.identity)
+        led = bytearray(configuration_report())
+        led[16] = 2
+        with self.assertRaisesRegex(ValueError, "LED"):
+            parse_configuration_report(led, self.identity)
+        sdio_layout = bytearray(configuration_report())
+        sdio_layout[12:14] = bytes([14, 15])
+        with self.assertRaisesRegex(ValueError, "SPI"):
+            parse_configuration_report(sdio_layout, self.identity)
 
-        master, slave = pty.openpty()
-        failures: list[Exception] = []
+    def test_telemetry_decodes_profile_values_and_rejects_unavailable_features(self):
+        result = parse_status_report(telemetry_report(), self.identity)
+        self.assertEqual(result["sequence"], 9)
+        self.assertEqual(result["temperature_centidegrees"], 2345)
+        self.assertIsNone(result["cpu_usage_core1_basis_points"])
+        self.assertFalse(result["cdc_open"])
+        self.assertFalse(result["led_available"])
+        self.assertTrue(result["usb_mounted"])
+        with self.assertRaisesRegex(ValueError, "temperature"):
+            parse_status_report(telemetry_report(flags=0x01), self.identity)
+        for report in (telemetry_report(flags=0x07), telemetry_report(flags=0x0D),
+                       telemetry_report(led_flags=1), telemetry_report(core1=5678)):
+            with self.subTest(report=report), self.assertRaisesRegex(ValueError, "ESPForge profile"):
+                parse_status_report(report, self.identity)
+        bad_load = bytes([3]) + struct.pack("<BBhQHHIBB", 1, 0, 0, 1, 10001, 0xFFFF, 240_000_000, 0, 0)
+        with self.assertRaisesRegex(ValueError, "CPU usage"):
+            parse_status_report(bad_load)
+        with self.assertRaisesRegex(ValueError, "exactly"):
+            parse_status_report(telemetry_report() + b"\0")
 
-        def peer() -> None:
-            try:
-                if not select.select([master], [], [], 5)[0]:
-                    raise TimeoutError("No host request")
-                request = bytearray()
-                while not request.endswith(b"\n"):
-                    request.extend(os.read(master, 1))
-                value = json.loads(request)
-                reply = json.dumps({"id": value["id"], "ok": True, "status": demo_status()}).encode()
-                os.write(master, b"ESP-ROM boot\n" + reply[:20])
-                os.write(master, reply[20:] + b"\n")
-            except (OSError, ValueError, TimeoutError) as error:
-                failures.append(error)
+    def test_storage_snapshot_decodes_spi_samples_without_cid(self):
+        data = parse_memory_report(storage_report(), self.identity)
+        self.assertTrue(data["sample_valid"])
+        self.assertLessEqual(set(status_contract()["nested"]["memory"]), set(data))
+        self.assertTrue(data["initialized"])
+        self.assertEqual(data["mode"], "spi")
+        self.assertEqual(data["speed_mode"], "standard")
+        self.assertEqual(data["bus_clock_hz"], 10_000_000)
+        self.assertEqual(data["capacity_bytes"], 4096 * 512)
+        self.assertEqual(data["filesystem_format"], "fat32")
+        self.assertIsNone(data["manufacturer"])
+        self.assertEqual(data["msc"], {"enabled": False, "transition_pending": False, "request_rejected": False})
+        failed_mount = parse_memory_report(storage_report(flags=0x41), self.identity)
+        self.assertTrue(failed_mount["sample_valid"])
+        self.assertFalse(failed_mount["initialized"])
+        unconfigured = parse_memory_report(storage_report(flags=0), self.identity)
+        self.assertFalse(unconfigured["sample_valid"])
+        self.assertIsNone(unconfigured["present"])
 
-        client = BoardClient(os.ttyname(slave))
-        thread = threading.Thread(target=peer)
-        thread.start()
-        try:
-            self.assertEqual(client.request({"op": "status"})["status"], demo_status())
-        finally:
-            client.close()
-            thread.join(6)
-            os.close(master)
-            os.close(slave)
-        self.assertFalse(thread.is_alive())
-        self.assertEqual(failures, [])
+    def test_storage_rejects_inconsistent_state_and_profile_violations(self):
+        for flags in (0xFF, 0x03, 0x5F):
+            with self.subTest(flags=flags), self.assertRaises(ValueError):
+                parse_memory_report(storage_report(flags=flags), self.identity)
+        bad_mode = bytearray(storage_report())
+        bad_mode[5] = 1
+        with self.assertRaisesRegex(ValueError, "SPI"):
+            parse_memory_report(bad_mode, self.identity)
+        for report in (storage_report(flags=1, msc=(0, 1, 0)), storage_report(flags=1, msc=(1, 0, 0)),
+                       storage_report(flags=0x7F, cid=bytes.fromhex("1b53444341524431211234567801aaff")),
+                       storage_report(speed=2)):
+            with self.subTest(report=report), self.assertRaisesRegex(ValueError, "ESPForge profile"):
+                parse_memory_report(report, self.identity)
+
+    def test_control_commands_use_report_20_and_validate_profile_fields(self):
+        settings = {"system_clock_mhz": 160, "sdcard_profile": 0, "radios": 3, "tcp_cli_enabled": False}
+        self.assertEqual(build_settings_command_report(settings, 2),
+                         bytes([20, 1, 2, 5, 0, 160, 0, 0, 3]) + bytes(60))
+        self.assertEqual(build_settings_command_report(settings, 2, commit=True)[4], 2)
+        self.assertEqual(build_control_command_report(4, ControlOpcode.REBOOT, flags=1),
+                         bytes([20, 1, 4, 2, 1]) + bytes(64))
+        for invalid in ({**settings, "system_clock_mhz": 200}, {**settings, "sdcard_profile": 1},
+                        {**settings, "tcp_cli_enabled": True}, {**settings, "radios": 4},
+                        {"system_clock_mhz": 100, "sdcard_profile": 0, "radios": 0}):
+            with self.subTest(settings=invalid), self.assertRaises(ValueError):
+                build_settings_command_report(invalid)
+        with self.assertRaises(TypeError):
+            build_settings_command_report(settings, force=True)
+        for opcode in (ControlOpcode.LED, ControlOpcode.MSC, ControlOpcode.SELF_TEST, ControlOpcode.TCP_PROOF):
+            with self.subTest(opcode=opcode), self.assertRaisesRegex(ValueError, "not available"):
+                build_control_command_report(1, opcode)
+        for flags, arguments in ((1, struct.pack("<HBB", 240, 0, 0)), (0, struct.pack("<HBB", 240, 0, 4)),
+                                 (0, struct.pack("<HBB", 240, 1, 0)), (0, struct.pack("<HBB", 250, 0, 0))):
+            with self.subTest(flags=flags, arguments=arguments), self.assertRaises(ValueError):
+                build_control_command_report(1, ControlOpcode.SAVE_SETTINGS, flags=flags, arguments=arguments)
+        with self.assertRaises(ValueError):
+            build_control_command_report(1, 2)
+        with self.assertRaises(ValueError):
+            build_control_command_report(0, 2, flags=1)
+
+    def test_wireless_command_rejects_non_integer_and_unavailable_operations(self):
+        for operation in (True, 3.0, "3", 0, 5, 13):
+            with self.subTest(operation=operation), self.assertRaises(ValueError):
+                build_wireless_command_report(1, operation)
+        for operation in (9, 10, 11):
+            with self.subTest(operation=operation):
+                report = build_wireless_command_report(1, operation)
+                self.assertEqual(report[3], operation)
+
+    def test_control_result_validates_transaction_status_and_data(self):
+        def result_report(switches, clock=240):
+            return control_result(5, 2, data=struct.pack("<HBBB", clock, 0, switches, 0))
+        result = parse_control_result_report(result_report(0))
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["saved_settings"],
+                         {"system_clock_mhz": 240, "sdcard_profile": 0, "radios": 0, "tcp_cli_enabled": False})
+        self.assertEqual(parse_control_result_report(result_report(2, 80))["saved_settings"],
+                         {"system_clock_mhz": 80, "sdcard_profile": 0, "radios": 2, "tcp_cli_enabled": False})
+        self.assertIsNone(result["proof"])
+        for malformed in (
+            bytes([20, 1, 0, 5, 2, 0]) + bytes(63),
+            control_result(5, 3, 5),
+            result_report(4),
+            result_report(8),
+            result_report(0, clock=200),
+            control_result(5, 2, data=struct.pack("<HBBB", 240, 1, 0, 0)),
+            control_result(13, 2, data=bytes(range(16))),
+            control_result(1, 2),
+            control_result(3, 2),
+            control_result(4, 1),
+        ):
+            with self.subTest(report=malformed), self.assertRaises(ValueError):
+                parse_control_result_report(malformed, self.identity)
+
+    def test_profile_unsupported_results_do_not_contradict_capabilities(self):
+        for opcode in (1, 3, 4, 5, 13):
+            with self.subTest(opcode=opcode):
+                result = parse_control_result_report(control_result(opcode, 4, 4), self.identity)
+                self.assertEqual((result["status"], result["error"]), ("unsupported", "capability unavailable"))
+        for opcode in (2, 6, 9, 12):
+            with self.subTest(opcode=opcode), self.assertRaisesRegex(ValueError, "advertised capabilities"):
+                parse_control_result_report(control_result(opcode, 4, 4), self.identity)
+
+
+if __name__ == "__main__":
+    unittest.main()

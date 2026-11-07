@@ -68,25 +68,16 @@ jobs:
           sha256sum --check direct.sha256
           unzip "espforge-direct-v$version.zip" -d ../site
           cd ..
-          test -f site/host/direct/index.html
-          test -f site/host/web/app.js
+          test -f site/web/index.html
+          test -f site/web/favicon.svg
+          test -f site/web/js/app.mjs
+          grep -Fq "App v$version<" site/web/index.html
           if ! grep -Fxq "ESPForge $version" site/RELEASE.txt ||
              ! grep -Fxq "Source: $tag_sha" site/RELEASE.txt; then
             printf 'Error: Direct archive version/source metadata does not match the published tag.\n' >&2
             exit 1
           fi
-          cp site/LICENSE site/host/LICENSE
-          cat > site/host/index.html <<'EOF'
-          <!doctype html>
-          <html lang="en">
-          <head>
-            <meta charset="utf-8">
-            <meta http-equiv="refresh" content="0; url=direct/">
-            <title>ESPForge Direct</title>
-          </head>
-          <body><a href="direct/">Open ESPForge Direct</a></body>
-          </html>
-          EOF
+          cp site/LICENSE site/web/LICENSE
 
       - name: Configure Pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
@@ -94,7 +85,7 @@ jobs:
       - name: Attach released site
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
-          path: site/host
+          path: site/web
 
   deploy:
     needs: package

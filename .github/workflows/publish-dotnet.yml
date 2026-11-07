@@ -88,8 +88,10 @@ jobs:
           version, rid = os.environ["VERSION"], os.environ["RID"]
           source_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
           root = Path("build/host-release").resolve()
-          assets = {path.name: path.read_bytes() for path in Path("host/web").iterdir()
-                    if path.suffix in (".html", ".js", ".css")}
+          web = Path("host/web/src")
+          assets = {path.relative_to(web).as_posix(): path.read_bytes() for path in web.rglob("*")
+                    if path.is_file() and "__pycache__" not in path.parts}
+          assert assets, "Shared dashboard assets are missing"
           libraries = json.loads((root / "ESPForge.deps.json").read_text())["libraries"]
           assert f"ESPForge/{version}" in libraries, "Package version does not match release"
           shutil.copyfile("LICENSE", root / "LICENSE")
@@ -103,31 +105,31 @@ jobs:
               shutil.copyfile(path, destination)
           (root / "RELEASE.txt").write_text(
               f"ESPForge {version} ({rid})\nSource: {source_sha}\n"
-              "Run ESPForge --demo for a SIMULATED preview, or ESPForge --device PORT.\n"
+              "Run ESPForge, optionally with --serial SERIAL or --device-path HID_PATH.\n"
               "On Windows use ESPForge.exe. Open http://127.0.0.1:8002/.\n"
               "No .NET installation is required. Only loopback hosting is supported.\n"
-              "Software checks do not qualify physical UART, Wi-Fi, BLE or SD behavior.\n",
+              "Software checks do not qualify physical USB HID, Wi-Fi, BLE or SD behavior.\n",
               encoding="utf-8")
           Path("build/packages").mkdir(parents=True, exist_ok=True)
           archive = shutil.make_archive(f"build/packages/espforge-host-v{version}-{rid}",
                                         "zip" if rid.startswith("win-") else "gztar", root_dir=root)
           with tempfile.TemporaryDirectory() as directory:
               shutil.unpack_archive(archive, directory)
-              deployed = {path.name: path.read_bytes()
-                          for path in (Path(directory) / "wwwroot").iterdir()
-                          if path.suffix in (".html", ".js", ".css")}
+              wwwroot = Path(directory) / "wwwroot"
+              deployed = {path.relative_to(wwwroot).as_posix(): path.read_bytes()
+                          for path in wwwroot.rglob("*") if path.is_file() and path.suffix not in (".gz", ".br")}
               assert deployed == assets, "Published shared dashboard assets differ from source"
               executable = Path(directory) / ("ESPForge.exe" if rid.startswith("win-") else "ESPForge")
               with socket.socket() as listener:
                   listener.bind(("127.0.0.1", 0))
                   port = listener.getsockname()[1]
-              process = subprocess.Popen([str(executable), "--demo", "--port", str(port)], cwd=directory)
+              process = subprocess.Popen([str(executable), "--port", str(port)], cwd=directory)
               try:
                   for attempt in range(100):
                       assert process.poll() is None, "Standalone host exited before readiness"
                       try:
                           with urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=1) as response:
-                              assert b"ESPForge Host" in response.read()
+                              assert b"ESPForge Dashboard | .NET" in response.read()
                           break
                       except urllib.error.URLError:
                           time.sleep(0.1)
@@ -137,14 +139,12 @@ jobs:
                       with urllib.request.urlopen(f"http://127.0.0.1:{port}/{name}", timeout=2) as response:
                           assert response.read() == content, name
                           assert response.headers["X-Content-Type-Options"] == "nosniff", name
-                  with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/host", timeout=2) as response:
-                      assert json.load(response) == {"name": ".NET", "demo": True}
-                  request = urllib.request.Request(
-                      f"http://127.0.0.1:{port}/api/request", data=b'{"op":"status"}',
-                      headers={"Content-Type": "application/json"})
-                  with urllib.request.urlopen(request, timeout=2) as response:
+                          expected_type = {".html": "text/html", ".css": "text/css", ".mjs": "text/javascript",
+                                           ".svg": "image/svg+xml"}[Path(name).suffix]
+                          assert response.headers["Content-Type"].startswith(expected_type), name
+                  with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/boards", timeout=5) as response:
                       reply = json.load(response)
-                      assert reply["ok"] is True and reply["status"]["product"] == "ESPForge"
+                      assert isinstance(reply["boards"], list) and "default_board_id" in reply, reply
               finally:
                   if process.poll() is None:
                       process.terminate()

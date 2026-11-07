@@ -1,106 +1,45 @@
 #include "espforge.h"
-#include "credentials.h"
+#include "boot_config.h"
+#include "control.h"
 
-#include <errno.h>
-#include <string.h>
-#include <zephyr/data/json.h>
-#include <zephyr/drivers/uart.h>
 #include <zephyr/kernel.h>
-#include <zephyr/sys/util.h>
 #include <zephyr/sys/printk.h>
 
-struct request {
-	int id;
-	char *op;
-	char *ssid_hex;
-	char *psk_hex;
-};
-
-static const struct json_obj_descr fields[] = {
-	JSON_OBJ_DESCR_PRIM(struct request, id, JSON_TOK_NUMBER),
-	JSON_OBJ_DESCR_PRIM(struct request, op, JSON_TOK_STRING),
-	JSON_OBJ_DESCR_PRIM(struct request, ssid_hex, JSON_TOK_STRING),
-	JSON_OBJ_DESCR_PRIM(struct request, psk_hex, JSON_TOK_STRING),
-};
-static const struct device *serial = DEVICE_DT_GET(DT_NODELABEL(uart0));
-
-static void send_line(const char *text)
-{
-	while (*text) {
-		uart_poll_out(serial, *text++);
-	}
-	uart_poll_out(serial, '\n');
-}
-
-static void respond(char *line, size_t length)
-{
-	struct request request = {0};
-	char output[ESPFORGE_STATUS_SIZE + 96];
-	int64_t parsed = json_obj_parse(line, length, fields, ARRAY_SIZE(fields), &request);
-	int err = 0;
-	int id = parsed >= 0 && (parsed & BIT(0)) ? request.id : 0;
-
-	if (parsed < 0 || (parsed & 3) != 3 || id <= 0) {
-		err = -EINVAL;
-	} else if (strcmp(request.op, "status") == 0) {
-		char status[ESPFORGE_STATUS_SIZE];
-		err = status_json(status, sizeof(status));
-		if (err >= 0) {
-			snprintk(output, sizeof(output),
-				"{\"id\":%d,\"ok\":true,\"status\":%s}", id, status);
-			send_line(output);
-			return;
-		}
-	} else if (strcmp(request.op, "wifi.connect") == 0) {
-		char ssid[33], psk[64];
-
-		err = -EINVAL;
-		if ((parsed & 12) == 12 &&
-		    credential_decode(request.ssid_hex, ssid, sizeof(ssid)) == 0 &&
-		    credential_decode(request.psk_hex, psk, sizeof(psk)) == 0) {
-			err = wireless_connect(ssid, psk);
-		}
-		memset(psk, 0, sizeof(psk));
-	} else {
-		err = -ENOTSUP;
-	}
-	snprintk(output, sizeof(output), "{\"id\":%d,\"ok\":%s,\"error\":%d}",
-		 id, err == 0 ? "true" : "false", err);
-	send_line(output);
-}
+#define POLL_PERIOD_MS 20
 
 int main(void)
 {
-	static char line[ESPFORGE_REQUEST_SIZE];
-	size_t used = 0;
-	bool overflow = false;
+	uint8_t radios;
+	int err;
 
-	if (!device_is_ready(serial)) {
-		return -ENODEV;
+	ef_board_init();
+	ef_lock();
+	ef_boot_config_load();
+	ef_control_init();
+	radios = ef_boot_config_boot_radios();
+	ef_unlock();
+	printk("ESPForge %s (%s)\n", ESPFORGE_VERSION, ef_board_serial());
+
+	err = system_clock_apply(ef_sysclk_profile_mhz(ef_boot_config_boot_sysclk()));
+	if (err) {
+		printk("CPU clock change failed: %d\n", err);
 	}
-	wireless_init();
-	storage_init();
-	for (;;) {
-		unsigned char byte;
-		if (uart_poll_in(serial, &byte) != 0) {
-			k_sleep(K_MSEC(1));
-			continue;
-		}
-		if (byte == '\n') {
-			if (overflow) {
-				send_line("{\"id\":0,\"ok\":false,\"error\":-90}");
-			} else if (used) {
-				line[used] = '\0';
-				respond(line, used);
-			}
-			used = 0;
-			overflow = false;
-		} else if (byte != '\r') {
-			if (used < sizeof(line) - 1 && !overflow) {
-				line[used++] = byte;
-			} else {
-				overflow = true;
-			}
-		}
+	ef_telemetry_init();
+	ef_storage_init();
+	ef_wifi_init((radios & EF_WIRELESS_WIFI) != 0);
+	ef_ble_init((radios & EF_WIRELESS_BLE) != 0);
+	if (ef_usb_init() != 0) {
+		printk("USB HID unavailable\n");
 	}
+
+	while (true) {
+		ef_lock();
+		ef_control_tick(k_uptime_get());
+		ef_unlock();
+		ef_wifi_poll();
+		ef_telemetry_poll();
+		ef_usb_poll();
+		k_sleep(K_MSEC(POLL_PERIOD_MS));
+	}
+	return 0;
 }

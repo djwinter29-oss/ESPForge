@@ -1,44 +1,57 @@
 # Architecture
 
 ```text
-Direct browser ---- Web Serial ---- UART0 JSON ---- Zephyr application
-       |                                      |-- Wi-Fi station + DHCP
-       +----------- Web Bluetooth ------------|-- BLE read-only status
-Python browser ---- loopback Python host ------|-- SPI2 SD / FatFs
-.NET browser ------ loopback ASP.NET host -----|
+Direct browser ---- WebHID ----------+
+       |                             +-- USB HID (native USB) --+
+Python browser ---- loopback Python host (hidapi) --+           |
+.NET browser ------ loopback ASP.NET host (HidSharp) +          |-- Zephyr application
+                                                                |   |-- control dispatcher + boot settings
+Direct browser ---- Web Bluetooth ---- BLE GATT ----------------+   |-- Wi-Fi station + DHCP
+                                                                    |-- SPI2 SD / FatFs
+UART connector ---- Zephyr console/log and ROM flashing only
 ```
+
+USB HID and BLE carry the same PicoForge reports and Control opcodes, as adapted by the
+[ESPForge profile](espforge-profile.md).
 
 ## Repository responsibilities
 
 | Layer | Location | Responsibility |
 | --- | --- | --- |
-| Firmware application | `firmware/src/main.c` | Bounded UART framing, command dispatch and error replies |
-| Status contract | `firmware/src/status.c`, `firmware/src/status_format.c` | Zephyr uptime adapter and portable, bounded diagnostics serialization |
-| Credential rules | `firmware/src/credentials.c` | Portable hex decoding and Wi-Fi credential byte limits |
-| Wireless service | `firmware/src/wireless.c` | Radio initialization, RAM-only credentials, asynchronous Wi-Fi events, BLE GATT |
-| Storage service | `firmware/src/storage.c` | Boot-time mount and visible mount result |
-| Board configuration | `firmware/boards/esp32s3_devkitc.overlay` | SD bus and chip-select assignments |
-| Shared dashboard | `host/web/` | PicoForge-inspired light layout, validated live metrics, provisioning gates and session-safe transport clients |
-| Direct entry | `host/direct/` | Static, no serial backend required |
-| Python/.NET | `host/python/`, `host/dotnet/ESPForge/` | Single-owner serial bridge on loopback |
+| Application loop | `firmware/src/main.c` | Boot order and the 20 ms poll of control, Wi-Fi, telemetry and USB |
+| Board glue | `firmware/src/board.c`, `espforge.h` | Application lock, UID/serial, reset cause, Identity and Configuration reports, delayed reboot |
+| Control dispatcher | `firmware/src/control.c`, `ef_platform.h` | Portable Report 20 opcode handling shared by USB and BLE; talks to Zephyr only through platform hooks |
+| Report encoding | `firmware/src/hid_reports.c` | Portable byte layouts of Reports 1, 2, 3, 10, 12 and 20 |
+| Wireless staging and auth | `firmware/src/wireless_stage.c`, `wireless_auth.c`, `sha256.c` | Staged credentials with expiry; BLE session unlock and per-command HMAC proofs |
+| USB HID | `firmware/src/usb_hid.c` | `device_next` HID device `CAFE:4021`: Feature reports 1, 2, 12, 20 and periodic Input reports 3 and 10 |
+| BLE | `firmware/src/ble.c` | GATT service, read snapshots, Control writes, advertising schedule |
+| Wi-Fi | `firmware/src/wifi.c` | Saved/test/scan state machine over Zephyr `net_mgmt` |
+| Telemetry and storage | `firmware/src/telemetry.c`, `storage.c` | CPU load, temperature and clock; boot-time SD mount and card facts |
+| Boot settings | `firmware/src/boot_config.c`, `boot_flash.c`, `system_clock.c` | One CRC-checked next-boot record in `storage_partition`; CPU clock, radio switches and saved credentials ([settings](settings.md)) |
+| Board configuration | `firmware/boards/esp32s3_devkitc.overlay` | USB HID device, SD bus and chip select, temperature sensor |
+| Direct dashboard | `host/direct/` | Independent PicoForge-style browser app (own HTML/CSS/favicon/ES modules) with WebHID, Web Bluetooth and a loopback static server |
+| Shared dashboard | `host/web/` | PicoForge-style `src/` (HTML, favicon, CSS, ES modules) served by Python and .NET |
+| Python/.NET | `host/python/`, `host/dotnet/ESPForge/` | Loopback HTTP hosts that own the USB HID device; Python is the installable `espforge` package (`src/` layout, wheel bundles `host/web/src`) |
 | Dependency selection | `west.yml` | Pinned Zephyr and imported dependency revisions |
-| Native firmware tests | `project.yml`, `Gemfile.lock`, `firmware/tests/` | Pinned Ceedling/Unity/CMock tests of portable production logic |
+| Native firmware tests | `project.yml`, `Gemfile.lock`, `firmware/tests/` | Pinned Ceedling/Unity/CMock tests of the portable modules |
 
 ## Lifecycle and failure handling
 
-Boot initializes wireless, attempts one SD mount, then serves UART requests on PROCPU.
-Mount failure remains visible and does not stop UART/radios. No card self-test or file write runs.
-Wi-Fi request submission and result events are distinct; a mutex protects radio state.
-BLE status is snapshotted on offset-zero reads so a long read sees one JSON payload.
-Each host owns one serial handle and serializes requests. Direct permits one outstanding request.
-Malformed replies, invalid status, disconnects and timeouts clear displayed device values;
-polling stops on a failure until the user disconnects/reconnects. There is no implicit demo fallback.
-Timeouts do not automatically retry commands.
+Boot loads the [settings record](settings.md), applies the CPU clock profile, mounts the SD card once, starts Wi-Fi
+(joining the saved network when enabled), starts BLE when enabled with a saved Control key, and then enables USB.
+A mount failure is reported in Report 10 and does not stop USB or the radios. No card self-test or file write runs.
+
+USB callbacks run in the USB stack thread and BLE callbacks in the Bluetooth thread. Both call the same control
+dispatcher, and every access to settings, staging and wireless state holds one application mutex. Wi-Fi driver
+events are queued and applied by the main loop, which also starts connects, disconnects and scans outside the lock.
+Reboots are scheduled about one second after the reply so the host can read the result first.
+
+Hosts reject reports outside the profile and never retry a command whose outcome is uncertain; they block further
+writes until the user confirms a re-sync. There is no implicit demo fallback.
 
 ## Downstream development
 
-Fork this source foundation. Add product work in separate services rather than blocking the UART loop.
-Keep GPIO choices in board overlays, keep protocol changes versioned, and update the authoritative
-references and all three host paths together. Do not assume PicoForge report/protocol compatibility.
-This starter does not include persistent settings, LED/reboot controls, file APIs, recording engines,
-USB disk ownership, benchmarks, or dual-core scheduling. It is not feature-for-feature PicoForge parity.
+Fork this source foundation. Add product work in separate services rather than blocking the main loop or holding the
+application lock. Keep GPIO choices in board overlays, keep protocol changes versioned, and update the authoritative
+references and all three host paths together. ESPForge has no LED, USB mass storage, SD benchmark or TCP CLI, and runs
+on one core. It is not feature-for-feature PicoForge parity.

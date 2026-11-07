@@ -1,39 +1,44 @@
 // SPDX-License-Identifier: BSD-3-Clause
 // Copyright (c) 2026 Ji Dong
 
-// @ts-check
-/** @file ESPForge management protocol v1 constants; see docs/reference/protocol.md. */
-
-export const PRODUCT = "ESPForge";
-export const PROTOCOL_VERSION = 1;
-
-export const BLE_SERVICE_UUID = "7a9c0001-6d8e-4c21-a120-455350464f52";
-export const BLE_STATUS_UUID = "7a9c0002-6d8e-4c21-a120-455350464f52";
-/** Firmware bounds the BLE status snapshot below 512 bytes. */
-export const BLE_STATUS_MAX_BYTES = 511;
-
-export const SERIAL_OPTIONS = Object.freeze({
-  baudRate: 115200, dataBits: 8, stopBits: 1, parity: /** @type {const} */ ("none"), bufferSize: 4096,
+/**
+ * Firmware-defined values; see docs/reference/usb-hid.md, docs/reference/bluetooth.md and the ESPForge overrides in
+ * docs/reference/espforge-profile.md.
+ */
+export const DEVICE_FILTER = Object.freeze({ vendorId: 0xcafe, usagePage: 0xff00, usage: 1 });
+/** USB product IDs of the development VID:PID pair. */
+export const PRODUCT_IDS = Object.freeze([0x4021]);
+/** Report 1 `product_id` of ESPForge. */
+export const PRODUCT_ID = 0x0003;
+export const CAP = Object.freeze({
+  LED: 1, REBOOT: 2, SETTINGS: 4, SPI: 8, SDIO: 16, SELF_TEST: 32, FORCED_SAVE: 64, WIRELESS: 128,
 });
-/** Includes the terminating LF. */
-export const MAX_REQUEST_BYTES = 512;
-export const MAX_REPLY_BYTES = 4096;
-export const REQUEST_TIMEOUT_MS = 5000;
-export const MAX_REQUEST_ID = 2147483647;
-export const POLL_INTERVAL_MS = 1000;
-
-export const SSID_MAX_BYTES = 32;
-export const PSK_MIN_BYTES = 8;
-export const PSK_MAX_BYTES = 63;
-
-/** Result codes documented by the protocol; other values are shown numerically. */
-export const RESULT_CODES = Object.freeze({
-  wifi: Object.freeze({ 0: "OK", [-11]: "initialization pending", [-115]: "connect pending" }),
-  ble: Object.freeze({ 0: "OK", [-11]: "initialization pending" }),
-  sd: Object.freeze({ 0: "OK" }),
+/** Capability bits an ESPForge board may report; LED, SDIO, benchmark and forced save are never present. */
+export const ESPFORGE_CAPABILITIES = CAP.REBOOT | CAP.SETTINGS | CAP.SPI | CAP.WIRELESS;
+export const OP = Object.freeze({
+  REBOOT: 2, SAVE_SETTINGS: 5, STAGE_SSID: 6, STAGE_PASSWORD: 7, STAGE_KEY: 8, TEST_WIFI: 9, CANCEL_TEST: 10,
+  SCAN: 11, SCAN_ENTRY: 12,
 });
-
-/** Device error replies documented by the protocol. */
-export const DEVICE_ERRORS = Object.freeze({
-  [-22]: "invalid request", [-95]: "unsupported operation", [-90]: "frame too large",
+/** LED (1), MSC (3), benchmark (4) and TCP CLI proof (13): ESPForge answers only Unsupported/error 4. */
+export const UNSUPPORTED_OPCODES = Object.freeze([1, 3, 4, 13]);
+export const CONFIG_FLAGS = Object.freeze({
+  CARD_DETECT: 0x01, LED: 0x02, MONITOR_UART: 0x04, WIFI: 0x08, BLE: 0x10, TCP_CLI: 0x20,
+  VALID_MASK: 0x1c, RADIO_MASK: 0x18,
 });
+export const CLOCKS_MHZ = Object.freeze([0, 80, 160, 240]);
+/** Report IDs; see the HID report reference. ESPForge publishes no Report 11. */
+export const REPORT = Object.freeze({
+  IDENTITY: 1, CONFIG: 2, TELEMETRY: 3, STORAGE: 10, WIRELESS: 12, CONTROL: 20,
+});
+/** Published status reports and how long each sample stays authoritative without a newer one. */
+export const REPORT_LIFETIME_MS = Object.freeze({
+  [REPORT.TELEMETRY]: 750, [REPORT.STORAGE]: 1500,
+});
+/** Control result status byte. Values above PENDING are final. */
+export const RESULT = Object.freeze({ IDLE: 0, PENDING: 1, COMPLETED: 2 });
+/** Feature 12 `wifi_state`. */
+export const WIFI_STATE = Object.freeze({ TESTING: 4, TEST_JOINED: 5, TEST_FAILED: 6 });
+/** Feature 12 `scan_state`. */
+export const SCAN_STATE = Object.freeze({ IDLE: 0, SCANNING: 1, COMPLETE: 2, FAILED: 3 });
+/** Feature 12 `staged_state` bit set when staged wireless values expired. */
+export const STAGED_EXPIRED = 8;

@@ -34,12 +34,7 @@ Copyright (c) 2026 Ji Dong
       <div>
         <h1>Dashboard</h1>
       </div>
-      <span class="badge">ESP32-S3 · Zephyr · Wi-Fi + BLE on by default</span>
     </section>
-
-    <p class="notice" id="preview-banner" role="status" hidden>
-      SIMULATED PREVIEW — no hardware connected. Values are synthetic; board commands are disabled.
-    </p>
 
     <section aria-labelledby="identity-title">
       <div class="section-heading">
@@ -49,16 +44,18 @@ Copyright (c) 2026 Ji Dong
             aria-haspopup="dialog">USB</button>
           <button class="button button-secondary" id="bluetooth-open" type="button"
             aria-haspopup="dialog">Bluetooth</button>
-          <button class="button button-cancel" id="preview-start" type="button">Preview</button>
-          <button class="button button-danger" id="disconnect" type="button" disabled>Disconnect</button>
         </div>
       </div>
       <div class="identity" aria-label="Hardware identity">
-        <div class="metric"><span>Product</span><strong id="product-name">--</strong></div>
-        <div class="metric"><span>Board model</span><strong id="board-model">--</strong></div>
-        <div class="metric"><span>Firmware version</span><strong id="firmware-version">--</strong></div>
-        <div class="metric"><span>Protocol version</span><strong id="protocol-version">--</strong></div>
-        <div class="metric"><span>Link</span><strong id="link-name">--</strong></div>
+      <div class="metric"><span>Product</span><strong id="product-name">--</strong></div>
+      <div class="metric"><span>Board model</span><strong id="board-model">--</strong></div>
+      <div class="metric"><span>Serial / UID</span><strong id="serial">--</strong></div>
+      <div class="metric"><span>System clock</span><strong id="identity-clock">--</strong></div>
+      <div class="metric">
+        <span>Firmware RAM reserved / total</span>
+        <strong id="ram-usage" title="Static data and reserved core stacks / physical SRAM; not live usage">--</strong>
+      </div>
+      <div class="metric"><span>Firmware version</span><strong id="firmware-version">--</strong></div>
       </div>
     </section>
 
@@ -68,42 +65,44 @@ Copyright (c) 2026 Ji Dong
           <h2 id="settings-title">Board configuration</h2>
         </div>
         <div class="actions">
-          <button class="button" id="wifi-open" type="button" aria-haspopup="dialog" disabled>Configure Wi-Fi</button>
+          <button class="button" id="settings-save" type="button" disabled>Save&amp;Reboot</button>
+          <button class="button button-secondary" id="settings-reboot" type="button" disabled>Reboot Board</button>
         </div>
       </div>
       <div class="settings-controls">
-        <div class="metric"><span>Operating system</span><strong>Zephyr 4.2.0</strong></div>
-        <div class="metric"><span>Wi-Fi (live)</span><strong id="wifi-enabled">--</strong></div>
-        <div class="metric"><span>Bluetooth (live)</span><strong id="ble-enabled">--</strong></div>
+        <label for="settings-clock">System clock
+          <select id="settings-clock" disabled>
+            <option value="0">Default</option>
+          </select>
+        </label>
+        <label for="direct-settings-wifi" hidden>Wi-Fi
+          <select id="direct-settings-wifi" disabled>
+            <option value="1">Enabled</option>
+            <option value="0">Disabled</option>
+            <option value="configure">Configure…</option>
+          </select>
+        </label>
+        <label for="direct-settings-ble" hidden>Bluetooth
+          <select id="direct-settings-ble" disabled>
+            <option value="1">Enabled</option>
+            <option value="0">Disabled</option>
+            <option value="configure">Configure…</option>
+          </select>
+        </label>
       </div>
-      <p class="sample-time" id="settings-note">Both radios start enabled at boot. Settings are not persistent;
-        radio switches, Save&amp;Reboot and reboot commands are not implemented.</p>
+      <p id="direct-wireless-summary" role="status" aria-live="polite"></p>
       <details class="pin-map-disclosure">
         <summary>Pin configuration</summary>
         <div class="pin-tables">
           <table>
-            <caption id="board-uart-title">Management UART (USB-to-UART bridge)</caption>
-            <thead><tr><th>Signal</th><th>GPIO / setting</th></tr></thead>
-            <tbody id="board-uart">
-              <tr><td>TX</td><td>GPIO43</td></tr>
-              <tr><td>RX</td><td>GPIO44</td></tr>
-              <tr><td>Serial format</td><td>115200 / 8N1</td></tr>
-            </tbody>
+            <caption id="board-uart-title">Monitor UART</caption>
+            <tbody id="board-uart"></tbody>
           </table>
           <table>
-            <caption id="board-storage-title">Storage (SPI2)</caption>
-            <thead><tr><th>Signal</th><th>GPIO / setting</th></tr></thead>
-            <tbody id="board-storage-pins">
-              <tr><td>CS / DAT3</td><td>GPIO10</td></tr>
-              <tr><td>MOSI / CMD</td><td>GPIO11</td></tr>
-              <tr><td>SCLK / CLK</td><td>GPIO12</td></tr>
-              <tr><td>MISO / DAT0</td><td>GPIO13</td></tr>
-              <tr><td>Supply</td><td>3.3 V + common GND</td></tr>
-            </tbody>
+            <caption id="board-storage-title">Storage</caption>
+            <tbody id="board-storage-pins"></tbody>
           </table>
         </div>
-        <p class="sample-time pin-note">Reference wiring for the N8 DevKitC build, not detected wiring. Use the
-          USB-to-UART connector, not native USB. Hardware validation is pending.</p>
       </details>
     </section>
 
@@ -112,15 +111,18 @@ Copyright (c) 2026 Ji Dong
         <div>
           <h2 id="runtime-title">Live diagnostics</h2>
         </div>
-        <button class="button button-secondary" id="refresh" type="button" disabled>Refresh status</button>
       </div>
       <dl class="runtime-grid runtime-summary">
         <div><dt>Uptime</dt><dd id="uptime">--</dd></div>
-        <div title="Association is not proof of a DHCP lease or internet access">
-          <dt>Wi-Fi association</dt><dd id="wifi-state">--</dd>
+        <div><dt>Reset cause</dt><dd id="board-reset-cause">--</dd></div>
+        <div title="PRO CPU (core 0) load; the APP CPU (core 1) reports no load">
+          <dt>CPU load (Core 0)</dt>
+          <dd id="cpu-usage-core0">--</dd>
         </div>
-        <div><dt>Wi-Fi result</dt><dd id="wifi-result">--</dd></div>
-        <div><dt>Bluetooth result</dt><dd id="ble-result">--</dd></div>
+        <div><dt>Board temperature</dt><dd id="temperature">--</dd></div>
+        <div><dt>Storage bus speed</dt><dd id="memory-speed">--</dd></div>
+        <div id="direct-wifi-diagnostics" hidden><dt>Wi-Fi</dt><dd id="direct-wifi-state">--</dd></div>
+        <div id="direct-ble-diagnostics" hidden><dt>Bluetooth</dt><dd id="direct-ble-state">--</dd></div>
       </dl>
       <p class="sample-time" id="telemetry-freshness" role="status">telemetry: unavailable</p>
     </section>
@@ -130,61 +132,108 @@ Copyright (c) 2026 Ji Dong
         <div>
           <h2 id="memory-title">Storage</h2>
         </div>
-        <span class="badge badge-muted">Hardware testing deferred</span>
       </div>
+      <p class="sample-time" id="memory-note">Waiting for card status</p>
       <dl class="runtime-grid">
-        <div><dt>FAT mount state</dt><dd id="memory-state">--</dd></div>
-        <div><dt>Mount result</dt><dd id="memory-result">--</dd></div>
-        <div><dt>Mount point</dt><dd>/SD:</dd></div>
-        <div><dt>Requested SPI ceiling</dt><dd>10 MHz</dd></div>
+        <div><dt>Memory state</dt><dd id="memory-state">--</dd></div>
+        <div><dt>Capacity</dt><dd id="memory-size">--</dd></div>
+        <div><dt>Filesystem</dt><dd id="memory-filesystem">Unknown</dd></div>
+        <div><dt>Manufacturer</dt><dd id="memory-manufacturer">--</dd></div>
+        <div><dt>Product</dt><dd id="memory-product">--</dd></div>
+        <div><dt>Serial</dt><dd id="memory-serial">--</dd></div>
       </dl>
-      <p class="sample-time" id="memory-note">The bus ceiling is configuration, not measured speed. Card identity,
-        file transfer, USB drive handoff, benchmarks and formatting are not implemented.</p>
+      <p class="sample-time" id="storage-freshness" role="status">storage: unavailable</p>
     </section>
 
-    <footer class="status-line" id="status-line" role="status" aria-live="polite">
+
+    <dialog class="confirmation-dialog" id="configuration-dialog" aria-labelledby="configuration-dialog-title"
+      aria-describedby="configuration-dialog-profile configuration-warning direct-configuration-wireless-warning">
+      <h2 id="configuration-dialog-title">Save and reboot?</h2>
+      <p id="configuration-dialog-profile"></p>
+      <p class="configuration-warning" id="configuration-warning">
+        Firmware saves boot settings, then reboots the board and briefly disconnects USB and Bluetooth.
+        Stop external traffic first.
+      </p>
+      <p class="configuration-warning" id="direct-configuration-wireless-warning" hidden>
+        Wi-Fi and Bluetooth credentials are saved with these settings. Keep a copy of the Control key; it cannot be read
+        back. Flash credentials are not encrypted.
+      </p>
+      <div class="dialog-actions">
+        <button class="button button-cancel" id="cancel-configuration" type="button" autofocus>Cancel</button>
+        <button class="button button-danger" id="confirm-configuration" type="button">Save&amp;Reboot</button>
+      </div>
+    </dialog>
+
+    <dialog class="confirmation-dialog" id="reboot-dialog" aria-labelledby="reboot-dialog-title"
+      aria-describedby="reboot-warning reboot-consequence">
+      <h2 id="reboot-dialog-title">Reboot board?</h2>
+      <p class="configuration-warning" id="reboot-warning">
+        This immediately reboots the board and briefly disconnects USB and Bluetooth.
+        Stop external traffic first.
+      </p>
+      <p id="reboot-consequence"></p>
+      <div class="dialog-actions">
+        <button class="button button-cancel" id="cancel-reboot" type="button" autofocus>Cancel</button>
+        <button class="button button-danger" id="confirm-reboot" type="button">Reboot Board</button>
+      </div>
+    </dialog>
+
+    <footer class="status-line" role="status" aria-live="polite">
       <span class="status-mark" aria-hidden="true"></span>
-      <span id="status-message">Select an ESPForge board over USB or Bluetooth</span>
+      <span id="status-message">Select an ESPForge device</span>
+      <p class="settings-note" id="settings-note">Connect to read the saved settings.</p>
     </footer>
   </main>
-
   <dialog class="confirmation-dialog" id="usb-connection-dialog" aria-labelledby="usb-connection-title">
     <h2 id="usb-connection-title">Connect through USB</h2>
-    <p>Attach the DevKitC USB-to-UART connector to this computer, then select its serial port in the browser's
-      picker. Close other serial monitors first; only one program can own the port.</p>
+    <p>Attach your board to this computer, then select it in the browser's USB HID device picker.</p>
     <p id="usb-connection-status" role="status" aria-live="polite"></p>
     <div class="dialog-actions">
       <button class="button" id="usb-connect" type="button">Select board</button>
-      <button class="button button-cancel" id="usb-connection-close" type="button">Close</button>
+      <button class="button button-secondary" id="usb-connection-close" type="button">Close</button>
     </div>
   </dialog>
-
-  <dialog class="confirmation-dialog" id="bluetooth-connection-dialog" aria-labelledby="bluetooth-connection-title">
+  <dialog class="confirmation-dialog wireless-dialog" id="bluetooth-connection-dialog"
+    aria-labelledby="bluetooth-connection-title">
     <h2 id="bluetooth-connection-title">Connect through Bluetooth</h2>
-    <p>Scan uses this computer's Bluetooth adapter and opens the browser's nearby-device picker. The Bluetooth link
-      is read-only: it shows public status but cannot configure Wi-Fi.</p>
+    <p>Scan uses this computer's Bluetooth adapter and opens the browser's nearby-device picker. Bluetooth runs only on
+      boards with a saved control key; enter that key to connect.</p>
+    <label for="direct-ble-control-key">Control key
+      <input id="direct-ble-control-key" type="password" maxlength="64" autocomplete="off" spellcheck="false"></label>
     <p id="bluetooth-connection-status" role="status" aria-live="polite"></p>
     <div class="dialog-actions">
       <button class="button" id="bluetooth-scan" type="button">Scan for boards</button>
-      <button class="button button-cancel" id="bluetooth-connection-close" type="button">Close</button>
+      <button class="button button-secondary" id="bluetooth-connection-close" type="button">Close</button>
     </div>
   </dialog>
-
-  <dialog class="confirmation-dialog wireless-dialog" id="wifi-dialog" aria-labelledby="wifi-dialog-title">
-    <h2 id="wifi-dialog-title">Connect to Wi-Fi</h2>
-    <p>Credentials are sent once over USB-UART and stay in board RAM for this boot only. Encoding is not encryption.
-      Changing networks requires a board reboot.</p>
-    <form id="wifi-form" novalidate>
-      <label for="wifi-ssid">Network name (SSID, 2.4 GHz, 1-32 UTF-8 bytes)
-        <input id="wifi-ssid" maxlength="32" autocomplete="off" spellcheck="false" required></label>
-      <label for="wifi-password">WPA2 passphrase (blank for an open network, otherwise 8-63 UTF-8 bytes)
-        <input id="wifi-password" type="password" maxlength="63" autocomplete="new-password"></label>
-      <p id="wifi-status" role="status" aria-live="polite"></p>
-      <div class="dialog-actions">
-        <button class="button" id="wifi-connect" type="submit">Connect for this boot</button>
-        <button class="button button-cancel" id="wifi-cancel" type="button">Cancel</button>
-      </div>
-    </form>
+  <dialog class="confirmation-dialog wireless-dialog" id="direct-wifi-dialog" aria-labelledby="direct-wifi-dialog-title">
+    <h2 id="direct-wifi-dialog-title">Connect to Wi-Fi</h2>
+    <p>Scan for nearby networks or enter a network name. A connection test does not save credentials to flash.</p>
+    <button class="button button-secondary" id="direct-wifi-scan" type="button">Scan for networks</button>
+    <p id="direct-wifi-status" role="status" aria-live="polite"></p>
+    <div id="direct-wifi-networks" class="direct-wifi-networks" role="group" aria-label="Available Wi-Fi networks"></div>
+    <button class="button button-secondary" id="direct-wifi-other" type="button">Other network…</button>
+    <label id="direct-wifi-manual-label" hidden>Network name (SSID)
+      <input id="direct-wifi-ssid" maxlength="32" autocomplete="off"></label>
+    <label id="direct-direct-wifi-password-label">Password (leave blank for an open network)
+      <input id="direct-wifi-password" type="password" maxlength="63" autocomplete="new-password"></label>
+    <div class="dialog-actions">
+      <button class="button" id="direct-wifi-connect" type="button">Test connection</button>
+      <button class="button button-secondary" id="direct-wifi-cancel" type="button">Cancel</button>
+    </div>
+  </dialog>
+  <dialog class="confirmation-dialog wireless-dialog" id="direct-ble-dialog" aria-labelledby="direct-ble-dialog-title">
+    <h2 id="direct-ble-dialog-title">Bluetooth access</h2>
+    <p>Generate a new key and save it with Board configuration. The key authenticates control commands; it does not
+      encrypt the Bluetooth connection. The board cannot show a saved key again.</p>
+    <label for="direct-ble-secret">New control key
+      <input id="direct-ble-secret" type="password" readonly autocomplete="off"></label>
+    <div class="dialog-actions">
+      <button class="button button-secondary" id="direct-ble-generate" type="button">Generate key</button>
+      <button class="button button-secondary" id="direct-ble-copy" type="button" disabled>Copy key</button>
+      <button class="button button-secondary" id="direct-ble-cancel" type="button">Close</button>
+    </div>
+    <p id="direct-ble-status" role="status" aria-live="polite"></p>
   </dialog>
 </body>
 </html>

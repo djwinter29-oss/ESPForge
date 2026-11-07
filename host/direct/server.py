@@ -22,7 +22,7 @@ CONTENT_SECURITY_POLICY = (
 
 
 class DirectHandler(SimpleHTTPRequestHandler):
-    """Serve static Direct files only; the browser talks to the board through Web Serial or Web Bluetooth."""
+    """Serve static Direct files only; the browser talks to the board through WebHID or Web Bluetooth."""
 
     extensions_map = {
         **SimpleHTTPRequestHandler.extensions_map,

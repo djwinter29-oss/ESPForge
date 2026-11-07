@@ -16,9 +16,14 @@
 :files:
   :source:
     - -:firmware/src/main.c
-    - -:firmware/src/status.c
-    - -:firmware/src/wireless.c
+    - -:firmware/src/board.c
+    - -:firmware/src/usb_hid.c
+    - -:firmware/src/ble.c
+    - -:firmware/src/wifi.c
+    - -:firmware/src/telemetry.c
     - -:firmware/src/storage.c
+    - -:firmware/src/boot_flash.c
+    - -:firmware/src/system_clock.c
 
 :cmock:
   :mock_prefix: mock_
@@ -27,6 +32,7 @@
     - ignore
     - ignore_arg
     - return_thru_ptr
+    - expect_any_args
 
 :flags:
   :test:

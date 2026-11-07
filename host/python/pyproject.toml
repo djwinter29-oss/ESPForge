@@ -1,0 +1,49 @@
+# SPDX-License-Identifier: BSD-3-Clause
+# Copyright (c) 2026 Ji Dong
+
+[build-system]
+requires = ["setuptools>=84.2.1"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "espforge"
+version = "0.0.0.dev0"
+description = "ESPForge USB HID control, diagnostics, and local dashboard"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "BSD-3-Clause"
+license-files = ["LICENSE"]
+authors = [{name = "Ji Dong"}]
+keywords = ["espforge", "esp32-s3", "zephyr", "usb", "hid", "wifi", "ble"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: System :: Hardware",
+    "Topic :: Utilities",
+]
+dependencies = ["Flask==3.1.3", "hidapi==0.15.0"]
+
+[project.urls]
+Homepage = "https://github.com/djwinter29-oss/ESPForge"
+Documentation = "https://github.com/djwinter29-oss/ESPForge/tree/main/host/python#readme"
+Source = "https://github.com/djwinter29-oss/ESPForge"
+Releases = "https://github.com/djwinter29-oss/ESPForge/releases"
+Issues = "https://github.com/djwinter29-oss/ESPForge/issues"
+
+[project.scripts]
+espforge = "espforge.cli:main"
+
+[tool.setuptools]
+package-dir = {"espforge" = "src/espforge", "espforge.web" = "../web/src"}
+packages = ["espforge", "espforge.web", "espforge.reports", "espforge.hid", "espforge.dashboard"]
+
+[tool.setuptools.package-data]
+"espforge.web" = ["index.html", "favicon.svg", "css/*.css", "js/*.mjs"]
+
+[tool.pyright]
+include = ["src/espforge/dashboard/boards.py", "src/espforge/dashboard/models.py",
+           "src/espforge/dashboard/monitor.py", "tests/types/command_types.py"]
+pythonVersion = "3.10"
+typeCheckingMode = "strict"
+reportUnnecessaryIsInstance = false
+reportUnnecessaryTypeIgnoreComment = true

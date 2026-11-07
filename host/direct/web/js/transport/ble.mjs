@@ -1,60 +1,172 @@
 // SPDX-License-Identifier: BSD-3-Clause
 // Copyright (c) 2026 Ji Dong
 
-// @ts-check
-/** @file Read-only Web Bluetooth link to the ESPForge status GATT characteristic. */
+import { OPCODES } from "../protocol/opcodes.mjs";
+import { decodeIdentityReport, hexToBytes } from "../protocol/codec.mjs";
+import { wait } from "../timers.mjs";
+import { BoardError, REASON } from "../state/errors.mjs";
 
-import { BLE_SERVICE_UUID, BLE_STATUS_MAX_BYTES, BLE_STATUS_UUID } from "../protocol/constants.mjs";
-import { decodeBleStatus } from "../protocol/codec.mjs";
+export const BLE_SERVICE = "ef5c0000-7c91-4d70-8b32-6e856443f502";
+const characteristic = id => `ef5c${id.toString(16).padStart(4, "0")}-7c91-4d70-8b32-6e856443f502`;
+const GATT_SERVICE = 0x1801;
+const SERVICE_CHANGED = 0x2a05;
+/** @brief Readable characteristics: reports 1, 2, 3, 10, 12, the result, the nonce and the proof. 000b is empty. */
+const CHARACTERISTICS = [1, 2, 3, 10, 12, 20, 256, 257];
 
+/** @typedef {import("./transport.mjs").Transport} Transport */
+/** @implements {Transport} */
 export class BleTransport extends EventTarget {
-  kind = /** @type {const} */ ("ble");
-  label = "Bluetooth LE (read-only)";
-  writable = false;
-  simulated = false;
-  /** @type {any} */ device = null;
-  /** @type {any} */ characteristic = null;
-  closing = false;
-
-  /** @param {any} bluetooth `navigator.bluetooth`, or undefined when unavailable. */
-  constructor(bluetooth) {
+  constructor(bluetooth, { sleep = wait } = {}) {
     super();
-    this.bluetooth = bluetooth;
-    this.onDisconnected = () => {
-      this.characteristic = null;
-      if (!this.closing) this.dispatchEvent(new Event("disconnect"));
+    /** @type {"ble"} */
+    this.kind = "ble";
+    this.api = bluetooth;
+    this.available = Boolean(bluetooth);
+    this.unavailableReason = REASON.BLUETOOTH_UNAVAILABLE;
+    this.autoReconnect = false;
+    this.pollInterval = 250;
+    this.device = null;
+    this.characteristics = new Map();
+    this.bleKey = null;
+    this.uid = null;
+    this.connecting = false;
+    this.sleep = sleep;
+    this.onDisconnect = () => {
+      if (this.connecting) return;
+      this.bleKey = null;
+      this.characteristics.clear();
+      this.device?.removeEventListener("gattserverdisconnected", this.onDisconnect);
+      this.device = null;
+      this.dispatchEvent(new Event("disconnect"));
     };
   }
 
-  get available() { return Boolean(this.bluetooth); }
-  get unavailableReason() {
-    return this.bluetooth ? "" : "Web Bluetooth is unavailable in this browser or operating system";
+  get name() { return this.device?.name ?? null; }
+  async reconnect() { return false; }
+
+  /**
+   * @brief Import the 32-byte Control key as a non-extractable HMAC key, then wipe the caller's bytes.
+   * @param {Uint8Array<ArrayBuffer>} bytes Key bytes; zeroed on return.
+   */
+  async setControlKey(bytes) {
+    try {
+      if (!(bytes instanceof Uint8Array) || bytes.length !== 32) throw new BoardError(REASON.BLE_KEY_LENGTH);
+      this.bleKey = await crypto.subtle.importKey("raw", bytes, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+    } finally { if (bytes instanceof Uint8Array) bytes.fill(0); }
   }
 
-  async connect() {
-    if (!this.bluetooth) throw new Error(this.unavailableReason);
-    this.device = await this.bluetooth.requestDevice({ filters: [{ services: [BLE_SERVICE_UUID] }] });
-    this.device.addEventListener("gattserverdisconnected", this.onDisconnected);
-    const server = await this.device.gatt.connect();
-    const service = await server.getPrimaryService(BLE_SERVICE_UUID);
-    this.characteristic = await service.getCharacteristic(BLE_STATUS_UUID);
+  async prove(uid, request, signal) {
+    signal.throwIfAborted();
+    const value = await this.characteristics.get(256).readValue();
+    signal.throwIfAborted();
+    const nonce = new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+    if (nonce.length !== 16) {
+      throw Object.assign(new BoardError(REASON.BLE_CHALLENGE), { final: true });
+    }
+    const message = new Uint8Array([...nonce, ...uid, ...new TextEncoder().encode("PFBLECTL1"), ...request]);
+    const mac = new Uint8Array(await crypto.subtle.sign("HMAC", this.bleKey, message));
+    signal.throwIfAborted();
+    await this.characteristics.get(257).writeValueWithResponse(mac.slice(0, 16));
+    signal.throwIfAborted();
   }
 
-  async status() {
-    if (!this.characteristic) throw new Error("Bluetooth board disconnected");
-    const data = await this.characteristic.readValue();
-    if (data.byteLength > BLE_STATUS_MAX_BYTES) throw new Error("Bluetooth status too large");
-    return decodeBleStatus(data);
+  async unlock(signal) {
+    const value = await this.readReport(1, signal);
+    const hardware = decodeIdentityReport(value);
+    this.uid = hardware.serial_number;
+    try { await this.prove(hexToBytes(this.uid), new TextEncoder().encode("SESSION01"), signal); }
+    catch (error) {
+      if (signal.aborted || error.final || !this.device?.gatt.connected) throw error;
+      throw Object.assign(new BoardError(REASON.BLE_UNLOCK_REJECTED), { final: true });
+    }
   }
 
-  async wifiConnect() {
-    throw new Error("Bluetooth is read-only; connect over USB to configure Wi-Fi");
+  async connect(key, signal) {
+    if (!this.api) throw new BoardError(this.unavailableReason);
+    signal.throwIfAborted();
+    this.connecting = true;
+    try {
+      await this.setControlKey(key);
+      signal.throwIfAborted();
+      const device = await this.api.requestDevice({
+        filters: [{ services: [BLE_SERVICE] }, { namePrefix: "ESPForge-" }],
+        optionalServices: [BLE_SERVICE, GATT_SERVICE],
+      });
+      signal.throwIfAborted();
+      this.device = device;
+      device.addEventListener("gattserverdisconnected", this.onDisconnect);
+      // ponytail: retry only read-only setup, at most three times on the selected board; never retry a command.
+      for (let attempt = 1; ; attempt++) {
+        try {
+          const server = await device.gatt.connect();
+          signal.throwIfAborted();
+          // Subscribe so cached handles are refreshed; Zephyr sends no forced indication, so never wait for one.
+          try {
+            const gatt = await server.getPrimaryService(GATT_SERVICE);
+            await (await gatt.getCharacteristic(SERVICE_CHANGED)).startNotifications();
+          } catch (error) {
+            if (!["NotAllowedError", "NotFoundError", "NotSupportedError", "SecurityError"].includes(error?.name)) {
+              throw error;
+            }
+            console.warn("Service Changed is unavailable; continuing with platform GATT cache behavior.", error);
+          }
+          signal.throwIfAborted();
+          const service = await server.getPrimaryService(BLE_SERVICE);
+          for (const id of CHARACTERISTICS) {
+            this.characteristics.set(id, await service.getCharacteristic(characteristic(id)));
+            signal.throwIfAborted();
+          }
+          await this.unlock(signal);
+          return true;
+        } catch (error) {
+          device.gatt.disconnect();
+          this.characteristics.clear();
+          if (signal.aborted || attempt === 3 || error.final) throw error;
+          await this.sleep(500, signal);
+        }
+      }
+    } catch (error) {
+      await this.disconnect();
+      throw error;
+    } finally { this.connecting = false; }
   }
 
-  async close() {
-    this.closing = true;
-    this.characteristic = null;
-    this.device?.removeEventListener("gattserverdisconnected", this.onDisconnected);
-    if (this.device?.gatt?.connected) this.device.gatt.disconnect();
+  async readReport(id, signal) {
+    signal.throwIfAborted();
+    const value = await this.characteristics.get(id).readValue();
+    signal.throwIfAborted();
+    if (id !== 20) return value;
+    if (value.byteLength !== 9) throw new BoardError(REASON.BLE_RESULT_LENGTH);
+    const report = new Uint8Array(68);
+    report.set(new Uint8Array(value.buffer, value.byteOffset, value.byteLength));
+    return report;
   }
+
+  async writeReport(id, report, signal) {
+    signal.throwIfAborted();
+    // Framing only: the BLE request is the 9-byte prefix; link policy is enforced by the session before writing.
+    if (id !== 20 || report.length !== 68 || report.subarray(9).some(Boolean)) {
+      throw new BoardError(REASON.BLE_FRAME);
+    }
+    const request = report.slice(0, 9);
+    try {
+      if (OPCODES[report[2]]?.ble?.proof !== false) await this.prove(hexToBytes(this.uid), request, signal);
+      signal.throwIfAborted();
+      await this.characteristics.get(20).writeValueWithResponse(request);
+      signal.throwIfAborted();
+    } catch (error) {
+      if (signal.aborted || error.final || !this.device?.gatt.connected) throw error;
+      throw new BoardError(REASON.BLE_PROOF_REJECTED);
+    }
+  }
+
+  async disconnect() {
+    this.bleKey = null;
+    this.characteristics.clear();
+    this.device?.removeEventListener("gattserverdisconnected", this.onDisconnect);
+    this.device?.gatt.disconnect();
+    this.device = null;
+  }
+
+  async dispose() { await this.disconnect(); }
 }

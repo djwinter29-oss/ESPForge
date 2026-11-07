@@ -5,16 +5,17 @@ This starter is intended to be ready for later hardware connection, not qualifie
 | Area | Current boundary |
 | --- | --- |
 | ESP32-S3 target | N8/default DevKitC PROCPU source build; no physical flash/boot observation |
-| Firmware unit tests | Ceedling covers portable credential/status logic with mocked service inputs; no Zephyr execution or UART parser/integration coverage |
-| USB-UART | Host parsing and synthetic peers; real bridge/reset/driver behavior pending |
-| BLE | Firmware GATT build and browser client present; advertising/ATT long reads/reconnect pending on hardware |
-| Wi-Fi | Enabled interface, DHCP and RAM-only connect path; association/coexistence/lease acquisition unmeasured |
+| Firmware unit tests | Ceedling covers the portable control dispatcher, report encoding, wireless staging/auth, SHA-256 and boot-settings record with mocked platform hooks and a fake flash; no Zephyr execution |
+| USB HID | Firmware builds the `device_next` HID device; hosts are tested with fake devices. Enumeration, report timing and reconnect on a real host are pending |
+| BLE | Firmware GATT, session unlock and Control writes build; Direct client tested with fakes. Advertising, long reads, authentication and reconnect pending on hardware |
+| Wi-Fi | Saved/test/scan state machine builds; association, failure details, retries, coexistence and DHCP leases unmeasured |
+| Boot settings | Record codec, validation and staging tested natively; `storage_partition` erase/program/readback, power-loss behaviour and runtime CPU clock profiles unmeasured on hardware |
 | SD card | Drivers, proposed wiring and safe mount code ready; **all SD hardware tests intentionally deferred** |
 | Dashboards | Explicit synthetic preview and protocol tests; no live-board screenshot or measurements |
-| Security | Public BLE diagnostics, physical UART control, loopback hosts; no wireless control authorization model |
+| Security | BLE Control key authentication without link encryption; unencrypted flash; physical USB/UART control; loopback hosts |
 | Variants | N4/N16/PSRAM/other S3 boards are not qualified targets |
 | Product readiness | No power-loss, soak, performance, RF, EMC or regulatory qualification |
 
-When hardware arrives, first validate board identity, UART status, BLE and Wi-Fi independently.
+When hardware arrives, first validate USB enumeration and Report 1, then the console output, BLE and Wi-Fi independently.
 SD-card tests are outside the current setup request; schedule them explicitly later, with backups and a dedicated card.
 Historical software results do not establish current or future hardware compatibility.

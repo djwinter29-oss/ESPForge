@@ -1,0 +1,227 @@
+<!doctype html>
+<!--
+SPDX-License-Identifier: BSD-3-Clause
+Copyright (c) 2026 Ji Dong
+-->
+
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>ESPForge Dashboard | {{ dashboard_type }}</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=3">
+  <link rel="stylesheet" href="/css/dashboard.css">
+  <script type="module" src="/js/app.mjs"></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="ESPForge host status">
+      <span class="brand-mark">EF</span>
+      <span class="brand-copy">
+        <strong>ESPForge</strong><small>{{ dashboard_type }} · App v{{ app_version }}</small>
+      </span>
+    </a>
+    <div class="connection" id="connection" data-state="disconnected">
+      <span class="connection-light" aria-hidden="true"></span>
+      <span id="connection-label">Disconnected</span>
+    </div>
+  </header>
+
+  <main>
+    <section class="page-heading">
+      <div>
+        <h1>Dashboard</h1>
+      </div>
+    </section>
+
+    <section aria-labelledby="identity-title">
+      <div class="section-heading">
+        <h2 id="identity-title">Device information</h2>
+        <div class="actions" aria-label="Board identification and controls">
+          <button class="button button-led" id="rescan-boards" type="button">Rescan</button>
+          <select id="board-select" aria-label="Board attached to this server" title="Select the board managed by this host" disabled>
+            <option value="">Scanning boards...</option>
+          </select>
+        </div>
+      </div>
+      <div class="identity" aria-label="Hardware identity">
+        <div class="metric"><span>Product</span><strong id="product-name">--</strong></div>
+        <div class="metric"><span>Board model</span><strong id="board-model">--</strong></div>
+        <div class="metric"><span>Serial / UID</span><strong id="serial">--</strong></div>
+        <div class="metric"><span>System clock</span><strong id="identity-clock">--</strong></div>
+        <div class="metric">
+          <span>Firmware RAM reserved / total</span>
+          <strong id="ram-usage" title="Statically linked RAM, including the heap pool and thread stacks / internal SRAM; not live usage">--</strong>
+        </div>
+        <div class="metric"><span>Firmware version</span><strong id="firmware-version">--</strong></div>
+      </div>
+    </section>
+
+    <section class="runtime" aria-labelledby="settings-title">
+      <div class="section-heading">
+        <div>
+          <h2 id="settings-title">Boot configuration</h2>
+        </div>
+        <div class="settings-actions">
+          <button class="button" id="settings-save" type="button" disabled>Save&amp;Reboot</button>
+          <button class="button button-secondary" id="reboot-control" type="button" disabled>Reboot Board</button>
+        </div>
+      </div>
+      <div class="settings-controls">
+        <label for="settings-clock">System clock
+          <select id="settings-clock" disabled>
+            <option value="0">Default</option>
+          </select>
+        </label>
+        <div class="radio-setting" id="wifi-settings" hidden>
+          <label for="settings-wifi">Wi-Fi
+            <select id="settings-wifi" disabled>
+              <option value="1">Enabled</option>
+              <option value="0">Disabled</option>
+            </select>
+          </label>
+          <button class="button button-secondary" id="wifi-configure" type="button"
+            aria-haspopup="dialog" aria-controls="wifi-dialog" aria-label="Configure Wi-Fi" disabled>Configure…</button>
+        </div>
+        <div class="radio-setting" id="ble-settings" hidden>
+          <label for="settings-ble">Bluetooth
+            <select id="settings-ble" disabled>
+              <option value="1">Enabled</option>
+              <option value="0">Disabled</option>
+            </select>
+          </label>
+          <button class="button button-secondary" id="ble-configure" type="button"
+            aria-haspopup="dialog" aria-controls="ble-dialog" aria-label="Configure Bluetooth" disabled>Configure…</button>
+        </div>
+      </div>
+      <p id="wireless-summary" role="status" aria-live="polite"></p>
+      <button class="button button-secondary" id="wireless-discard" type="button" hidden disabled>
+        Discard wireless edits and reload
+      </button>
+      <details class="pin-map-disclosure">
+        <summary>Pin configuration</summary>
+        <div class="pin-tables">
+          <table>
+            <caption id="board-uart-title">Monitor UART</caption>
+            <tbody id="board-uart"></tbody>
+          </table>
+          <table>
+            <caption id="board-storage-title">Storage</caption>
+            <tbody id="board-storage-pins"></tbody>
+          </table>
+        </div>
+      </details>
+    </section>
+
+    <section class="runtime" aria-labelledby="runtime-title">
+      <div class="section-heading">
+        <div>
+          <h2 id="runtime-title">Live diagnostics</h2>
+        </div>
+      </div>
+      <dl class="runtime-grid runtime-summary">
+        <div><dt>Uptime</dt><dd id="uptime">--</dd></div>
+        <div><dt>Reset cause</dt><dd id="board-reset-cause">--</dd></div>
+        <div title="Service-pass workload proxy for the PRO CPU, not CPU utilization">
+          <dt>Service load (Core 0)</dt>
+          <dd id="cpu-usage-core0">--</dd>
+        </div>
+        <div><dt>Board temperature</dt><dd id="temperature">--</dd></div>
+        <div><dt>Storage bus speed</dt><dd id="memory-speed">--</dd></div>
+        <div id="wifi-diagnostics" hidden><dt>Wi-Fi</dt><dd id="wifi-state">--</dd></div>
+        <div id="ble-diagnostics" hidden><dt>Bluetooth</dt><dd id="ble-state">--</dd></div>
+      </dl>
+    </section>
+
+    <section class="runtime" aria-labelledby="memory-title">
+      <div class="section-heading">
+        <div>
+          <h2 id="memory-title">Storage</h2>
+        </div>
+      </div>
+      <p class="sample-time" id="memory-note">Waiting for card status</p>
+      <dl class="runtime-grid">
+        <div><dt>Memory state</dt><dd id="memory-state">--</dd></div>
+        <div><dt>Capacity</dt><dd id="memory-size">--</dd></div>
+        <div><dt>Filesystem</dt><dd id="memory-filesystem">Unknown</dd></div>
+        <div><dt>Manufacturer</dt><dd id="memory-manufacturer">--</dd></div>
+        <div><dt>Product</dt><dd id="memory-product">--</dd></div>
+        <div><dt>Serial</dt><dd id="memory-serial">--</dd></div>
+      </dl>
+    </section>
+
+    <dialog class="confirmation-dialog" id="configuration-dialog" aria-labelledby="configuration-dialog-title"
+      aria-describedby="configuration-dialog-profile configuration-warning configuration-wireless-warning">
+      <h2 id="configuration-dialog-title">Save and reboot?</h2>
+      <p id="configuration-dialog-profile"></p>
+      <p class="configuration-warning" id="configuration-warning">
+        Firmware saves boot settings, then reboots the board and briefly disconnects USB.
+        Stop external traffic first.
+      </p>
+      <p class="configuration-warning" id="configuration-wireless-warning" hidden>
+        Wi-Fi and Bluetooth credentials are saved with these settings. Keep a copy of the Control key; it cannot be read
+        back. Flash credentials are not encrypted.
+      </p>
+      <div class="dialog-actions">
+        <button class="button button-cancel" id="cancel-configuration" type="button" autofocus>Cancel</button>
+        <button class="button button-danger" id="confirm-configuration" type="button">Save&amp;Reboot</button>
+      </div>
+    </dialog>
+
+    <dialog class="confirmation-dialog" id="reboot-dialog" aria-labelledby="reboot-dialog-title"
+      aria-describedby="reboot-warning reboot-consequence">
+      <h2 id="reboot-dialog-title">Reboot board?</h2>
+      <p class="configuration-warning" id="reboot-warning">
+        This immediately reboots the board and briefly disconnects USB.
+        Stop external traffic first.
+      </p>
+      <p id="reboot-consequence"></p>
+      <div class="dialog-actions">
+        <button class="button button-cancel" id="cancel-reboot" type="button" autofocus>Cancel</button>
+        <button class="button button-danger" id="confirm-reboot" type="button">Reboot Board</button>
+      </div>
+    </dialog>
+
+    <footer class="status-line" role="status" aria-live="polite">
+      <span class="status-mark" aria-hidden="true"></span>
+      <span id="status-message">Waiting for ESPForge HID</span>
+      <p class="settings-note" id="settings-note">Waiting for an ESPForge connection.</p>
+      <button class="button button-secondary" id="command-resync" type="button" hidden disabled>
+        Re-sync command
+      </button>
+    </footer>
+  </main>
+  <dialog class="confirmation-dialog wireless-dialog" id="wifi-dialog" aria-labelledby="wifi-dialog-title">
+    <h2 id="wifi-dialog-title">Connect to Wi-Fi</h2>
+    <p>Scan for nearby networks or enter a network name. A connection test does not save credentials to flash.</p>
+    <button class="button button-secondary" id="wifi-scan" type="button">Scan for networks</button>
+    <p id="wifi-status" role="status" aria-live="polite"></p>
+    <div id="wifi-networks" class="wifi-networks" role="group" aria-label="Available Wi-Fi networks"></div>
+    <button class="button button-secondary" id="wifi-other" type="button">Other network…</button>
+    <label id="wifi-manual-label" hidden>Network name (SSID)
+      <input id="wifi-ssid" maxlength="32" autocomplete="off"></label>
+    <label id="wifi-password-label">Password (leave blank for an open network)
+      <input id="wifi-password" type="password" maxlength="63" autocomplete="new-password"></label>
+    <div class="dialog-actions">
+      <button class="button" id="wifi-connect" type="button">Test connection</button>
+      <button class="button button-secondary" id="wifi-resync" type="button" hidden>Re-sync</button>
+      <button class="button button-secondary" id="wifi-cancel" type="button">Cancel</button>
+    </div>
+  </dialog>
+  <dialog class="confirmation-dialog wireless-dialog" id="ble-dialog" aria-labelledby="ble-dialog-title">
+    <h2 id="ble-dialog-title">Bluetooth control key</h2>
+    <p>Generate a new key, copy it to a safe location, and save it with Boot configuration.
+      The key authenticates control commands; it does not
+      encrypt the Bluetooth connection. The board cannot show a saved key again.</p>
+    <label for="ble-secret">New control key
+      <input id="ble-secret" type="password" readonly autocomplete="off"></label>
+    <div class="dialog-actions">
+      <button class="button button-secondary" id="ble-generate" type="button">Generate key</button>
+      <button class="button button-secondary" id="ble-copy" type="button" disabled>Copy key</button>
+      <button class="button button-secondary" id="ble-cancel" type="button">Close</button>
+    </div>
+    <p id="ble-status" role="status" aria-live="polite"></p>
+  </dialog>
+</body>
+</html>

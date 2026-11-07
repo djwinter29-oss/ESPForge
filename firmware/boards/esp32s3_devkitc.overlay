@@ -1,10 +1,19 @@
 #include <zephyr/dt-bindings/gpio/gpio.h>
 
-/ {
-	chosen {
-		/delete-property/ zephyr,console;
-		/delete-property/ zephyr,shell-uart;
+/* Native USB OTG on the DevKitC USB connector (GPIO19 D-, GPIO20 D+). */
+&usb_otg {
+	status = "okay";
+	espforge_hid: hid_dev_0 {
+		compatible = "zephyr,hid-device";
+		label = "ESPForge";
+		protocol-code = "none";
+		in-report-size = <64>;
+		in-polling-period-us = <4000>;
 	};
+};
+
+&coretemp {
+	status = "okay";
 };
 
 &spi2 {
