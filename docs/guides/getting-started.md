@@ -23,7 +23,7 @@ python3.12 -m venv .venv
 python -m pip install west
 west init -l espforge
 west update --narrow -o=--depth=1
-python -m pip install -r zephyr/scripts/requirements-base.txt
+python -m pip install -r zephyr/scripts/requirements-base.txt -r modules/hal/espressif/zephyr/requirements.txt
 west blobs fetch hal_espressif
 west sdk install --version 0.17.4 --toolchains xtensa-espressif_esp32s3_zephyr-elf
 ```
@@ -87,24 +87,24 @@ Run from the repository root (`cd espforge`):
 | Dashboard | Launch | Open |
 | --- | --- | --- |
 | Direct | `bash tools/host/run-direct.sh --port 8000` | `http://127.0.0.1:8000/` |
-| Python | `bash tools/host/run-python.sh web --device /dev/ttyUSB0`, or `espforge web --device /dev/ttyUSB0` after `pip install espforge` | `http://127.0.0.1:8001/` |
-| .NET | `dotnet run --project host/dotnet/ESPForge -- --device /dev/ttyUSB0` | `http://127.0.0.1:8002/` |
+| Python | `bash tools/host/run-python.sh web`, or `espforge web` after `pip install espforge` | `http://127.0.0.1:8001/` |
+| .NET | `bash tools/host/run-dotnet.sh` | `http://127.0.0.1:8002/` |
 
-Direct needs supported desktop Chrome/Edge for Web Serial or Web Bluetooth.
-Its static server uses Python only as a convenience; HTTPS static hosting needs no installed serial bridge.
-Python uses Python 3.10+ and pyserial; .NET uses the .NET 10 SDK/runtime.
-On Linux, serial access may require membership in the device's owning group (often `dialout`).
-Log out/in after changing group membership; do not run the dashboards as root.
-
-Before hardware arrives, choose **Preview** in Direct, or replace `--device PORT` with
-`--demo` for either host. Click **Select board**. The preview is explicitly labeled and does not exercise
-radios, storage, firmware or physical serial.
+Direct needs supported desktop Chrome/Edge for WebHID or Web Bluetooth.
+Its static server uses Python only as a convenience; HTTPS static hosting needs nothing installed.
+Python uses Python 3.10+ with Flask and `hidapi`; .NET uses the .NET 10 SDK/runtime with HidSharp.
+Python and .NET select the first ESPForge board, or the one given by `--serial SERIAL` (the 16 hex-digit UID) or
+`--device-path HID_PATH`. On Linux, run `bash tools/host/hid-permissions-setup.sh` once, then reconnect the board;
+do not run the dashboards as root. Without a board the hosts show an empty board list; there is no simulated mode.
 
 ## 4. First connection
 
-Click **Select board**, select the UART bridge, and confirm product `ESPForge`, protocol `1`, board and firmware.
+Connect the board's **USB** connector. In Direct, click **USB** and choose the ESPForge HID device; in Python or .NET,
+select the board in the list. Confirm product `ESPForge`, the board, firmware version and serial number.
 An SD mount failure is expected without a card and does not prevent dashboard operation.
-Provision a 2.4 GHz network using [wireless setup](wireless.md). Stop one serial client before starting
-another. A timeout never retries a provisioning command; inspect status before taking further action.
+Test and save a 2.4 GHz network, and optionally create a Bluetooth Control key, using [wireless setup](wireless.md).
+Run one host per board at a time, so Control commands do not interleave. A command whose outcome is uncertain is
+never retried; confirm the
+re-sync prompt after checking the board.
 
 Hardware acceptance and all SD-card tests are deferred; see [qualification gaps](../validation/qualification-gaps.md).

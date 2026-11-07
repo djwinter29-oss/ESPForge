@@ -12,7 +12,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "hid_reports.h"
+#include "app/usb/hid_reports.h"
 
 #define EF_STATUS_IDLE 0u
 #define EF_STATUS_PENDING 1u

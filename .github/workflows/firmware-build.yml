@@ -50,7 +50,8 @@ jobs:
           python -m pip install --disable-pip-version-check --no-input west
           west init -l espforge
           west update --narrow -o=--depth=1
-          python -m pip install --disable-pip-version-check --no-input -r zephyr/scripts/requirements-base.txt
+          python -m pip install --disable-pip-version-check --no-input -r zephyr/scripts/requirements-base.txt \
+            -r modules/hal/espressif/zephyr/requirements.txt
           west blobs fetch hal_espressif
           west sdk install --version 0.17.4 --toolchains xtensa-espressif_esp32s3_zephyr-elf
 
@@ -93,7 +94,7 @@ jobs:
             done
           done
           sed -n '1,/\*\//p' modules/fs/fatfs/ff.c > "$package/licenses/fatfs-LICENSE"
-          source_version=$(sed -n 's/^#define ESPFORGE_VERSION "\(.*\)"/\1/p' espforge/firmware/src/espforge.h)
+          source_version=$(sed -n 's/^#define ESPFORGE_VERSION "\(.*\)"/\1/p' espforge/firmware/src/app/espforge.h)
           {
             printf 'Firmware version: %s\n' "${ESPFORGE_VERSION:-$source_version}"
             printf 'Source commit: %s\n' "$(git -C espforge rev-parse HEAD)"
@@ -105,7 +106,8 @@ jobs:
           This is a software build, not a hardware-qualified release.
           Check docs/guides/hardware.md and docs/validation/qualification-gaps.md first.
 
-          Close all serial clients. Connect the USB-to-UART connector, not native USB.
+          Close all serial clients. Flash through the UART (USB-to-UART) connector;
+          the USB connector carries the ESPForge HID management interface after boot.
           Create/activate a Python virtual environment, then install esptool 5:
             python -m pip install "esptool>=5,<6"
           Replace PORT below with the actual serial port:

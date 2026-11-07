@@ -1,7 +1,8 @@
 # Host development
 
-Python and .NET share the bridge-only dashboard in `host/web/` and the same HTTP bridge schema;
-they translate validated HTTP requests to UART. See [Shared bridge dashboard](#shared-bridge-dashboard).
+Python and .NET share the dashboard in `host/web/` and serve the same PicoForge-style HTTP API; each host owns the
+board's USB HID interface and decodes the [USB HID reports](../reference/usb-hid.md) as narrowed by the
+[ESPForge profile](../reference/espforge-profile.md). See [Shared dashboard](#shared-dashboard).
 The [Direct dashboard](../../host/direct/README.md) is independent: see
 [Direct dashboard independence](#direct-dashboard-independence).
 
@@ -16,24 +17,22 @@ dotnet test host/dotnet/ESPForge.Tests
 python3 tools/check_docs.py
 ```
 
-The Python suite includes a pseudo-terminal UART peer on POSIX and loopback HTTP tests.
-Other platforms skip only the POSIX transport case. .NET tests exercise validation and can use
-`--device PORT` to exercise the client against a synthetic UART peer. These are not firmware/hardware tests.
-[Host Validation](../../.github/workflows/host-validation.yml) runs Python 3.10 and 3.12
-on Ubuntu, macOS and Windows. Node 22 and .NET 10 checks run once per OS, alongside
-Python 3.12; the synthetic .NET UART check runs on Linux. Ceedling and documentation
-links are independent jobs in that reusable workflow.
+Python and .NET tests use fake HID devices and loopback HTTP; they do not open real hardware and are not firmware
+or hardware tests. [Host Validation](../../.github/workflows/host-validation.yml) runs Python 3.10 and 3.12 on
+Ubuntu, macOS and Windows. Node 22 and .NET 10 checks run once per OS, alongside Python 3.12. Ceedling and
+documentation links are independent jobs in that reusable workflow.
 On Ubuntu with Python 3.12 it also type-checks the Python package and verifies an installed wheel.
 [Release packages](../deployment/release.md) additionally smoke-test the extracted Direct dashboard,
 the installed Python wheel and the self-contained .NET dashboards without connected hardware.
-Browser previews must be explicitly marked simulated; never present demo screenshots as device measurements.
-For a manual UI check, run each [dashboard](../guides/getting-started.md#3-choose-a-dashboard) in demo mode
-and confirm the five full-width sections, collapsible UART/SD pin tables, preview banner,
-disabled provisioning, sample freshness and disconnect clearing.
+There is no demo mode: without a board, the hosts show an empty board list and never invent values.
 
-Keep protocol v1's field types and error semantics aligned across clients.
-Adding telemetry requires updates to firmware serialization, JS validation, references and tests.
-Do not expose serial bridges beyond loopback or introduce silent timeouts/fallback data.
+Keep report decoding, field names and error semantics aligned across the three clients. Adding telemetry requires
+updates to the firmware report, all three decoders, the references and tests. Do not expose the hosts beyond
+loopback, retry uncertain commands, or introduce silent timeouts/fallback data.
+
+On Linux, run [hid-permissions-setup.sh](../../tools/host/hid-permissions-setup.sh) once to install the udev rule
+for `CAFE:4021`. [run-python.sh](../../tools/host/run-python.sh) and [run-dotnet.sh](../../tools/host/run-dotnet.sh)
+call [hid-permissions-check.sh](../../tools/host/hid-permissions-check.sh) before starting.
 
 ## Python host design
 
@@ -46,11 +45,11 @@ or [tools/host/run-python.sh](../../tools/host/run-python.sh) from a checkout.
 | Path | Responsibility |
 |---|---|
 | `src/espforge/__init__.py` | Version from the owning installed distribution, else `0.0.0-debug` |
-| `src/espforge/cli.py`, `__main__.py` | `web` and `status` commands; pyserial is imported only after argument parsing |
-| `src/espforge/protocol/` | `validate_request`, `ProtocolError` and `demo_status`; pure and import-safe without pyserial |
-| `src/espforge/uart/` | `BoardClient`: one serial owner, serialized requests, bounded frames, no retries |
-| `src/espforge/dashboard/` | Loopback HTTP server; serves `espforge/web` when installed, else `host/web/src` |
-| `tests/test_<area>.py` | Protocol, UART, web, CLI, version and packaging contracts |
+| `src/espforge/cli.py`, `__main__.py` | `status`, `web` and `reboot` commands with `--serial` / `--device-path` selection |
+| `src/espforge/reports/` | Pure decoders and encoders for Reports 1, 2, 3, 10, 12 and 20 with ESPForge profile checks |
+| `src/espforge/hid/` | `ESPForgeHid`: `hidapi` transport for `CAFE:4021`, Feature/Input reads and Control writes |
+| `src/espforge/dashboard/` | Flask app on loopback: board discovery, one serialized monitor per board, the HTTP API; serves `espforge/web` when installed, else `host/web/src` |
+| `tests/test_<area>.py` | Report codecs, HID device, monitor, boards, wireless, web API, CLI, version and packaging contracts |
 
 `[tool.setuptools]` maps `espforge.web` to `../web/src`, so the wheel bundles exactly the shared
 dashboard assets and nothing is copied into `host/python`. pyright runs in strict mode over
@@ -65,7 +64,7 @@ build/wheel-check/bin/python -m pip install build/wheels/*.whl
 build/wheel-check/bin/python -I tools/check_python_wheel.py 0.0.0.dev0
 ```
 
-## Shared bridge dashboard
+## Shared dashboard
 
 `host/web/` follows the PicoForge shared-dashboard layout. Both hosts serve `src/` as the site root:
 Python reads it from the checkout, and .NET copies `src/**` into `wwwroot/` on build and publish.
@@ -74,19 +73,20 @@ Python reads it from the checkout, and .NET copies `src/**` into `wwwroot/` on b
 |---|---|
 | `src/index.html`, `src/favicon.svg`, `src/css/dashboard.css` | Static page, icon and styles; no inline code |
 | `src/js/app.mjs` | Composition root and session lifecycle; the only module reading browser globals |
-| `src/js/dashboard-api.mjs` | `/api/host` and `/api/request` client and protocol v1 status validation |
+| `src/js/dashboard-api.mjs` | Client of the board, status, settings, reboot, re-sync and wireless routes |
 | `src/js/dashboard.mjs` | Rendering and required-element lookup; no I/O |
 | `src/js/operation-state.mjs` | Control eligibility shared by rendering and command handlers |
-| `src/js/wireless-form.mjs` | UTF-8 credential limits and the Wi-Fi connect-and-save form |
+| `src/js/wireless-form.mjs` | Wi-Fi scan/test and Control key dialog |
 | `tsconfig.json` | No-emit JSDoc type check of every `src/js` module |
 
 `tests/js/X.test.mjs` mirrors `src/js/X.mjs`; `tests/integration/` mounts `app.mjs` on the parsed page,
-`tests/contracts/` enforces the layout, and `tests/browser/` drives Chromium against the Python host package in demo mode.
+`status-contract.json` pins the status JSON shared by both hosts, and `tests/browser/` drives Chromium against the
+Python and .NET hosts with fake boards. See the [shared dashboard README](../../host/web/README.md) for the route table.
 
 ```sh
 node host/web/tests/run-tests.mjs
 npx --yes --package typescript@5.9.3 tsc --project host/web/tsconfig.json
-python3 host/web/tests/browser/run.py   # requires the editable host/python install and host/web/tests/browser/requirements.txt
+python3 host/web/tests/browser/run.py   # requires the editable host/python install, the .NET SDK and host/web/tests/browser/requirements.txt
 ```
 
 ## Direct dashboard independence

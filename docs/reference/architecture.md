@@ -19,15 +19,15 @@ USB HID and BLE carry the same PicoForge reports and Control opcodes, as adapted
 | Layer | Location | Responsibility |
 | --- | --- | --- |
 | Application loop | `firmware/src/main.c` | Boot order and the 20 ms poll of control, Wi-Fi, telemetry and USB |
-| Board glue | `firmware/src/board.c`, `espforge.h` | Application lock, UID/serial, reset cause, Identity and Configuration reports, delayed reboot |
-| Control dispatcher | `firmware/src/control.c`, `ef_platform.h` | Portable Report 20 opcode handling shared by USB and BLE; talks to Zephyr only through platform hooks |
-| Report encoding | `firmware/src/hid_reports.c` | Portable byte layouts of Reports 1, 2, 3, 10, 12 and 20 |
-| Wireless staging and auth | `firmware/src/wireless_stage.c`, `wireless_auth.c`, `sha256.c` | Staged credentials with expiry; BLE session unlock and per-command HMAC proofs |
-| USB HID | `firmware/src/usb_hid.c` | `device_next` HID device `CAFE:4021`: Feature reports 1, 2, 12, 20 and periodic Input reports 3 and 10 |
-| BLE | `firmware/src/ble.c` | GATT service, read snapshots, Control writes, advertising schedule |
-| Wi-Fi | `firmware/src/wifi.c` | Saved/test/scan state machine over Zephyr `net_mgmt` |
-| Telemetry and storage | `firmware/src/telemetry.c`, `storage.c` | CPU load, temperature and clock; boot-time SD mount and card facts |
-| Boot settings | `firmware/src/boot_config.c`, `boot_flash.c`, `system_clock.c` | One CRC-checked next-boot record in `storage_partition`; CPU clock, radio switches and saved credentials ([settings](settings.md)) |
+| Board glue | `firmware/src/config/board.c`, `app/espforge.h` | Application lock, UID/serial, reset cause, Identity and Configuration reports, delayed reboot |
+| Control dispatcher | `firmware/src/app/control/control.c`, `platform/ef_platform.h` | Portable Report 20 opcode handling shared by USB and BLE; talks to Zephyr only through platform hooks |
+| Report encoding | `firmware/src/app/usb/hid_reports.c` | Portable byte layouts of Reports 1, 2, 3, 10, 12 and 20 |
+| Wireless staging and auth | `firmware/src/app/wireless/wireless_stage.c`, `wireless_auth.c`, `sha256.c` | Staged credentials with expiry; BLE session unlock and per-command HMAC proofs |
+| USB HID | `firmware/src/app/usb/usb_hid.c` | `device_next` HID device `CAFE:4021`: Feature reports 1, 2, 12, 20 and periodic Input reports 3 and 10 |
+| BLE | `firmware/src/app/wireless/bluetooth/ble.c` | GATT service, read snapshots, Control writes, advertising schedule |
+| Wi-Fi | `firmware/src/app/wireless/wifi/wifi.c` | Saved/test/scan state machine over Zephyr `net_mgmt` |
+| Telemetry and storage | `firmware/src/app/telemetry.c`, `app/storage/storage.c` | CPU load, temperature and clock; boot-time SD mount and card facts |
+| Boot settings | `firmware/src/platform/boot_config.c`, `boot_flash.c`, `system_clock.c` | One CRC-checked next-boot record in `storage_partition`; CPU clock, radio switches and saved credentials ([settings](settings.md)) |
 | Board configuration | `firmware/boards/esp32s3_devkitc.overlay` | USB HID device, SD bus and chip select, temperature sensor |
 | Direct dashboard | `host/direct/` | Independent PicoForge-style browser app (own HTML/CSS/favicon/ES modules) with WebHID, Web Bluetooth and a loopback static server |
 | Shared dashboard | `host/web/` | PicoForge-style `src/` (HTML, favicon, CSS, ES modules) served by Python and .NET |

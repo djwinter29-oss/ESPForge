@@ -1,4 +1,4 @@
-#include "wireless_stage.h"
+#include "app/wireless/wireless_stage.h"
 
 #include <string.h>
 

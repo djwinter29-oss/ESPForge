@@ -11,5 +11,6 @@ what actually ran, what was simulated, and what remains untested.
 - [Shared bridge dashboard layout](2026-11-07-shared-web-layout.md)
 - [Python host package layout](2026-11-07-python-package-layout.md)
 - [Boot settings](2026-11-07-boot-settings.md)
+- [USB HID, BLE and Wi-Fi implementation](2026-11-07-hid-ble-implementation.md)
 
 Records are evidence, not operating instructions or blanket qualification.

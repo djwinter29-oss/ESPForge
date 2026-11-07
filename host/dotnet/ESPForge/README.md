@@ -13,11 +13,9 @@ dotnet run --project host/dotnet/ESPForge/ESPForge.csproj
 
 Select a default board at launch with `--serial SERIAL` (the 16 hex-digit Report 1 UID) or `--device-path HID_PATH`.
 The options are mutually exclusive; without either, the first discovered board is selected. Use **Rescan** to refresh
-the board list. On Linux, the HID node needs user access, for example with this udev rule:
-
-```text
-SUBSYSTEM=="hidraw", ATTRS{idVendor}=="cafe", ATTRS{idProduct}=="4021", MODE="0660", TAG+="uaccess"
-```
+the board list. On Linux, grant HID access once with
+[hid-permissions-setup.sh](../../../tools/host/hid-permissions-setup.sh), then reconnect the board.
+[run-dotnet.sh](../../../tools/host/run-dotnet.sh) checks those permissions and runs this project.
 
 The host follows the [USB HID reference](../../../docs/reference/usb-hid.md) as amended by the
 [ESPForge profile](../../../docs/reference/espforge-profile.md): product `0x0003`, MCU `3` (ESP32-S3), board model `1`,

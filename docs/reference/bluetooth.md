@@ -212,7 +212,7 @@ These bytes are a public conformance vector, not a production key:
 | Command proof | `c090cfe4b5d641b4dd4f8d710c7dad6d` |
 
 Proofs are the first 16 bytes of HMAC-SHA256 as defined above. In ESPForge the executable vector is checked by
-[test_wireless_auth.c](../../firmware/tests/test_wireless_auth.c) and the
+[test_wireless_auth.c](../../firmware/tests/app/wireless/test_wireless_auth.c) and the
 [Direct BLE tests](../../host/direct/tests/transport/ble.test.mjs).
 
 ## Exchange Sequence
@@ -362,7 +362,7 @@ force a save, or change USB storage ownership.
 | Test ID | Requirement | Verification |
 | --- | --- | --- |
 | BT-001 | Startup/auth, indication confirmation/timeout disconnect, reconnect-persistent rate limit, CCCD, snapshots, isolation and timers. | `tests/contracts/test_bluetooth.py` |
-| BT-002 | HMAC-SHA256 BLE proof vectors, including the worked vector above. | [test_wireless_auth.c](../../firmware/tests/test_wireless_auth.c), [Direct BLE tests](../../host/direct/tests/transport/ble.test.mjs) |
+| BT-002 | HMAC-SHA256 BLE proof vectors, including the worked vector above. | [test_wireless_auth.c](../../firmware/tests/app/wireless/test_wireless_auth.c), [Direct BLE tests](../../host/direct/tests/transport/ble.test.mjs) |
 | BT-003 | Service Changed subscription/fallback, UUID lookup, proof signing and the restricted 9-byte command envelope. | [Direct BLE tests](../../host/direct/tests/transport/ble.test.mjs) |
 
 ## Implementation

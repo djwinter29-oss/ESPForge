@@ -2,10 +2,10 @@
  * Bluetooth LE peripheral: report mirrors, session unlock, command proofs and the 9-byte control characteristic
  * (docs/reference/bluetooth.md with the docs/reference/espforge-profile.md adaptations).
  */
-#include "espforge.h"
-#include "boot_config.h"
-#include "control.h"
-#include "wireless_auth.h"
+#include "app/espforge.h"
+#include "platform/boot_config.h"
+#include "app/control/control.h"
+#include "app/wireless/wireless_auth.h"
 
 #include <stdio.h>
 #include <string.h>

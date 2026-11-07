@@ -66,14 +66,16 @@ The server always binds to `127.0.0.1`. Python and .NET default to ports 8001 an
 Use **Rescan** and the dashboard's board selector to switch between attached boards. Run only one HID host connection
 per board; separate host processes can conflict for access.
 
-On Linux, grant your user access to the HID device, then reconnect the board and restart the dashboard. For example,
-`/etc/udev/rules.d/60-espforge.rules`:
+On Linux, grant your user access to the HID device once with
+[hid-permissions-setup.sh](../../tools/host/hid-permissions-setup.sh), then reconnect the board and restart the
+dashboard. It installs `/etc/udev/rules.d/99-espforge-hid.rules` for `CAFE:4021` and may prompt for sudo:
 
-```text
-KERNEL=="hidraw*", ATTRS{idVendor}=="cafe", ATTRS{idProduct}=="4021", TAG+="uaccess"
+```sh
+bash tools/host/hid-permissions-setup.sh
 ```
 
-Reload with `sudo udevadm control --reload-rules && sudo udevadm trigger`.
+From a source checkout, [run-python.sh](../../tools/host/run-python.sh) creates `build/espforge`, installs this package
+in editable mode on first use, checks HID permissions and runs `espforge` (default command `web`).
 
 ## Dashboard Operations
 

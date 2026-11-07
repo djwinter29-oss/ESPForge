@@ -9,21 +9,22 @@
   :test:
     - +:firmware/tests/**
   :source:
-    - firmware/src
+    - firmware/src/**
   :include:
     - firmware/src
+    - firmware/src/**
 
 :files:
   :source:
     - -:firmware/src/main.c
-    - -:firmware/src/board.c
-    - -:firmware/src/usb_hid.c
-    - -:firmware/src/ble.c
-    - -:firmware/src/wifi.c
-    - -:firmware/src/telemetry.c
-    - -:firmware/src/storage.c
-    - -:firmware/src/boot_flash.c
-    - -:firmware/src/system_clock.c
+    - -:firmware/src/config/board.c
+    - -:firmware/src/platform/boot_flash.c
+    - -:firmware/src/platform/system_clock.c
+    - -:firmware/src/app/telemetry.c
+    - -:firmware/src/app/storage/storage.c
+    - -:firmware/src/app/usb/usb_hid.c
+    - -:firmware/src/app/wireless/bluetooth/ble.c
+    - -:firmware/src/app/wireless/wifi/wifi.c
 
 :cmock:
   :mock_prefix: mock_

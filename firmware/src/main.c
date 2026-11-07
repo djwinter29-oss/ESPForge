@@ -1,6 +1,6 @@
-#include "espforge.h"
-#include "boot_config.h"
-#include "control.h"
+#include "app/espforge.h"
+#include "platform/boot_config.h"
+#include "app/control/control.h"
 
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>

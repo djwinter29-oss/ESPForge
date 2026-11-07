@@ -1,5 +1,5 @@
-#include "wireless_auth.h"
-#include "sha256.h"
+#include "app/wireless/wireless_auth.h"
+#include "app/wireless/sha256.h"
 
 #include <string.h>
 

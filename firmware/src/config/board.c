@@ -1,6 +1,6 @@
-#include "espforge.h"
-#include "boot_config.h"
-#include "ef_platform.h"
+#include "app/espforge.h"
+#include "platform/boot_config.h"
+#include "platform/ef_platform.h"
 
 #include <errno.h>
 #include <stdlib.h>

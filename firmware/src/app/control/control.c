@@ -1,7 +1,7 @@
-#include "control.h"
-#include "boot_config.h"
-#include "ef_platform.h"
-#include "wireless_stage.h"
+#include "app/control/control.h"
+#include "platform/boot_config.h"
+#include "platform/ef_platform.h"
+#include "app/wireless/wireless_stage.h"
 
 #include <string.h>
 

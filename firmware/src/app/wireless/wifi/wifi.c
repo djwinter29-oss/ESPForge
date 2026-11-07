@@ -4,10 +4,10 @@
  * Mirrors PicoForge's wifi.c on Zephyr net_mgmt. Driver events are queued by the net_mgmt callback and applied in
  * ef_wifi_poll(); net_mgmt requests are issued from the poll without holding the application lock.
  */
-#include "espforge.h"
-#include "boot_config.h"
-#include "control.h"
-#include "ef_platform.h"
+#include "app/espforge.h"
+#include "platform/boot_config.h"
+#include "app/control/control.h"
+#include "platform/ef_platform.h"
 
 #include <errno.h>
 #include <string.h>

@@ -25,7 +25,7 @@ from espforge.reports import (
 )
 from espforge.reports.wireless import WIRELESS_STATUS_SIZE
 
-FIRMWARE_HEADER = Path(__file__).resolve().parents[3] / "firmware/src/hid_reports.h"
+FIRMWARE_HEADER = Path(__file__).resolve().parents[3] / "firmware/src/app/usb/hid_reports.h"
 
 
 def status_contract():

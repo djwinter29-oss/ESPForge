@@ -1,5 +1,5 @@
-#include "hid_reports.h"
-#include "boot_config.h"
+#include "app/usb/hid_reports.h"
+#include "platform/boot_config.h"
 
 #include <string.h>
 

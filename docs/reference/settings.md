@@ -24,7 +24,7 @@ Wi-Fi and BLE stay **enabled by default**: an erased, missing or invalid record 
 
 ## Architecture
 
-All settings pass through one RAM copy owned by [boot_config.c](../../firmware/src/boot_config.c). Writers only
+All settings pass through one RAM copy owned by [boot_config.c](../../firmware/src/platform/boot_config.c). Writers only
 stage values in RAM; one save call commits the complete record to flash. Consumers read the boot snapshot, so a saved
 change never alters running hardware.
 
@@ -60,7 +60,7 @@ The design rules are:
 - **Boot never depends on flash.** Any missing, unreadable or invalid record loads complete defaults.
 - **No generic store.** The fixed record is read directly and written as one padded page through the
   `flash_area` API. Zephyr's settings/NVS subsystems are not used. Record validation is private to `boot_config.c`
-  and flash access is private to [boot_flash.c](../../firmware/src/boot_flash.c).
+  and flash access is private to [boot_flash.c](../../firmware/src/platform/boot_flash.c).
 
 ## RAM Copy Lifecycle
 
@@ -216,7 +216,7 @@ A board or partition table without `storage_partition` does not build.
 ## System Clock
 
 The saved profile is applied in `main()` by `system_clock_apply()`
-([system_clock.c](../../firmware/src/system_clock.c)), after the settings load and before the radios, SD mount and
+([system_clock.c](../../firmware/src/platform/system_clock.c)), after the settings load and before the radios, SD mount and
 USB start. It never writes flash.
 
 ```mermaid
@@ -303,7 +303,7 @@ flag is Unsupported.
 ## Tests
 
 Host tests run with `bundle exec ceedling test:all`. The focused check is
-`bundle exec ceedling test:test_boot_config`. [test_boot_config.c](../../firmware/tests/test_boot_config.c)
+`bundle exec ceedling test:test_boot_config`. [test_boot_config.c](../../firmware/tests/platform/test_boot_config.c)
 replaces `boot_flash.c` with an in-memory fake. Its tests cover:
 
 - defaults from erased flash and from read errors;
@@ -313,6 +313,6 @@ replaces `boot_flash.c` with an in-memory fake. Its tests cover:
 - unchanged-save detection and failed-save discard;
 - setter limits, and every malformed field with a valid CRC.
 
-[test_control.c](../../firmware/tests/test_control.c) covers opcode `5`, the commit flag and the radio switches. Flash
+[test_control.c](../../firmware/tests/app/control/test_control.c) covers opcode `5`, the commit flag and the radio switches. Flash
 programming, clock changes and saved-network reconnects need hardware and are listed in the
 [qualification gaps](../validation/qualification-gaps.md).

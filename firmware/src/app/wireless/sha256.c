@@ -1,4 +1,4 @@
-#include "sha256.h"
+#include "app/wireless/sha256.h"
 
 #include <string.h>
 

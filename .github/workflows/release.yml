@@ -152,7 +152,7 @@ jobs:
 
           version = os.environ["VERSION"]
           Path("build/packages").mkdir(parents=True, exist_ok=True)
-          footer = "Software checks do not qualify physical UART, Wi-Fi, BLE or SD behavior.\n"
+          footer = "Software checks do not qualify physical USB HID, Wi-Fi, BLE or SD behavior.\n"
 
           # Direct is standalone: its own web/, server.py and LICENSE, like PicoForge Direct.
           direct = Path("build/direct-release")
@@ -276,7 +276,7 @@ jobs:
             The Direct archive is standalone; the Python wheel bundles the shared dashboard; .NET hosts are self-contained.
 
             **Not hardware-qualified:** firmware has not been flashed by this workflow.
-            Physical UART, Wi-Fi, BLE and SD-card behavior remain unverified. SD testing is deferred.
+            Physical USB HID, Wi-Fi, BLE and SD-card behavior remain unverified. SD testing is deferred.
             Read the included flashing instructions and qualification gaps before using hardware.
           files: build/packages/*
           fail_on_unmatched_files: true

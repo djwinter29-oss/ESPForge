@@ -8,7 +8,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "hid_reports.h"
+#include "app/usb/hid_reports.h"
 
 #ifndef ESPFORGE_VERSION
 #define ESPFORGE_VERSION "0.1.0"

@@ -1,4 +1,4 @@
-#include "boot_flash.h"
+#include "platform/boot_flash.h"
 
 #include <errno.h>
 #include <string.h>
