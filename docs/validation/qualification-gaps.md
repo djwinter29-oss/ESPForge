@@ -4,7 +4,7 @@ This starter is intended to be ready for later hardware connection, not qualifie
 
 | Area | Current boundary |
 | --- | --- |
-| ESP32-S3 target | N8/default DevKitC PROCPU source build; no physical flash/boot observation |
+| ESP32-S3 target | DevKitC-1 N16R8 PROCPU source build (16 MB flash, 8 MB octal PSRAM); no physical flash/boot or PSRAM memory-test observation |
 | Firmware unit tests | Ceedling covers the portable control dispatcher, report encoding, wireless staging/auth, SHA-256 and boot-settings record with mocked platform hooks and a fake flash; no Zephyr execution |
 | USB HID | Firmware builds the `device_next` HID device; hosts are tested with fake devices. Enumeration, report timing and reconnect on a real host are pending |
 | BLE | Firmware GATT, session unlock and Control writes build; Direct client tested with fakes. Advertising, long reads, authentication and reconnect pending on hardware |
@@ -13,7 +13,7 @@ This starter is intended to be ready for later hardware connection, not qualifie
 | SD card | Drivers, proposed wiring and safe mount code ready; **all SD hardware tests intentionally deferred** |
 | Dashboards | Explicit synthetic preview and protocol tests; no live-board screenshot or measurements |
 | Security | BLE Control key authentication without link encryption; unencrypted flash; physical USB/UART control; loopback hosts |
-| Variants | N4/N16/PSRAM/other S3 boards are not qualified targets |
+| Variants | Only N16R8 is configured; N4/N8/octal-flash modules and other S3 boards are not targets |
 | Product readiness | No power-loss, soak, performance, RF, EMC or regulatory qualification |
 
 When hardware arrives, first validate USB enumeration and Report 1, then the console output, BLE and Wi-Fi independently.

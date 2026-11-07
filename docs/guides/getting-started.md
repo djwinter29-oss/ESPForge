@@ -6,7 +6,7 @@ You can build and preview all three dashboards before connecting hardware.
 
 ## 1. Prepare a Zephyr workspace
 
-Initial build target: ESP32-S3-DevKitC, PROCPU, default 8 MB flash DTS.
+Build target: ESP32-S3-DevKitC-1 N16R8, PROCPU, 16 MB flash and 8 MB octal PSRAM.
 Check the module marking against the [hardware guide](hardware.md) before flashing.
 Linux instructions below use Python 3.12, Zephyr 4.3.2, and Zephyr SDK 0.17.4.
 Install Zephyr's [host prerequisites](https://docs.zephyrproject.org/4.3.0/develop/getting_started/index.html)
@@ -68,7 +68,7 @@ uploads. No SD-card access is performed.
 Replace the port with the real device, for example `COM4` on Windows with a Bash-capable
 Zephyr environment. From a native Windows shell, use the equivalent
 `west flash -d espforge/build/firmware --skip-rebuild -r esp32 --esp-device COM4 --esp-baud-rate 460800 --no-erase`.
-Use a data-capable USB cable and confirm your board is the matching N8 variant.
+Use a data-capable USB cable and confirm your board is the matching N16R8 variant.
 On Linux, identify the bridge using `python -m serial.tools.list_ports` from the Zephyr venv (pyserial is installed
 with Zephyr's requirements); check serial permissions rather than running the flasher as root.
 

@@ -3,10 +3,17 @@
 ## Initial target
 
 The starter targets `esp32s3_devkitc/esp32s3/procpu` in Zephyr 4.3.2.
-Its default DTS describes an ESP32-S3-WROOM module with 8 MB flash (N8).
-No PSRAM is assumed or enabled. Other S3 development boards and N4/N16/PSRAM module variants
-need a matching DTS/flash configuration and their own build/flash validation; do not assume compatibility
-from the ESP32-S3 chip name alone.
+ESPForge builds for the ESP32-S3-DevKitC-1 **N16R8** (ESP32-S3-WROOM-1-N16R8 module): 16 MB quad flash and
+8 MB octal PSRAM. The upstream board DTS describes the N8 module, so
+[esp32s3_devkitc.overlay](../../firmware/boards/esp32s3_devkitc.overlay) sets 16 MB flash, the 16 MB partition
+table (settings in `storage_partition` at `0xFB0000`) and the 8 MB PSRAM, and [prj.conf](../../firmware/prj.conf)
+enables octal PSRAM (`CONFIG_ESP_SPIRAM`, `CONFIG_SPIRAM_MODE_OCT`) at 40 MHz with a boot-time memory test.
+PSRAM provides a separate 1 MB shared multi-heap; the kernel heap, Wi-Fi and BLE buffers stay in internal RAM.
+Flash runs in DIO at 80 MHz.
+
+Check the module marking. An image for N16R8 does not suit N4/N8 modules (smaller flash, no octal PSRAM)
+or N32R16V/N16R16VA modules (octal flash). Other boards need their own DTS/flash configuration and validation;
+do not assume compatibility from the ESP32-S3 chip name alone.
 
 The DevKitC has two USB-C connectors, and ESPForge uses both:
 
@@ -36,6 +43,7 @@ This is proposed wiring, not electrically qualified hardware.
 
 GPIO assignments use Zephyr's SPI2 default pinctrl and the project's overlay.
 SPI3 is disabled because its default signals can conflict with module flash/PSRAM connections.
+Octal PSRAM occupies GPIO33-37, so those pins are not available on N16R8.
 Leave boot-strapping and onboard flash/PSRAM pins alone. Consult your exact board schematic.
 The requested SPI ceiling is 10 MHz; this is not a measured bus frequency or throughput claim.
 

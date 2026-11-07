@@ -12,5 +12,6 @@ what actually ran, what was simulated, and what remains untested.
 - [Python host package layout](2026-11-07-python-package-layout.md)
 - [Boot settings](2026-11-07-boot-settings.md)
 - [USB HID, BLE and Wi-Fi implementation](2026-11-07-hid-ble-implementation.md)
+- [N16R8 flash and PSRAM](2026-11-07-n16r8-flash-psram.md)
 
 Records are evidence, not operating instructions or blanket qualification.

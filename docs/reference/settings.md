@@ -199,7 +199,8 @@ values must survive a power loss, or writes become frequent, upgrade to a dual-s
 ## Flash Reservation
 
 The record lives at offset `0` of the devicetree `storage_partition`. On the `esp32s3_devkitc/esp32s3/procpu`
-target, that partition comes from Zephyr's `partitions_0x0_amp_4M.dtsi` table: `0x3B0000`, 192 KiB. Only the first
+target, the [board overlay](../../firmware/boards/esp32s3_devkitc.overlay) selects Zephyr's 16 MB
+`partitions_0x0_amp_16M.dtsi` table for the N16R8 module: `0xFB0000`, 192 KiB. Only the first
 4 KiB sector is used. The offset is taken from devicetree (`FIXED_PARTITION_ID(storage_partition)`), not
 hard-coded in C.
 
@@ -209,7 +210,7 @@ hard-coded in C.
 - [flash.sh](../../tools/firmware/flash.sh) passes `--no-erase`, so normal uploads keep saved settings. A full-chip
   erase, or a different partition table, clears them.
 - To reset settings manually, erase only the settings sector from an initialized workspace:
-  `python -m esptool --chip esp32s3 --port PORT erase_region 0x3B0000 0x1000`. The next boot loads defaults.
+  `python -m esptool --chip esp32s3 --port PORT erase_region 0xFB0000 0x1000`. The next boot loads defaults.
 
 A board or partition table without `storage_partition` does not build.
 

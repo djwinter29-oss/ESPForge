@@ -271,7 +271,7 @@ jobs:
           draft: false
           prerelease: false
           body: |
-            Software-only ESP32-S3-DevKitC N8 / 8 MB release, built with pinned Zephyr dependencies.
+            Software-only ESP32-S3-DevKitC-1 N16R8 (16 MB flash, 8 MB octal PSRAM) release, built with pinned Zephyr dependencies.
             Firmware and host packages include source provenance and license notices.
             The Direct archive is standalone; the Python wheel bundles the shared dashboard; .NET hosts are self-contained.
 

@@ -9,6 +9,7 @@ listed here is implemented as the imported references describe.
 
 | Item | ESPForge value |
 | --- | --- |
+| Target module | ESP32-S3-DevKitC-1 **N16R8**: 16 MB quad flash, 8 MB octal PSRAM. Reports carry no PSRAM field: `ram_total_bytes` and `ram_reserved_bytes` describe internal SRAM only. |
 | USB connector | DevKitC **USB** connector (native USB OTG, GPIO19 D- / GPIO20 D+). |
 | USB stack | Zephyr `device_next` stack with the `udc_dwc2` driver (Zephyr 4.3.2 or later). |
 | USB interfaces | One vendor HID interface (interface `0`). No CDC ACM and no MSC. |

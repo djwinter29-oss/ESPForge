@@ -63,15 +63,15 @@ jobs:
 
       - name: Collect firmware, provenance and dependency licenses
         run: |
-          for expected in 'CONFIG_ESP_SIMPLE_BOOT=y' 'CONFIG_FLASH_SIZE=8388608' \
+          for expected in 'CONFIG_ESP_SIMPLE_BOOT=y' 'CONFIG_FLASH_SIZE=16777216' \
             'CONFIG_BOARD_TARGET="esp32s3_devkitc/esp32s3/procpu"'; do
             if ! grep -Fxq "$expected" espforge/build/firmware/zephyr/.config; then
-              printf 'Error: N8 simple-boot packaging requires %s.\n' "$expected" >&2
+              printf 'Error: N16R8 simple-boot packaging requires %s.\n' "$expected" >&2
               exit 1
             fi
           done
           for expected in --esp-app-address=0x0 --esp-flash-mode=dio \
-            --esp-flash-freq=80m --esp-flash-size=8MB; do
+            --esp-flash-freq=80m --esp-flash-size=16MB; do
             if ! grep -Fq -- "$expected" espforge/build/firmware/zephyr/runners.yaml; then
               printf 'Error: packaged flashing instructions require runner option %s.\n' "$expected" >&2
               exit 1
@@ -98,11 +98,11 @@ jobs:
           {
             printf 'Firmware version: %s\n' "${ESPFORGE_VERSION:-$source_version}"
             printf 'Source commit: %s\n' "$(git -C espforge rev-parse HEAD)"
-            printf 'Board: esp32s3_devkitc/esp32s3/procpu\nZephyr SDK: 0.17.4\n'
+            printf 'Board: esp32s3_devkitc/esp32s3/procpu\nModule: ESP32-S3-WROOM-1-N16R8\nZephyr SDK: 0.17.4\n'
             printf 'Software build only; not flashed or hardware-qualified. SD testing is deferred.\n'
           } > "$package/BUILD-INFO.txt"
           cat > "$package/FLASHING.txt" <<'EOF'
-          Target: ESP32-S3-DevKitC N8 / 8 MB flash, PROCPU, simple-boot image.
+          Target: ESP32-S3-DevKitC-1 N16R8 / 16 MB flash, 8 MB octal PSRAM, PROCPU, simple-boot image.
           This is a software build, not a hardware-qualified release.
           Check docs/guides/hardware.md and docs/validation/qualification-gaps.md first.
 
@@ -111,7 +111,7 @@ jobs:
           Create/activate a Python virtual environment, then install esptool 5:
             python -m pip install "esptool>=5,<6"
           Replace PORT below with the actual serial port:
-            python -m esptool --chip esp32s3 --port PORT --baud 460800 write-flash --flash-mode dio --flash-freq 80m --flash-size 8MB 0x0 zephyr.bin
+            python -m esptool --chip esp32s3 --port PORT --baud 460800 write-flash --flash-mode dio --flash-freq 80m --flash-size 16MB 0x0 zephyr.bin
           This overwrites image sectors; it does not request a full-chip erase.
           Do not use this image on a different flash/module configuration.
           If reset fails, hold BOOT, press/release RESET, release BOOT and retry.

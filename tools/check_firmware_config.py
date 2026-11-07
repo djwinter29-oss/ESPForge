@@ -28,17 +28,21 @@ def main() -> int:
         "NET_DHCPV4", "SPI_SDHC", "DISK_DRIVER_SDMMC", "FAT_FILESYSTEM_ELM",
         "FLASH", "FLASH_MAP", "CLOCK_CONTROL", "USB_DEVICE_STACK_NEXT",
         "USBD_HID_SUPPORT", "HWINFO", "REBOOT", "THREAD_RUNTIME_STATS",
+        "ESP_SPIRAM", "SPIRAM_MODE_OCT",
     ]
+    values = {"FLASH_SIZE": "16777216", "ESP_SPIRAM_SIZE": "8388608"}
     disabled = ["FS_FATFS_MOUNT_MKFS", "FS_FATFS_MKFS", "JSON_LIBRARY", "BT_SMP"]
     failures = [f"CONFIG_{name} must be enabled" for name in enabled
                 if config.get(f"CONFIG_{name}") != "y"]
     failures.extend(f"CONFIG_{name} must be disabled" for name in disabled
                     if config.get(f"CONFIG_{name}", "n") != "n")
+    failures.extend(f"CONFIG_{name} must be {value} for the N16R8 module" for name, value in values.items()
+                    if config.get(f"CONFIG_{name}") != value)
     failures.extend(settings_partition_failures(root / "build/firmware/zephyr", config))
     if failures:
         print("\n".join(failures), file=sys.stderr)
         return 1
-    print("PASS: Wi-Fi, BLE, coexistence, DHCP, SPI SD/FAT, USB HID, settings flash; no mkfs or JSON")
+    print("PASS: N16R8 16 MB flash and 8 MB octal PSRAM, Wi-Fi, BLE, coexistence, DHCP, SPI SD/FAT, USB HID, settings flash; no mkfs or JSON")
     return 0
 
 

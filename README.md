@@ -9,7 +9,7 @@ strategy; this is an ESP-specific implementation, not a compatible firmware port
 
 | Foundation | Initial implementation |
 | --- | --- |
-| Target | ESP32-S3-DevKitC, default N8 / 8 MB flash, Zephyr PROCPU |
+| Target | ESP32-S3-DevKitC-1 N16R8: 16 MB flash, 8 MB octal PSRAM, Zephyr PROCPU |
 | Firmware | Pinned Zephyr 4.3.2 / SDK 0.17.4; PicoForge's USB HID and Bluetooth LE protocol, as adapted by the [ESPForge profile](docs/reference/espforge-profile.md) |
 | Firmware unit tests | Pinned Ceedling / Unity / CMock: control dispatcher, report encoding, wireless staging and authentication, SHA-256 and boot settings |
 | Radios | **Wi-Fi and BLE enabled by default**, software coexistence, Wi-Fi scan/test/save, BLE Control key authentication |

@@ -76,7 +76,7 @@ Windows/macOS packages are not publisher-signed or notarized; local OS security 
 require explicit approval. No signing credentials are configured by these workflows.
 
 The firmware ZIP is not a relocatable west build directory. Its `FLASHING.txt` gives the
-esptool 5 command for the selected simple-boot N8 image at `0x0`, with DIO/80 MHz/8 MB flash
+esptool 5 command for the selected simple-boot N16R8 image at `0x0`, with DIO/80 MHz/16 MB flash
 parameters. `runners.yaml` records how it was built; do not feed its CI paths to a local west
 runner. The [source-build flash wrapper](../guides/getting-started.md#2-build-now-flash-later)
 remains the supported west-based path.
