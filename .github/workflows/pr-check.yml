@@ -1,0 +1,23 @@
+name: PR Check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-check-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  host-validation:
+    name: Host and firmware unit tests
+    uses: ./.github/workflows/host-validation.yml
+
+  firmware:
+    name: ESP32-S3 target build
+    uses: ./.github/workflows/firmware-build.yml

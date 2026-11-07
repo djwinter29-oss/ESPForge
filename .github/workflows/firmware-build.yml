@@ -1,0 +1,130 @@
+name: Firmware build
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Release firmware version; empty uses the source default
+        type: string
+        default: ""
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Optional firmware version in MAJOR.MINOR.PATCH form
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  firmware:
+    name: Zephyr ESP32-S3-DevKitC (PROCPU, SPI)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      ESPFORGE_VERSION: ${{ inputs.version }}
+      CMAKE_BUILD_PARALLEL_LEVEL: 2
+    steps:
+      - name: Checkout manifest repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: espforge
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+
+      - name: Use source commit timestamp for build dates
+        run: echo "SOURCE_DATE_EPOCH=$(git -C espforge show -s --format=%ct HEAD)" >> "$GITHUB_ENV"
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build gperf device-tree-compiler xz-utils
+
+      - name: Initialize pinned Zephyr workspace
+        run: |
+          python -m pip install --disable-pip-version-check --no-input west
+          west init -l espforge
+          west update --narrow -o=--depth=1
+          python -m pip install --disable-pip-version-check --no-input -r zephyr/scripts/requirements-base.txt \
+            -r modules/hal/espressif/zephyr/requirements.txt
+          west blobs fetch hal_espressif
+          west sdk install --version 0.17.4 --toolchains xtensa-espressif_esp32s3_zephyr-elf
+
+      - name: Build and check required defaults
+        run: |
+          bash espforge/tools/firmware/build.sh
+          python espforge/tools/check_firmware_config.py
+          west manifest --freeze > espforge/build/firmware/west-manifest.yml
+
+      - name: Collect firmware, provenance and dependency licenses
+        run: |
+          for expected in 'CONFIG_ESP_SIMPLE_BOOT=y' 'CONFIG_FLASH_SIZE=16777216' \
+            'CONFIG_BOARD_TARGET="esp32s3_devkitc/esp32s3/procpu"'; do
+            if ! grep -Fxq "$expected" espforge/build/firmware/zephyr/.config; then
+              printf 'Error: N16R8 simple-boot packaging requires %s.\n' "$expected" >&2
+              exit 1
+            fi
+          done
+          for expected in --esp-app-address=0x0 --esp-flash-mode=dio \
+            --esp-flash-freq=80m --esp-flash-size=16MB; do
+            if ! grep -Fq -- "$expected" espforge/build/firmware/zephyr/runners.yaml; then
+              printf 'Error: packaged flashing instructions require runner option %s.\n' "$expected" >&2
+              exit 1
+            fi
+          done
+          package=espforge/build/firmware-package
+          mkdir -p "$package/licenses"
+          cp espforge/LICENSE "$package/LICENSE"
+          cp espforge/build/firmware/zephyr/{zephyr.bin,zephyr.elf,.config,zephyr.dts,runners.yaml} "$package/"
+          cp espforge/build/firmware/west-manifest.yml "$package/"
+          cp -R espforge/docs "$package/docs"
+          for component in zephyr modules/hal/espressif modules/crypto/mbedtls; do
+            find "$component" -name .git -prune -o -type f \
+              \( -iname 'license*' -o -iname 'copying*' -o -iname 'notice*' \
+                 -o -iname 'copyright*' -o -iname '*third*notice*' \) -print0 |
+            while IFS= read -r -d '' source; do
+              destination="$package/licenses/$source"
+              mkdir -p "$(dirname "$destination")"
+              cp "$source" "$destination"
+            done
+          done
+          sed -n '1,/\*\//p' modules/fs/fatfs/ff.c > "$package/licenses/fatfs-LICENSE"
+          source_version=$(sed -n 's/^#define ESPFORGE_VERSION "\(.*\)"/\1/p' espforge/firmware/src/app/espforge.h)
+          {
+            printf 'Firmware version: %s\n' "${ESPFORGE_VERSION:-$source_version}"
+            printf 'Source commit: %s\n' "$(git -C espforge rev-parse HEAD)"
+            printf 'Board: esp32s3_devkitc/esp32s3/procpu\nModule: ESP32-S3-WROOM-1-N16R8\nZephyr SDK: 0.17.4\n'
+            printf 'Software build only; not flashed or hardware-qualified. SD testing is deferred.\n'
+          } > "$package/BUILD-INFO.txt"
+          cat > "$package/FLASHING.txt" <<'EOF'
+          Target: ESP32-S3-DevKitC-1 N16R8 / 16 MB flash, 8 MB octal PSRAM, PROCPU, simple-boot image.
+          This is a software build, not a hardware-qualified release.
+          Check docs/guides/hardware.md and docs/validation/qualification-gaps.md first.
+
+          Close all serial clients. Flash through the UART (USB-to-UART) connector;
+          the USB connector carries the ESPForge HID management interface after boot.
+          Create/activate a Python virtual environment, then install esptool 5:
+            python -m pip install "esptool>=5,<6"
+          Replace PORT below with the actual serial port:
+            python -m esptool --chip esp32s3 --port PORT --baud 460800 write-flash --flash-mode dio --flash-freq 80m --flash-size 16MB 0x0 zephyr.bin
+          This overwrites image sectors; it does not request a full-chip erase.
+          Do not use this image on a different flash/module configuration.
+          If reset fails, hold BOOT, press/release RESET, release BOOT and retry.
+          Uploader success does not verify application boot, Wi-Fi, BLE or SD behavior.
+
+          runners.yaml is build provenance, not a relocatable west build directory.
+          For the source-build west flash wrapper, follow docs/guides/getting-started.md.
+          EOF
+
+      - name: Attach software build
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: espforge-esp32s3-software-build
+          path: espforge/build/firmware-package/
+          include-hidden-files: true
+          if-no-files-found: error

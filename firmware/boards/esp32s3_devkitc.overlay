@@ -1,0 +1,53 @@
+#include <zephyr/dt-bindings/gpio/gpio.h>
+
+/*
+ * ESP32-S3-DevKitC-1 N16R8 (ESP32-S3-WROOM-1-N16R8): 16 MB quad flash and 8 MB octal PSRAM.
+ * The upstream board DTS describes the N8 module with the 4 MB partition table, so replace both.
+ */
+&flash0 {
+	reg = <0x0 DT_SIZE_M(16)>;
+	/delete-node/ partitions;
+};
+
+#include <espressif/partitions_0x0_amp_16M.dtsi>
+
+&psram0 {
+	size = <DT_SIZE_M(8)>;
+};
+
+/* Native USB OTG on the DevKitC USB connector (GPIO19 D-, GPIO20 D+). */
+&usb_otg {
+	status = "okay";
+	espforge_hid: hid_dev_0 {
+		compatible = "zephyr,hid-device";
+		label = "ESPForge";
+		protocol-code = "none";
+		in-report-size = <64>;
+		in-polling-period-us = <4000>;
+	};
+};
+
+&coretemp {
+	status = "okay";
+};
+
+&spi2 {
+	status = "okay";
+	cs-gpios = <&gpio0 10 GPIO_ACTIVE_LOW>;
+	espforge_sd: sdhc@0 {
+		compatible = "zephyr,sdhc-spi-slot";
+		reg = <0>;
+		status = "okay";
+		spi-max-frequency = <10000000>;
+		mmc {
+			compatible = "zephyr,sdmmc-disk";
+			disk-name = "SD";
+			status = "okay";
+		};
+	};
+};
+
+/* SPI3's default pins overlap the module's internal flash/PSRAM signals (octal PSRAM uses GPIO33-37). */
+&spi3 {
+	status = "disabled";
+};
