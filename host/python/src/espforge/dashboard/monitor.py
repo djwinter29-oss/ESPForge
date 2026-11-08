@@ -312,16 +312,27 @@ class DeviceMonitor:
                     "No final result matches the pending command; uncertainty remains"
                 )
             control_result, wireless = outcome
+            temporary_wifi_reset = (
+                control_result is None and wireless is not None and self._uncertain_command is not None
+            )
             with self._lock:
                 self._command_outcome_uncertain = False
                 self._uncertain_command = None
                 self._uncertain_wireless_operation = None
                 if control_result is not None:
                     self._publish_control_result(control_result)
+                if temporary_wifi_reset:
+                    self._wireless_cleanup_required = False
                 if self._snapshot.get("connected"):
                     if wireless is not None:
                         self._publish_wireless(wireless)
-            return {"uncertain": False, "control_result": control_result, "wireless": wireless}
+            response: ResyncResponse = {
+                "uncertain": False, "control_result": control_result, "wireless": wireless,
+            }
+            if temporary_wifi_reset:
+                _LOGGER.warning("Board reset discarded temporary Wi-Fi operation; no command was replayed")
+                response["temporary_wifi_reset"] = True
+            return response
 
     def _require_wireless_idle(self) -> ESPForgeHid:
         """Return the client when wireless staging cannot race storage work or another command."""

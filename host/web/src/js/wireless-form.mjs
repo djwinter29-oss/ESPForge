@@ -530,11 +530,12 @@ export function bindWirelessForm({
       changed();
       return true;
     },
-    /** @param {boolean} completed */
-    cancelResolved(completed) {
+    /** @param {boolean} completed @param {string} [message] */
+    cancelResolved(completed, message) {
       wifiCancelRequiresReconnect = false;
       if (completed) testCleared();
       else { refresh(); changed(); }
+      if (message) setStatus("wifi-status", message);
     },
     dirty,
     radioEdited,

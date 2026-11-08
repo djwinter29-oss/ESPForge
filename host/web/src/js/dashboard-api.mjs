@@ -298,7 +298,9 @@ function isControlResult(value) {
  * @param {Record<string, unknown>} result @returns {ControlResult | null}
  */
 export function reconciledResult(result) {
-  if (result.uncertain !== false || result.control_result != null && !isControlResult(result.control_result))
+  if (result.uncertain !== false || result.control_result != null && !isControlResult(result.control_result)
+    || result.temporary_wifi_reset !== undefined && typeof result.temporary_wifi_reset !== "boolean"
+    || result.temporary_wifi_reset === true && (result.control_result != null || !isObject(result.wireless)))
     throw new DashboardError("Re-sync did not establish the command outcome", undefined, true);
   return result.control_result == null ? null : result.control_result;
 }

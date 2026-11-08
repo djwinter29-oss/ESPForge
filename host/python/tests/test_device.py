@@ -61,6 +61,23 @@ class HidEnumerationTests(unittest.TestCase):
 
 
 class HidDeviceTests(unittest.TestCase):
+    def test_open_failure_reports_native_reason_not_just_permissions(self):
+        native = Mock()
+        native.open_path.side_effect = OSError("device or resource busy")
+        with patch("espforge.hid.device._select_device", return_value={"path": b"/hid/a"}), \
+                patch("espforge.hid.device._require_hid") as api:
+            api.return_value.device.return_value = native
+            with self.assertRaisesRegex(OSError, "device or resource busy.*another application"):
+                ESPForgeHid()
+
+    def test_open_makes_zero_timeout_input_reads_non_blocking(self):
+        native = Mock()
+        with patch("espforge.hid.device._select_device", return_value={"path": b"/hid/a"}), \
+                patch("espforge.hid.device._require_hid") as api:
+            api.return_value.device.return_value = native
+            ESPForgeHid()
+        native.set_nonblocking.assert_called_once_with(1)
+
     def test_close_waits_for_native_io_and_later_operations_reject_the_closed_handle(self):
         for operation in ("control", "input", "configuration", "identity", "wireless"):
             with self.subTest(operation=operation):

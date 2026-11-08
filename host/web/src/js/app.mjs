@@ -331,7 +331,10 @@ async function resyncCommandOutcome() {
     currentSnapshot.command_outcome_uncertain = false;
     currentSnapshot.error = null;
     if (control) publishCommandResult(control);
-    if (control?.opcode !== 10) wirelessForm.cancelResolved(false);
+    if (result.temporary_wifi_reset === true) {
+      wirelessForm.cancelResolved(true, "Board restarted; the temporary Wi-Fi test was discarded. Test again.");
+      currentSnapshot.wireless_cleanup_required = false;
+    } else if (control?.opcode !== 10) wirelessForm.cancelResolved(false);
     if (result.wireless != null) currentSnapshot.wireless = wirelessConfiguration(result.wireless);
     if (result.control_result) currentSnapshot.control_result = result.control_result;
     await updateStatus();

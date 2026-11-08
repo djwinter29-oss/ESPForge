@@ -8,6 +8,18 @@ import {
   scannedNetworks, statusResponse, testedWireless,
 } from "../../src/js/dashboard-api.mjs";
 
+test("reset recovery is explicit and cannot masquerade as a successful control result", () => {
+  assert.equal(reconciledResult({
+    uncertain: false, control_result: null, wireless: {}, temporary_wifi_reset: true,
+  }), null);
+  for (const response of [
+    { uncertain: false, temporary_wifi_reset: "true" },
+    { uncertain: false, temporary_wifi_reset: true, wireless: null },
+    { uncertain: false, temporary_wifi_reset: true, wireless: {},
+      control_result: { opcode: 9, status: "completed" } },
+  ]) assert.throws(() => reconciledResult(response), { uncertain: true });
+});
+
 test("mutation boundary distinguishes refusals, malformed replies, and unknown delivery", async () => {
   for (const body of [null, [], true, "ok"]) {
     await assert.rejects(responseJson({ ok: true, json: async () => body }, "save", true),

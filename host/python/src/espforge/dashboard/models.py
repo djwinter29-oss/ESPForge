@@ -77,7 +77,11 @@ class SettingsResponse(TypedDict):
     control_result: ControlResult | None
 
 
-class ResyncResponse(TypedDict):
+class _ResyncReset(TypedDict, total=False):
+    temporary_wifi_reset: bool
+
+
+class ResyncResponse(_ResyncReset):
     uncertain: bool
     control_result: ControlResult | None
     wireless: WirelessStatus | None

@@ -122,6 +122,23 @@ class MonitorCommandTests(unittest.TestCase):
         with patch("espforge.dashboard.monitor.time.monotonic", return_value=106.0):
             self.assertTrue(monitor.snapshot()["wireless"]["stale"])
 
+    def test_resync_after_wifi_reset_releases_cleanup_without_reporting_test_success(self):
+        client = Mock(command_uncertain=True)
+        monitor = make_monitor(client, {"connected": True})
+        monitor._command_outcome_uncertain = True
+        monitor._uncertain_command = (7, 9)
+        monitor._wireless_cleanup_required = True
+        wireless = {"test_generation": 0, "scan_generation": 0}
+        client.reconcile_outcome.return_value = None, wireless
+        with self.assertLogs("espforge.dashboard.monitor", "WARNING"):
+            response = monitor.resync_command()
+        self.assertEqual(response, {
+            "uncertain": False, "control_result": None, "wireless": wireless, "temporary_wifi_reset": True,
+        })
+        self.assertFalse(monitor.snapshot()["command_outcome_uncertain"])
+        self.assertFalse(monitor.snapshot()["wireless_cleanup_required"])
+        client.cancel_wireless_test.assert_not_called()
+
     def test_malformed_input_report_does_not_abort_wireless_poll_drain(self):
         client = Mock(command_uncertain=False)
         client.read_input_report.side_effect = [ProtocolError("bad report"), None]

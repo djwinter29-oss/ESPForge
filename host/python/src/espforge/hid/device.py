@@ -165,9 +165,11 @@ class ESPForgeHid:
             device.open_path(info["path"])
         except OSError as error:
             raise OSError(
-                "failed to open ESPForge HID interface; check device permissions "
-                "(Linux setup: see host/python/README.md)"
+                f"failed to open ESPForge HID interface: {error}; check device permissions, "
+                "the USB connection, and whether another application owns the interface"
             ) from error
+        # hidapi read(n, 0) blocks until a report arrives unless the handle is non-blocking; timed reads are unaffected.
+        device.set_nonblocking(1)
         self._device = device
         self.closed = False
         self._close_error: Exception | None = None
@@ -502,7 +504,9 @@ class ESPForgeHid:
                     self._uncertain_command = None
                     self._uncertain_wireless_operation = None
                     if failed:
-                        raise BoardConflict(f"Wireless {kind} failed: {status['phase'] or 'Timed out'}")
+                        raise BoardConflict(
+                            f"Wireless {kind} failed: {status['phase'] or 'driver did not report a reason'}"
+                        )
                     return status
                 if on_progress is not None:
                     on_progress(status["phase"] or "Connecting to Wi-Fi")
@@ -535,7 +539,7 @@ class ESPForgeHid:
         command_reference: tuple[int, int] | None,
         wireless_reference: tuple[str, int] | None,
     ) -> tuple[ControlResult | None, WirelessStatus | None] | None:
-        """Read the result slots and confirm only the exact pending command and operation."""
+        """Confirm a pending result, or inspect reset slots to discard a lost RAM-only Wi-Fi operation."""
         self._require_open()
         if command_reference is None and wireless_reference is None:
             return None
@@ -546,6 +550,26 @@ class ESPForgeHid:
             control_result = _parse_report(
                 parse_control_result_report, report, self._supported_identity(),
             )
+            if (control_result["status"] == "idle" and control_result["transaction_id"] == 0
+                    and control_result["opcode"] == 0
+                    and command_reference[1] in (
+                        ControlOpcode.STAGE_SSID, ControlOpcode.STAGE_PASSWORD, ControlOpcode.WIFI_TEST,
+                        ControlOpcode.WIFI_CANCEL, ControlOpcode.WIFI_SCAN, ControlOpcode.WIFI_ENTRY,
+                    )):
+                wireless_status = self.read_wireless()
+                if (wireless_status["scan_generation"] == 0 and wireless_status["test_generation"] == 0
+                        and wireless_status["scan_state"] == "idle"
+                        and wireless_status["wifi_state_id"] < WifiState.TESTING
+                        and not any(wireless_status[key] for key in (
+                            "ssid_staged", "password_staged", "key_staged", "pair_tested", "staged_state",
+                        ))):
+                    self._command_uncertain = False
+                    self._uncertain_command = None
+                    self._uncertain_wireless_operation = None
+                    self._tested_id = None
+                    self._tested_generation = None
+                    self._tested_at = None
+                    return None, wireless_status
             if ((control_result["transaction_id"], control_result["opcode"]) != command_reference
                     or control_result["status"] in ("idle", "pending")):
                 return None

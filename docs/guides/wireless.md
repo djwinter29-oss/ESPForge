@@ -29,6 +29,13 @@ network is lost, the board retries every 5 seconds, doubling the delay up to 60 
 not report why a join failed, so a wrong password and a missing network look the same. Check the network band,
 SSID, password, DHCP availability and UART logs rather than assuming a specific cause.
 
+If USB delivery or the test result is lost, use **Re-sync** rather than resending the operation.
+The Python dashboard can also recover a pending RAM-only Wi-Fi operation after a board reset: it checks that the
+control result slot and both wireless generations are reset and no staged credentials remain. It then explicitly
+reports that the temporary operation was discarded, not that the test succeeded, and allows a new test.
+An uncertain Save or Reboot is not cleared this way; inspect saved settings and resolve its outcome separately.
+Power-cycling the board does not by itself clear the dashboard's recovery state.
+
 ### Bluetooth LE
 
 Create a Control key and copy it to a password manager before saving: the board never returns the key. Bluetooth
