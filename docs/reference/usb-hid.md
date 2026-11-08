@@ -3,7 +3,7 @@
 > **Imported specification.** Copied unchanged from PicoForge's [`docs/reference/usb-hid.md`](https://github.com/djwinter29-oss/PicoForge/blob/5e615725b22714963c2d16ed56215042e1411553/docs/reference/usb-hid.md) at commit `5e615725b227`; only links to PicoForge-only documents were
 > repointed to that commit. It is the ESPForge USB HID and Bluetooth LE contract (with [bluetooth.md](bluetooth.md)).
 > The ESPForge firmware and the Python, .NET and Direct dashboards implement it with the deviations in the
-> [ESPForge profile](espforge-profile.md), which takes precedence over PicoForge names, Pico board facts, capabilities
+> [ESPForge implementation reference](espforge-implementation.md), which takes precedence over PicoForge names, Pico board facts, capabilities
 > and features written here. The implementation is not yet validated on ESP32-S3 hardware.
 
 This document is the authoritative HID wire contract. For CDC CLI behavior, see the

@@ -3,7 +3,7 @@
  * @brief USB Feature 20 and Bluetooth control dispatcher with separate per-transport result slots.
  *
  * Implements the opcode table, validation order and wireless command rules of docs/reference/usb-hid.md as adapted
- * by docs/reference/espforge-profile.md. Not thread-safe: callers serialize every call with one lock.
+ * by docs/reference/espforge-implementation.md. Not thread-safe: callers serialize every call with one lock.
  */
 #ifndef ESPFORGE_CONTROL_H
 #define ESPFORGE_CONTROL_H

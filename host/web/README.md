@@ -7,7 +7,7 @@ dashboard does not share this code.
 ## HTTP API
 
 Both hosts must serve the same routes and JSON field names as the PicoForge dashboard API, narrowed by the
-[ESPForge profile](../../docs/reference/espforge-profile.md). Board-scoped routes take `?board=ID` from `/api/boards`.
+[ESPForge implementation reference](../../docs/reference/espforge-implementation.md). Board-scoped routes take `?board=ID` from `/api/boards`.
 
 | Route | Methods | Status |
 |---|---|---|

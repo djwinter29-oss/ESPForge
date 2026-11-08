@@ -81,7 +81,7 @@ the dashboard always saves profile 0 and shows the bus clock actually reported b
 
 ESPForge does not implement the PicoForge LED, USB mass-storage handoff, storage benchmark, forced save, or TCP
 CLI console. The dashboard omits those controls rather than inventing values; see the
-[ESPForge protocol profile](../../docs/reference/espforge-profile.md).
+[ESPForge implementation reference](../../docs/reference/espforge-implementation.md).
 
 ## Controls
 
@@ -134,7 +134,7 @@ completions cannot clear newer post-reconnect drafts.
 
 The dashboard implements the [HID report reference](../../docs/reference/usb-hid.md) and
 [Bluetooth LE protocol](../../docs/reference/bluetooth.md) as narrowed by the
-[ESPForge protocol profile](../../docs/reference/espforge-profile.md):
+[ESPForge implementation reference](../../docs/reference/espforge-implementation.md):
 
 - USB `0xCAFE:0x4021`, product ID 3, MCU 3, board model 1, and capability byte `0x8E`.
 - Reports 1, 2, 3, 10, 12, and 20. Report 11 does not exist; unknown Input reports are ignored.
@@ -226,7 +226,7 @@ retention. They do not exercise real hardware.
 
 - [Getting started](../../docs/guides/getting-started.md)
 - [Wireless setup](../../docs/guides/wireless.md)
-- [ESPForge protocol profile](../../docs/reference/espforge-profile.md)
+- [ESPForge implementation reference](../../docs/reference/espforge-implementation.md)
 - [HID report reference](../../docs/reference/usb-hid.md)
 - [Bluetooth LE protocol](../../docs/reference/bluetooth.md)
 - [Boot settings](../../docs/reference/settings.md)

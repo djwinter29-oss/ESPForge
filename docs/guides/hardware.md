@@ -32,14 +32,7 @@ Use a 3.3 V-compatible SD breakout with suitable pull-ups, short wires, and adeq
 Wire with power disconnected. Do not apply 5 V to ESP32 GPIOs or a bare SD card.
 This is proposed wiring, not electrically qualified hardware.
 
-| ESP32-S3 signal | GPIO | Breakout/card signal |
-| --- | --- | --- |
-| Chip select | 10 | CS / DAT3 |
-| Controller output | 11 | MOSI / CMD |
-| Clock | 12 | SCLK / CLK |
-| Controller input | 13 | MISO / DAT0 |
-| Supply | 3V3 | 3.3 V supply input |
-| Ground | GND | GND |
+Follow the [SD pin allocation](../reference/sdcard.md#pin-allocation) for SPI signals, supply and ground.
 
 GPIO assignments use Zephyr's SPI2 default pinctrl and the project's overlay.
 SPI3 is disabled because its default signals can conflict with module flash/PSRAM connections.

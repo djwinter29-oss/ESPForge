@@ -1,7 +1,8 @@
-# ESPForge Protocol Profile
+# ESPForge Implementation Reference
 
 The [USB HID reference](usb-hid.md) and [Bluetooth LE reference](bluetooth.md) were imported from PicoForge and are
-the wire contract. This profile lists every value and behaviour that ESPForge sets differently on the ESP32-S3.
+the wire contract. This implementation reference lists the ESPForge-specific values, supported features and
+behaviour on the ESP32-S3; it is not a separate protocol specification.
 Where this page and an imported reference disagree, this page wins for ESPForge firmware and hosts. Everything not
 listed here is implemented as the imported references describe.
 
@@ -136,6 +137,6 @@ reference results.
 ## Hosts
 
 The Python and .NET dashboards use USB HID only: the Python dashboard through `hidapi`, the .NET dashboard through
-`HidSharp`. The Direct dashboard uses WebHID and Web Bluetooth. All three apply this profile: they reject other
+`HidSharp`. The Direct dashboard uses WebHID and Web Bluetooth. All three follow this implementation reference: they reject other
 product IDs and hide LED, MSC, benchmark, forced-save, and TCP CLI controls, because the matching capability bits are
-clear or the profile marks the opcode as Unsupported.
+clear or this reference marks the opcode as Unsupported.

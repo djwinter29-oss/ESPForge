@@ -10,7 +10,7 @@ strategy; this is an ESP-specific implementation, not a compatible firmware port
 | Foundation | Initial implementation |
 | --- | --- |
 | Target | ESP32-S3-DevKitC-1 N16R8: 16 MB flash, 8 MB octal PSRAM, Zephyr PROCPU |
-| Firmware | Pinned Zephyr 4.3.2 / SDK 0.17.4; PicoForge's USB HID and Bluetooth LE protocol, as adapted by the [ESPForge profile](docs/reference/espforge-profile.md) |
+| Firmware | Pinned Zephyr 4.3.2 / SDK 0.17.4; PicoForge's USB HID and Bluetooth LE protocol, as adapted by the [ESPForge implementation reference](docs/reference/espforge-implementation.md) |
 | Firmware unit tests | Pinned Ceedling / Unity / CMock: control dispatcher, report encoding, wireless staging and authentication, SHA-256 and boot settings |
 | Radios | **Wi-Fi and BLE enabled by default**, software coexistence, Wi-Fi scan/test/save, BLE Control key authentication |
 | Settings | PicoForge-style [boot settings](docs/reference/settings.md): one CRC-checked flash record for CPU clock, radio switches and credentials, edited from every dashboard |
@@ -62,7 +62,7 @@ and `docs/`. Fork the source, keep board pin assignments in overlays, and add pr
 without blocking management. See [architecture](docs/reference/architecture.md).
 
 ESPForge does not include PicoForge's complete feature set: no LED, USB mass storage, SD benchmark,
-TCP CLI, file-transfer API or dual-core workload. See the [ESPForge profile](docs/reference/espforge-profile.md).
+TCP CLI, file-transfer API or dual-core workload. See the [ESPForge implementation reference](docs/reference/espforge-implementation.md).
 
 ## GitHub automation
 
@@ -86,11 +86,24 @@ BLE commands need the Control key but the link is not encrypted; flash credentia
 - **Use:** [getting started](docs/guides/getting-started.md) · [hardware](docs/guides/hardware.md) ·
   [wireless](docs/guides/wireless.md) · [Direct](host/direct/README.md) ·
   [Python](host/python/README.md) · [.NET](host/dotnet/ESPForge/README.md)
-- **Develop:** [architecture](docs/reference/architecture.md) · [protocol](docs/reference/protocol.md) ·
-  [SD storage](docs/reference/sdcard.md) · [firmware](docs/development/firmware.md) ·
+- **Develop:** [architecture](docs/reference/architecture.md) · [firmware](docs/development/firmware.md) ·
   [host tools](docs/development/host-tools.md)
 - **Maintain:** [contributing](CONTRIBUTING.md) · [release](docs/deployment/release.md) ·
   [security](SECURITY.md) · [documentation ownership](docs/README.md)
+
+### Reference map
+
+| Reference | Covers |
+| --- | --- |
+| [Architecture](docs/reference/architecture.md) | Browser, host and device paths, layer responsibilities, lifecycle and failure handling |
+| [ESPForge implementation](docs/reference/espforge-implementation.md) | Identity, transports, report values, supported features and deviations from PicoForge |
+| [USB HID](docs/reference/usb-hid.md) | Report IDs, byte layouts, Control envelope and opcode semantics |
+| [Bluetooth LE](docs/reference/bluetooth.md) | Advertising, GATT layout, session unlock, command proofs and ATT errors |
+| [Boot settings](docs/reference/settings.md) | Saved next-boot record, flash safety, CPU clock and radio settings |
+| [SD storage](docs/reference/sdcard.md) | Pin allocation, driver configuration, mount behavior, status and data safety |
+
+For ESPForge firmware and hosts, the implementation reference takes precedence where it differs from the
+imported USB HID and Bluetooth LE specifications.
 
 ## License
 

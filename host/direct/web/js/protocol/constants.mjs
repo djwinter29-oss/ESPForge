@@ -3,7 +3,7 @@
 
 /**
  * Firmware-defined values; see docs/reference/usb-hid.md, docs/reference/bluetooth.md and the ESPForge overrides in
- * docs/reference/espforge-profile.md.
+ * docs/reference/espforge-implementation.md.
  */
 export const DEVICE_FILTER = Object.freeze({ vendorId: 0xcafe, usagePage: 0xff00, usage: 1 });
 /** USB product IDs of the development VID:PID pair. */

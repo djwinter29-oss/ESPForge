@@ -97,7 +97,7 @@ Inspect generated `build/firmware/zephyr/.config` and `zephyr.dts`, not just sou
 Required defaults include Wi-Fi, BLE, software coexistence, SPI SDHC, SDMMC disk, FatFs and
 the `device_next` USB stack with HID. Both FAT mkfs options must remain disabled.
 The management protocol runs over the ESP32-S3 native USB connector (USB HID, VID:PID `CAFE:4021`)
-and BLE GATT, as described in the [ESPForge profile](../reference/espforge-profile.md).
+and BLE GATT, as described in the [ESPForge implementation reference](../reference/espforge-implementation.md).
 The UART connector carries only the Zephyr console/log output and the ROM bootloader used for flashing;
 it has no management protocol.
 

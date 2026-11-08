@@ -2,7 +2,7 @@
 
 Python and .NET share the dashboard in `host/web/` and serve the same PicoForge-style HTTP API; each host owns the
 board's USB HID interface and decodes the [USB HID reports](../reference/usb-hid.md) as narrowed by the
-[ESPForge profile](../reference/espforge-profile.md). See [Shared dashboard](#shared-dashboard).
+[ESPForge implementation reference](../reference/espforge-implementation.md). See [Shared dashboard](#shared-dashboard).
 The [Direct dashboard](../../host/direct/README.md) is independent: see
 [Direct dashboard independence](#direct-dashboard-independence).
 
@@ -46,7 +46,7 @@ or [tools/host/run-python.sh](../../tools/host/run-python.sh) from a checkout.
 |---|---|
 | `src/espforge/__init__.py` | Version from the owning installed distribution, else `0.0.0-debug` |
 | `src/espforge/cli.py`, `__main__.py` | `status`, `web` and `reboot` commands with `--serial` / `--device-path` selection |
-| `src/espforge/reports/` | Pure decoders and encoders for Reports 1, 2, 3, 10, 12 and 20 with ESPForge profile checks |
+| `src/espforge/reports/` | Pure decoders and encoders for Reports 1, 2, 3, 10, 12 and 20 with ESPForge-specific validation |
 | `src/espforge/hid/` | `ESPForgeHid`: `hidapi` transport for `CAFE:4021`, Feature/Input reads and Control writes |
 | `src/espforge/dashboard/` | Flask app on loopback: board discovery, one serialized monitor per board, the HTTP API; serves `espforge/web` when installed, else `host/web/src` |
 | `tests/test_<area>.py` | Report codecs, HID device, monitor, boards, wireless, web API, CLI, version and packaging contracts |

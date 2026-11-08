@@ -10,7 +10,7 @@ ESPForge keeps a small set of **next-boot settings** in one flash record: the CP
 switches, and the private wireless credentials. They are changed at runtime, saved as one verified record, and take
 effect only at the next boot. This document owns the record format, the load/stage/save lifecycle, flash safety and
 how each setting is applied. The wire encoding is HID Feature report `2` and Feature report `20` opcode `5` in the
-[USB HID reference](usb-hid.md), adapted by the [ESPForge profile](espforge-profile.md). Radio behaviour is in the
+[USB HID reference](usb-hid.md), adapted by the [ESPForge implementation reference](espforge-implementation.md). Radio behaviour is in the
 [wireless guide](../guides/wireless.md).
 
 | Setting | Values | Default | Applied by |

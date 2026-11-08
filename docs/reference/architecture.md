@@ -1,18 +1,37 @@
 # Architecture
 
-```text
-Direct browser ---- WebHID ----------+
-       |                             +-- USB HID (native USB) --+
-Python browser ---- loopback Python host (hidapi) --+           |
-.NET browser ------ loopback ASP.NET host (HidSharp) +          |-- Zephyr application
-                                                                |   |-- control dispatcher + boot settings
-Direct browser ---- Web Bluetooth ---- BLE GATT ----------------+   |-- Wi-Fi station + DHCP
-                                                                    |-- SPI2 SD / FatFs
-UART connector ---- Zephyr console/log and ROM flashing only
+```mermaid
+flowchart LR
+    subgraph Browsers["Browser clients"]
+        Direct["Direct browser"]
+        PythonBrowser["Python-hosted browser"]
+        DotNetBrowser[".NET-hosted browser"]
+    end
+    subgraph Hosts["Loopback USB hosts"]
+        PythonHost["Python host<br/>(hidapi)"]
+        DotNetHost["ASP.NET host<br/>(HidSharp)"]
+    end
+    subgraph Device["ESP32-S3 / Zephyr"]
+        USB["USB HID<br/>(native USB)"]
+        BLE["BLE GATT"]
+        App["Zephyr application<br/>Control dispatcher + boot settings<br/>Wi-Fi station + DHCP<br/>SPI2 SD / FatFs"]
+        Console["Zephyr console / log"]
+        ROM["ROM bootloader<br/>(flashing)"]
+    end
+    UART["UART connector"]
+
+    Direct -->|WebHID| USB
+    PythonBrowser --> PythonHost --> USB
+    DotNetBrowser --> DotNetHost --> USB
+    Direct -->|Web Bluetooth| BLE
+    USB --> App
+    BLE --> App
+    UART --> Console
+    UART --> ROM
 ```
 
 USB HID and BLE carry the same PicoForge reports and Control opcodes, as adapted by the
-[ESPForge profile](espforge-profile.md).
+[ESPForge implementation reference](espforge-implementation.md).
 
 ## Repository responsibilities
 
@@ -46,7 +65,7 @@ dispatcher, and every access to settings, staging and wireless state holds one a
 events are queued and applied by the main loop, which also starts connects, disconnects and scans outside the lock.
 Reboots are scheduled about one second after the reply so the host can read the result first.
 
-Hosts reject reports outside the profile and never retry a command whose outcome is uncertain; they block further
+Hosts reject reports outside the ESPForge implementation contract and never retry a command whose outcome is uncertain; they block further
 writes until the user confirms a re-sync. There is no implicit demo fallback.
 
 ## Downstream development
