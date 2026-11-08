@@ -30,9 +30,9 @@ export function deriveStorageViewModel(state, previous = {}) {
   const note = !memory ? "Waiting for fresh storage status."
     : !memory.sample_valid ? "" : !memory.configured ? "No SD-card transport configured"
       : memory.presence_known && !memory.present
-        ? "No card detected. Check card insertion and SPI wiring."
-        : memory.present && !memory.initialized ? "Card detected but not initialized; check UART logs and SPI wiring."
-          : memory.initialized ? "" : "No card mounted; check card insertion and SPI wiring.";
+        ? "No card detected. Check card insertion and SDMMC wiring."
+        : memory.present && !memory.initialized ? "Card detected but not initialized; check UART logs and SDMMC wiring."
+          : memory.initialized ? "" : "No card mounted; check card insertion and SDMMC wiring.";
   if (busy && details) ({ memory, filesystemFormat } = details);
   const manufacturer = memory?.manufacturer;
   const filesystemLabels = { unknown: "Unknown", fat12: "FAT12", fat16: "FAT16", fat32: "FAT32", exfat: "exFAT" };

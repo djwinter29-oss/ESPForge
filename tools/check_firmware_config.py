@@ -18,6 +18,42 @@ def settings_partition_failures(build: Path, config: dict[str, str]) -> list[str
     return []
 
 
+def sdmmc_failures(build: Path) -> list[str]:
+    dts = re.sub(r"/\*.*?\*/", "", (build / "zephyr.dts").read_text(), flags=re.S)
+    slot = re.search(r"\bespforge_sd:\s*sdhc@0\s*\{([^{}]*)", dts)
+    if not slot:
+        return ["native SDMMC slot 0 (espforge_sd) is missing from zephyr.dts"]
+    properties = slot.group(1)
+    failures = []
+    required = (
+        ('compatible = "espressif,esp32-sdhc-slot";', "native SDMMC slot driver"),
+        ('status = "okay";', "enabled SDMMC slot"),
+        ("pinctrl-0 = < &espforge_sd_default >;", "SDMMC pinctrl"),
+    )
+    for text, name in required:
+        if text not in properties:
+            failures.append(f"{name} is missing from espforge_sd")
+    for name, expected in (("bus-width", 4), ("max-bus-freq", 25_000_000)):
+        value = re.search(rf"\b{name}\s*=\s*<\s*(0x[0-9a-f]+|\d+)\s*>;", properties)
+        if not value or int(value.group(1), 0) != expected:
+            failures.append(f"SDMMC {name} must be {expected}")
+    pins = re.search(r"\bespforge_sd_default:\s*\w+\s*\{\s*[^{}]*"
+                     r"clock\s*\{([^{}]*)\};\s*command_data\s*\{([^{}]*)\};", dts)
+    if not pins:
+        failures.append("SDMMC clock and command/data pinctrl groups are missing")
+    else:
+        muxes = []
+        for group in pins.groups():
+            mux = re.search(r"\bpinmux\s*=\s*([^;]+);", group)
+            muxes.extend(re.findall(r"<\s*(0x[0-9a-f]+|\d+)\s*>", mux.group(1)) if mux else [])
+        # ESP32_PIN_NUM_MASK in esp-pinctrl-common.h stores the GPIO in the low six bits.
+        if [int(value, 0) & 0x3F for value in muxes] != [12, 11, 13, 14, 15, 10]:
+            failures.append("SDMMC CLK/CMD/DAT0-DAT3 GPIOs must be 12/11/13/14/15/10")
+        if "bias-pull-up;" not in pins.group(2):
+            failures.append("SDMMC command/data pinctrl must request pull-ups")
+    return failures
+
+
 def main() -> int:
     root = Path(__file__).resolve().parents[1]
     config_path = root / "build/firmware/zephyr/.config"
@@ -25,13 +61,13 @@ def main() -> int:
                   if line.startswith("CONFIG_") and "=" in line)
     enabled = [
         "WIFI", "BT", "BT_PERIPHERAL", "ESP32_SW_COEXIST_ENABLE",
-        "NET_DHCPV4", "SPI_SDHC", "DISK_DRIVER_SDMMC", "FAT_FILESYSTEM_ELM",
+        "NET_DHCPV4", "SDHC_ESP32", "DISK_DRIVER_SDMMC", "FAT_FILESYSTEM_ELM",
         "FLASH", "FLASH_MAP", "CLOCK_CONTROL", "USB_DEVICE_STACK_NEXT",
         "USBD_HID_SUPPORT", "HWINFO", "REBOOT", "THREAD_RUNTIME_STATS",
         "ESP_SPIRAM", "SPIRAM_MODE_OCT",
     ]
     values = {"FLASH_SIZE": "16777216", "ESP_SPIRAM_SIZE": "8388608"}
-    disabled = ["FS_FATFS_MOUNT_MKFS", "FS_FATFS_MKFS", "JSON_LIBRARY", "BT_SMP"]
+    disabled = ["FS_FATFS_MOUNT_MKFS", "FS_FATFS_MKFS", "JSON_LIBRARY", "BT_SMP", "SPI_SDHC"]
     failures = [f"CONFIG_{name} must be enabled" for name in enabled
                 if config.get(f"CONFIG_{name}") != "y"]
     failures.extend(f"CONFIG_{name} must be disabled" for name in disabled
@@ -39,10 +75,11 @@ def main() -> int:
     failures.extend(f"CONFIG_{name} must be {value} for the N16R8 module" for name, value in values.items()
                     if config.get(f"CONFIG_{name}") != value)
     failures.extend(settings_partition_failures(root / "build/firmware/zephyr", config))
+    failures.extend(sdmmc_failures(root / "build/firmware/zephyr"))
     if failures:
         print("\n".join(failures), file=sys.stderr)
         return 1
-    print("PASS: N16R8 16 MB flash and 8 MB octal PSRAM, Wi-Fi, BLE, coexistence, DHCP, SPI SD/FAT, USB HID, settings flash; no mkfs or JSON")
+    print("PASS: N16R8 16 MB flash and 8 MB octal PSRAM, Wi-Fi, BLE, coexistence, DHCP, native 4-bit SDMMC/FAT at 25 MHz on GPIO12/11/13/14/15/10, USB HID, settings flash; no mkfs or JSON")
     return 0
 
 

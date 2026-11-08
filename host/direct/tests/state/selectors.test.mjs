@@ -12,7 +12,7 @@ const readyState = (changes = {}) => ({
   busy: false,
   outcome_uncertain: false,
   reboot_pending: false,
-  hardware: { capabilities: 2 | 4 | 8 | 128 },
+  hardware: { capabilities: 2 | 4 | 16 | 128 },
   freshness: { 10: "fresh" },
   memory: { sample_valid: true },
   pending_request: null,
@@ -37,7 +37,7 @@ test("operation eligibility is one rule table for storage, settings and wireless
     ["storage stale", readyState({ freshness: { 10: "stale" } }), [0, 0, 0, 0]],
     ["storage cleared", readyState({ memory: null }), [0, 0, 0, 0]],
     ["Bluetooth", readyState({ link: "ble" }), [0, 1, 1, 0]],
-    ["no radio", readyState({ hardware: { capabilities: 2 | 4 | 8 } }), [0, 1, 1, 0]],
+    ["no radio", readyState({ hardware: { capabilities: 2 | 4 | 16 } }), [0, 1, 1, 0]],
   ];
   for (const [name, state, expected] of cases) {
     const eligibility = deriveOperationEligibility(state);
@@ -61,14 +61,14 @@ test("canRun is the one gate and names the first failing precondition per operat
   const wireless = "Wireless configuration requires USB and fresh storage status.";
   const cases = [
     ["reboot", { freshness: { 10: "stale" } }, "Fresh storage status required"],
-    ["reboot", { hardware: { capabilities: 8 } }, "Unavailable capability"],
+    ["reboot", { hardware: { capabilities: 16 } }, "Unavailable capability"],
     ["reboot", { busy: true }, blocked],
     ["settings", { memory: null }, "Fresh storage status required before saving."],
-    ["settings", { hardware: { capabilities: 8 } }, "Unavailable capability"],
+    ["settings", { hardware: { capabilities: 16 } }, "Unavailable capability"],
     ["settings", { pending_request: { opcode: 2 } }, blocked],
     ["wireless", { wireless_busy: true }, wireless],
     ["wireless", { link: "ble" }, wireless],
-    ["wireless", { hardware: { capabilities: 2 | 4 | 8 } }, wireless],
+    ["wireless", { hardware: { capabilities: 2 | 4 | 16 } }, wireless],
   ];
   for (const [operation, changes, reason] of cases) {
     const result = canRun({ ...ready, ...changes }, operation);

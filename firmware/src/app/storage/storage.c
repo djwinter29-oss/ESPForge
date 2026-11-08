@@ -10,7 +10,7 @@
 LOG_MODULE_REGISTER(ef_storage, LOG_LEVEL_INF);
 
 #define DISK_NAME "SD"
-#define BUS_CLOCK_HZ DT_PROP(DT_NODELABEL(espforge_sd), spi_max_frequency)
+#define BUS_CLOCK_HZ DT_PROP(DT_NODELABEL(espforge_sd), max_bus_freq)
 
 static FATFS fatfs;
 static struct fs_mount_t mount = {
@@ -35,7 +35,9 @@ void ef_storage_init(void)
 	mounted = true;
 	/* FatFs FS_FAT12..FS_EXFAT are 1..4, the Report 10 filesystem_format values. */
 	filesystem_format = fatfs.fs_type <= 4 ? fatfs.fs_type : 0;
-	if (disk_access_ioctl(DISK_NAME, DISK_IOCTL_GET_SECTOR_COUNT, &sector_count) != 0) {
+	err = disk_access_ioctl(DISK_NAME, DISK_IOCTL_GET_SECTOR_COUNT, &sector_count);
+	if (err != 0) {
+		LOG_WRN("SD card capacity query failed: %d", err);
 		sector_count = 0;
 	}
 	LOG_INF("SD card mounted: %u sectors", sector_count);

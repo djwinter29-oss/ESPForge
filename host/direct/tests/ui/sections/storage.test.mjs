@@ -20,10 +20,10 @@ test("storage does not infer absence from an unavailable sample or mount from ca
   state.memory.present = true; state.memory.initialized = false;
   renderStatus(state);
   assert.equal(el('[aria-labelledby="memory-title"]').hidden, false);
-  assert.equal(el("#memory-note").textContent, "Card detected but not initialized; check UART logs and SPI wiring.");
+  assert.equal(el("#memory-note").textContent, "Card detected but not initialized; check UART logs and SDMMC wiring.");
   state.memory.presence_known = false; state.memory.present = false;
   renderStatus(state);
-  assert.equal(el("#memory-note").textContent, "No card mounted; check card insertion and SPI wiring.");
+  assert.equal(el("#memory-note").textContent, "No card mounted; check card insertion and SDMMC wiring.");
 }));
 
 test("Direct dashboard retains storage visibility through stale reports without showing cached readings", () =>
@@ -61,7 +61,7 @@ test("Direct dashboard retains storage visibility through stale reports without 
 test("busy storage retains card details without a message, but stale or replaced media clears them", () =>
   withDocument((el, renderStatus) => {
     const state = snapshot();
-    state.memory = { ...state.memory, mode: "spi", bus_clock_hz: 25000000, speed_mode: 1,
+    state.memory = { ...state.memory, mode: "sdmmc", bus_clock_hz: 25000000, speed_mode: 1,
       capacity_bytes: 127865454592, manufacturer: { id: 3, product_name: "SB128", product_revision: "8.0",
         manufacture_year: 2020, manufacture_month: 1, serial_number: 4089330880 } };
     const busy = { ...state, memory: { configured: true, sample_valid: false } };

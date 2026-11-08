@@ -45,7 +45,7 @@ bash espforge/tools/firmware/build.sh
 ```
 
 Outputs are in `espforge/build/firmware/zephyr/`: `zephyr.elf` and `zephyr.bin`.
-Both radios and SPI SD-card support are enabled in the default build; no card is needed to compile.
+Both radios and native four-bit SDMMC support are enabled in the default build; no card is needed to compile.
 The build uses PROCPU only, not a dual-core application.
 
 When hardware arrives, attach the board's **UART** (USB-to-UART bridge) connector and close any serial terminal on it:

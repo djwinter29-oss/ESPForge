@@ -187,7 +187,7 @@ ESP32S3_MCU = 3
 
 ESP32S3_MAX_GPIO = 48
 
-ESPFORGE_CAPABILITIES = (1 << 1) | (1 << 2) | (1 << 3) | (1 << 7)
+ESPFORGE_CAPABILITIES = (1 << 1) | (1 << 2) | (1 << 4) | (1 << 7)
 
 CLOCK_PROFILES_MHZ = (0, 80, 160, 240)
 
@@ -199,7 +199,7 @@ CAP_SAVE_SETTINGS = 1 << 2
 
 CAP_SPI = 1 << 3
 
-CAP_SDIO = 1 << 4
+CAP_SDMMC = 1 << 4
 
 CAP_SELF_TEST = 1 << 5
 

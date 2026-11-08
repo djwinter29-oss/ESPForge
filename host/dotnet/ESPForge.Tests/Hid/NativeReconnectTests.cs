@@ -76,7 +76,7 @@ public sealed class NativeReconnectTests
         for (var index = 0; index < 8; index++) report[index + 4] = (byte)index;
         report[15] = HidProtocol.McuEsp32S3;
         report[16] = HidProtocol.BoardEsp32S3DevKitC1;
-        report[18] = 0x8e;
+        report[18] = 0x96;
         BinaryPrimitives.WriteUInt32LittleEndian(report.AsSpan(19), 524288);
         return report;
     }

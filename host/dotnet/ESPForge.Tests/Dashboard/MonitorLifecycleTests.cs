@@ -498,7 +498,7 @@ public sealed class MonitorLifecycleTests
         public Func<BoardConfigurationResponse>? Configuration { get; init; }
         public Func<WirelessStatusResponse>? Wireless { get; init; }
         public CommandResyncResult? Reconciled { get; init; }
-        public byte Capabilities { get; init; } = 0x8e;
+        public byte Capabilities { get; init; } = 0x96;
         public int Writes;
         public int Closes;
         public int Reads;

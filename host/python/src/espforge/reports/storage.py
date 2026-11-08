@@ -34,7 +34,7 @@ def parse_memory_report(
         raise ValueError(f"unsupported HID storage report version {version}")
     if flags & ~0x7F:
         raise ValueError("unknown HID storage flags")
-    if component_type not in (0, 1) or bus_mode not in (0, 1, 2) or speed_mode not in (0, 1, 2):
+    if component_type not in (0, 1) or bus_mode not in (0, 3) or speed_mode not in (0, 1, 2):
         raise ValueError("unknown HID storage type, bus mode, or speed mode")
     if filesystem_id not in range(5) or any(value not in (0, 1) for value in (msc_enabled, msc_pending, msc_rejected)):
         raise ValueError("invalid HID storage filesystem or MSC state")
@@ -48,15 +48,15 @@ def parse_memory_report(
         if flags & 0x3E or any(current_fields):
             raise ValueError("invalid SD fields must be zero when the sample is unavailable")
     else:
-        if not configured or component_type != 1:
-            raise ValueError("valid SD sample requires configured storage and an SD card")
-        if bus_mode != 2:
-            raise ValueError("storage bus mode disagrees with the ESPForge SPI transport")
+        if not configured:
+            raise ValueError("valid SD sample requires configured storage")
         if initialized:
+            if component_type != 1 or bus_mode != 3:
+                raise ValueError("storage bus mode disagrees with the ESPForge SDMMC transport")
             if not (configured and presence_known and present) or not clock_hz or speed_mode == 0:
                 raise ValueError("initialized SD sample has inconsistent state or clock")
-        elif speed_mode != 0 or clock_hz:
-            raise ValueError("uninitialized SD sample has an active speed or clock")
+        elif component_type or bus_mode or speed_mode or clock_hz:
+            raise ValueError("uninitialized SD sample has active bus fields")
         if present and not presence_known:
             raise ValueError("SD card reported present without known presence")
         if initialized and not (configured and presence_known and present):
@@ -101,7 +101,7 @@ def parse_memory_report(
         "present": present if sample_valid and presence_known else None,
         "initialized": initialized if sample_valid else False,
         "component_type": "sd-card" if component_type == 1 else None,
-        "mode": {0: None, 1: "sdio", 2: "spi"}[bus_mode],
+        "mode": {0: None, 3: "sdmmc"}[bus_mode],
         "bus_clock_hz": clock_hz if sample_valid and initialized else None,
         "speed_mode": {0: None, 1: "standard", 2: "high-speed"}[speed_mode],
         "block_count": block_count if capacity_valid else None,

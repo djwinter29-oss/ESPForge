@@ -36,12 +36,12 @@ export async function appFixture(context) {
   const connected = { connected: true, error: null, command_outcome_uncertain: false, reboot_pending: false,
     telemetry_stale: false, storage_stale: false, self_test_stale: true,
     runtime: { led_available: false, led_on: false },
-    hardware: { product_name: "ESPForge", board_model: "ESP32-S3-DevKitC-1", mcu: "ESP32-S3", capabilities: 2 | 4 | 8,
+    hardware: { product_name: "ESPForge", board_model: "ESP32-S3-DevKitC-1", mcu: "ESP32-S3", capabilities: 2 | 4 | 16,
       ram_reserved_bytes: 121008, ram_total_bytes: 524288 },
     settings_supported: true, settings: { system_clock_mhz: 240, sdcard_profile: 0, radios: 0 },
     board_configuration: { monitor_uart_index: 0, monitor_uart_tx_gpio: 43, monitor_uart_rx_gpio: 44,
-      storage_gpios: [12, 11, 13, 10, 255, 255], card_detect_gpio: 255, reset_cause: 1 },
-    memory: { mode: "spi" }, msc: { enabled: false, transition_pending: false }, self_test: null };
+      storage_gpios: [12, 11, 13, 14, 15, 10], card_detect_gpio: 255, reset_cause: 1 },
+    memory: { mode: "sdmmc" }, msc: { enabled: false, transition_pending: false }, self_test: null };
   const secondBoard = structuredClone(connected);
   secondBoard.settings.system_clock_mhz = 160;
   const boardStatuses = new Map([["board-a", connected], ["board-b", secondBoard]]);

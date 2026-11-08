@@ -20,7 +20,7 @@ public sealed class WirelessTests
         MonitorCommandTests.Hardware();
 
     private static byte[] Configuration(byte flags = 0x1c) =>
-        [2, 1, 240, 0, 0, 0, 43, 44, 12, 11, 13, 10, 255, 255, flags, 0, 255, 255];
+        [2, 1, 240, 0, 0, 0, 43, 44, 12, 11, 13, 14, 15, 10, flags, 0, 255, 255];
 
     private static byte[] Status()
     {

@@ -62,7 +62,7 @@ test("Direct dashboard shows live Wi-Fi and Bluetooth state without treating una
     assert.match(el("#direct-wifi-state").title, /read failed/);
     render({ ...state, connected: false });
     assert.equal(el("#direct-wifi-state").textContent, "--");
-    render({ ...state, hardware: { capabilities: 8 } });
+    render({ ...state, hardware: { capabilities: 16 } });
     assert.equal(el("#direct-wifi-diagnostics").hidden, true);
     assert.equal(el("#direct-ble-diagnostics").hidden, true);
   }

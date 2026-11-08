@@ -14,7 +14,7 @@ flowchart LR
     subgraph Device["ESP32-S3 / Zephyr"]
         USB["USB HID<br/>(native USB)"]
         BLE["BLE GATT"]
-        App["Zephyr application<br/>Control dispatcher + boot settings<br/>Wi-Fi station + DHCP<br/>SPI2 SD / FatFs"]
+        App["Zephyr application<br/>Control dispatcher + boot settings<br/>Wi-Fi station + DHCP<br/>4-bit SDMMC / FatFs"]
         Console["Zephyr console / log"]
         ROM["ROM bootloader<br/>(flashing)"]
     end

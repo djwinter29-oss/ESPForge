@@ -19,14 +19,14 @@ const vectors = {
   radio_init_failed_while_connected: `01020100012a2a2a2a08${ssid}${"00".repeat(30)}`,
 };
 
-test("identity requires ESPForge product 3, the 0x8E capability set, ESP32-S3 and valid RAM", () => {
+test("identity requires ESPForge product 3, the 0x96 capability set, ESP32-S3 and valid RAM", () => {
   const report = identity();
   const decoded = decodeIdentityReport(report);
   assert.equal(decoded.product_name, "ESPForge");
   assert.equal(decoded.serial_number, "0102030405060708");
   assert.equal(decoded.firmware_version, "1.2.3");
-  assert.deepEqual([decoded.mcu, decoded.board_name, decoded.transport], ["ESP32-S3", "ESP32-S3-DevKitC-1", "spi"]);
-  assert.equal(decoded.capabilities, 0x8e);
+  assert.deepEqual([decoded.mcu, decoded.board_name, decoded.transport], ["ESP32-S3", "ESP32-S3-DevKitC-1", "sdmmc"]);
+  assert.equal(decoded.capabilities, 0x96);
   for (const bytes of [report.slice(0, 25), Uint8Array.from([1, ...report]), new Uint8Array(42)]) {
     assert.throws(() => decodeIdentityReport(bytes));
   }
@@ -35,7 +35,8 @@ test("identity requires ESPForge product 3, the 0x8E capability set, ESP32-S3 an
     const bad = report.slice(); bad[offset] = value;
     assert.throws(() => decodeIdentityReport(bad), `${offset}: ${value}`);
   }
-  assert.equal(decodeIdentityReport(identity(8 | 128)).capabilities, 0x88, "capabilities may be a subset");
+  assert.equal(decodeIdentityReport(identity(16 | 128)).capabilities, 0x90, "capabilities may be a subset");
+  assert.throws(() => decodeIdentityReport(identity(0x8e)), "legacy SPI firmware requires matching hosts");
   const reserved = report.slice(); reserved[16] = 255;
   assert.equal(decodeIdentityReport(reserved).product_name, "ESPForge", "identity reserved byte is ignored");
   const unknown = report.slice(); unknown[14] = 99; unknown[15] = 99;
@@ -56,11 +57,11 @@ test("WebHID matching needs the ESPForge VID:PID and the vendor collection", () 
   }
 });
 
-test("configuration validates ESPForge clocks, SD profile 0, SPI GPIOs, monitor UART and no LED/card detect", () => {
+test("configuration validates ESPForge clocks, SD profile 0, SDMMC GPIOs, monitor UART and no LED/card detect", () => {
   const id = decodeIdentityReport(identity());
   const decoded = decodeConfigReport(config(), id);
   assert.deepEqual([decoded.system_clock_mhz, decoded.sdcard_profile, decoded.radios], [240, 0, 0]);
-  assert.deepEqual(decoded.storage_gpios, [12, 11, 13, 10, 255, 255]);
+  assert.deepEqual(decoded.storage_gpios, [12, 11, 13, 14, 15, 10]);
   assert.deepEqual([decoded.monitor_uart_index, decoded.monitor_uart_tx_gpio, decoded.monitor_uart_rx_gpio], [0, 43, 44]);
   assert.equal(Object.hasOwn(decoded, "led_gpio"), false);
   assert.equal(Object.hasOwn(decoded, "card_detect_gpio"), false);
@@ -69,12 +70,12 @@ test("configuration validates ESPForge clocks, SD profile 0, SPI GPIOs, monitor 
     assert.equal(decodeConfigReport(report, id).system_clock_mhz, clock);
   }
   for (const [offset, value] of [[1, 200], [1, 125], [3, 1], [4, 2], [5, 255], [6, 255], [7, 255], [7, 49],
-    [10, 255], [11, 10], [12, 10], [13, 0], [13, 4 | 1], [13, 4 | 2], [13, 4 | 32], [15, 2], [16, 3]]) {
+    [10, 255], [11, 255], [12, 255], [13, 0], [13, 4 | 1], [13, 4 | 2], [13, 4 | 32], [15, 2], [16, 3]]) {
     const bad = config(); bad[offset] = value;
     assert.throws(() => decodeConfigReport(bad, id), `${offset}: ${value}`);
   }
   assert.equal(decodeConfigReport(config(3), id).radios, 3);
-  assert.throws(() => decodeConfigReport(config(1), decodeIdentityReport(identity(2 | 4 | 8))),
+  assert.throws(() => decodeConfigReport(config(1), decodeIdentityReport(identity(2 | 4 | 16))),
     "radios need the wireless capability");
   const unknownReset = config(); unknownReset[14] = 255;
   assert.equal(decodeConfigReport(unknownReset, id).reset_cause, 255);
@@ -108,9 +109,9 @@ test("telemetry preserves 64-bit uptime, the core-0 load sentinel and temperatur
   assert.equal(decodeTelemetryReport(absent).temperature_centidegrees, null);
 });
 
-test("storage validates the SPI sample, timing, capacity and CID with MSC bytes always zero", () => {
+test("storage validates native SDMMC samples, timing, capacity and CID with MSC bytes always zero", () => {
   const decoded = decodeStorageReport(storage());
-  assert.equal(decoded.memory.mode, "spi");
+  assert.equal(decoded.memory.mode, "sdmmc");
   assert.equal(decoded.memory.capacity_bytes, 512 * 100000);
   assert.equal(decoded.memory.manufacturer, null);
   assert.equal(decoded.filesystem_format, "fat32");
@@ -120,7 +121,7 @@ test("storage validates the SPI sample, timing, capacity and CID with MSC bytes 
   assert.equal(decodeStorageReport(cid).memory.manufacturer.product_name, "SD16G");
   assert.equal(decodeStorageReport(cid).memory.manufacturer.serial_number, 0x12345678);
   assert.equal(decodeStorageReport(cid).memory.manufacturer.manufacture_year, 2025);
-  for (const [offset, value] of [[2, 128], [2, 63], [2, 64], [2, 71], [4, 1], [3, 2], [9, 0], [9, 3],
+  for (const [offset, value] of [[2, 128], [2, 63], [2, 64], [2, 71], [4, 1], [4, 2], [3, 2], [9, 0], [9, 3],
     [31, 1], [32, 1], [33, 1], [30, 5], [14, 1]]) {
     const bad = storage(); bad[offset] = value;
     assert.throws(() => decodeStorageReport(bad), `${offset}: ${value}`);
@@ -130,10 +131,16 @@ test("storage validates the SPI sample, timing, capacity and CID with MSC bytes 
   assert.equal(decodeStorageReport(unavailable).memory.sample_valid, false);
   unavailable[14] = 1;
   assert.throws(() => decodeStorageReport(unavailable));
-  const absent = new Uint8Array(34); absent[0] = 1; absent[2] = 67; absent[3] = 1; absent[4] = 2;
+  const absent = new Uint8Array(34); absent[0] = 1; absent[2] = 67;
   assert.equal(decodeStorageReport(absent).memory.present, false);
   absent[2] |= 16;
   assert.throws(() => decodeStorageReport(absent));
+  const mountFailed = new Uint8Array(34); mountFailed[0] = 1; mountFailed[2] = 0x41;
+  const failed = decodeStorageReport(mountFailed).memory;
+  assert.equal(failed.sample_valid, true);
+  assert.equal(failed.presence_known, false);
+  assert.equal(failed.initialized, false);
+  assert.equal(failed.mode, null);
   assert.throws(() => decodeStorageReport(storage().slice(0, 33)));
 });
 

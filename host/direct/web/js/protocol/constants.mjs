@@ -11,10 +11,10 @@ export const PRODUCT_IDS = Object.freeze([0x4021]);
 /** Report 1 `product_id` of ESPForge. */
 export const PRODUCT_ID = 0x0003;
 export const CAP = Object.freeze({
-  LED: 1, REBOOT: 2, SETTINGS: 4, SPI: 8, SDIO: 16, SELF_TEST: 32, FORCED_SAVE: 64, WIRELESS: 128,
+  LED: 1, REBOOT: 2, SETTINGS: 4, SPI: 8, SDMMC: 16, SELF_TEST: 32, FORCED_SAVE: 64, WIRELESS: 128,
 });
-/** Capability bits an ESPForge board may report; LED, SDIO, benchmark and forced save are never present. */
-export const ESPFORGE_CAPABILITIES = CAP.REBOOT | CAP.SETTINGS | CAP.SPI | CAP.WIRELESS;
+/** Capability bits an ESPForge board may report; LED, SPI, benchmark and forced save are never present. */
+export const ESPFORGE_CAPABILITIES = CAP.REBOOT | CAP.SETTINGS | CAP.SDMMC | CAP.WIRELESS;
 export const OP = Object.freeze({
   REBOOT: 2, SAVE_SETTINGS: 5, STAGE_SSID: 6, STAGE_PASSWORD: 7, STAGE_KEY: 8, TEST_WIFI: 9, CANCEL_TEST: 10,
   SCAN: 11, SCAN_ENTRY: 12,

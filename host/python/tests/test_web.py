@@ -26,7 +26,7 @@ class FakeMonitor:
                 "mcu": "ESP32-S3",
                 "mcu_id": 3,
                 "serial_number": "0123456789abcdef",
-                "storage_transport": "spi",
+                "storage_transport": "sdmmc",
                 "led_available": False,
                 "self_test_supported": False,
                 "settings_supported": True,

@@ -27,7 +27,7 @@ export function deriveDeviceViewModel(state, dashboard = deriveDashboardViewMode
   const config = state.settings;
   const ramUsed = hardware?.ram_reserved_bytes;
   const ramTotal = hardware?.ram_total_bytes;
-  const signals = ["CLK", "MOSI", "MISO", "CS"];
+  const signals = ["CLK", "CMD", "DAT0", "DAT1", "DAT2", "DAT3"];
   const pin = value => !config ? "--" : value === 255 || value == null ? "Unassigned" : `GPIO${value}`;
   return {
     ...dashboard,
@@ -43,7 +43,7 @@ export function deriveDeviceViewModel(state, dashboard = deriveDashboardViewMode
       storage: [signals, signals.map((_, index) => pin(config?.storage_gpios?.[index]))],
     },
     text: {
-      "product-name": hardware ? `${hardware.product_name} (SPI)` : "--",
+      "product-name": hardware ? `${hardware.product_name} (SDMMC)` : "--",
       "board-model": hardware ? `${hardware.board_name ?? unknown("board", hardware.board_model)} `
         + `(${hardware.mcu ?? unknown("MCU", hardware.mcu_id)})` : "--",
       "firmware-version": hardware?.firmware_version ?? "Unknown",
@@ -60,7 +60,7 @@ export function deriveDeviceViewModel(state, dashboard = deriveDashboardViewMode
       temperature: runtime?.temperature_valid ? `${(runtime.temperature_centidegrees / 100).toFixed(2)} °C` : "--",
       "board-uart-title": config && config.monitor_uart_index !== 255
         ? `Monitor UART${config.monitor_uart_index}` : "Monitor UART",
-      "board-storage-title": config ? "Storage (SPI)" : "Storage",
+      "board-storage-title": config ? "Storage (SDMMC)" : "Storage",
       "board-reset-cause": config
         ? ["Unknown", "Power-on", "Watchdog", "Software request"][config.reset_cause]
           ?? `Unassigned (${config.reset_cause})` : "--",

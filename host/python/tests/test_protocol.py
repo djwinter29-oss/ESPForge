@@ -32,7 +32,7 @@ def status_contract():
     return json.loads((Path(__file__).parents[2] / "web/tests/status-contract.json").read_text())
 
 
-def identity_report(capabilities=0x8E, mcu=3, board=1, product=3):
+def identity_report(capabilities=0x96, mcu=3, board=1, product=3):
     payload = (
         bytes([1]) + struct.pack("<H", product) + bytes.fromhex("0123456789ab0000")
         + bytes([1, 2, 3, mcu, board, 0, capabilities])
@@ -43,7 +43,7 @@ def identity_report(capabilities=0x8E, mcu=3, board=1, product=3):
 
 def configuration_report(clock=240, flags=0x04):
     payload = bytes([1]) + struct.pack("<H", clock) + bytes([0, 0, 43, 44]) + bytes(
-        [12, 11, 13, 10, 255, 255]) + bytes([flags, 1, 255, 255])
+        [12, 11, 13, 14, 15, 10]) + bytes([flags, 1, 255, 255])
     return bytes([2]) + payload
 
 
@@ -55,9 +55,9 @@ def telemetry_report(flags=0x05, led_flags=0, temperature=2345, core1=0xFFFF):
 
 def storage_report(flags=0x6F, msc=(0, 0, 0), speed=1, cid=bytes(16)):
     if flags & 0x40 and flags & 0x08:
-        sample = bytes([1, 2]) + struct.pack("<IBI", 10_000_000, speed, 4096) + cid
+        sample = bytes([1, 3]) + struct.pack("<IBI", 25_000_000, speed, 4096) + cid
     elif flags & 0x40:
-        sample = bytes([1, 2]) + bytes(9) + cid
+        sample = bytes(2 + 9) + cid
     else:
         sample = bytes(2 + 9 + 16)
     payload = bytes([1, 7, flags]) + sample + bytes([3, *msc])
@@ -93,14 +93,14 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(self.identity["product_name"], "ESPForge")
         self.assertEqual(self.identity["mcu"], "ESP32-S3")
         self.assertEqual(self.identity["board_model"], "ESP32-S3-DevKitC-1")
-        self.assertEqual(self.identity["storage_transport"], "spi")
+        self.assertEqual(self.identity["storage_transport"], "sdmmc")
         self.assertFalse(self.identity["led_available"])
         self.assertFalse(self.identity["self_test_supported"])
         self.assertTrue(self.identity["wireless_supported"])
         config = parse_configuration_report(configuration_report(), self.identity)
         self.assertEqual(config["system_clock_mhz"], 240)
         self.assertEqual(config["sdcard_profile"], 0)
-        self.assertEqual(config["storage_gpios"], (12, 11, 13, 10, 255, 255))
+        self.assertEqual(config["storage_gpios"], (12, 11, 13, 14, 15, 10))
         self.assertEqual((config["monitor_uart_tx_gpio"], config["monitor_uart_rx_gpio"]), (43, 44))
         self.assertFalse(config["tcp_cli_enabled"])
         self.assertLessEqual(set(status_contract()["nested"]["board_configuration"]), set(config))
@@ -123,7 +123,7 @@ class ProtocolTests(unittest.TestCase):
                 self.assertEqual(other["product_name"], name)
         for invalid in (identity_report(capabilities=0), identity_report(capabilities=0x8F),
                         identity_report(capabilities=0xCE), identity_report(capabilities=0xAE),
-                        identity_report(capabilities=0x96), identity_report(mcu=2, board=1)):
+                        identity_report(capabilities=0x8e), identity_report(mcu=2, board=1)):
             with self.subTest(report=invalid), self.assertRaises(ValueError):
                 parse_identity_report(invalid)
         unknown_mcu = parse_identity_report(identity_report(mcu=9, board=0))
@@ -151,10 +151,10 @@ class ProtocolTests(unittest.TestCase):
         led[16] = 2
         with self.assertRaisesRegex(ValueError, "LED"):
             parse_configuration_report(led, self.identity)
-        sdio_layout = bytearray(configuration_report())
-        sdio_layout[12:14] = bytes([14, 15])
-        with self.assertRaisesRegex(ValueError, "SPI"):
-            parse_configuration_report(sdio_layout, self.identity)
+        spi_layout = bytearray(configuration_report())
+        spi_layout[12:14] = bytes([255, 255])
+        with self.assertRaisesRegex(ValueError, "SDMMC"):
+            parse_configuration_report(spi_layout, self.identity)
 
     def test_telemetry_decodes_profile_values_and_rejects_unavailable_features(self):
         result = parse_status_report(telemetry_report(), self.identity)
@@ -176,14 +176,14 @@ class ProtocolTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "exactly"):
             parse_status_report(telemetry_report() + b"\0")
 
-    def test_storage_snapshot_decodes_spi_samples_without_cid(self):
+    def test_storage_snapshot_decodes_sdmmc_samples_without_cid(self):
         data = parse_memory_report(storage_report(), self.identity)
         self.assertTrue(data["sample_valid"])
         self.assertLessEqual(set(status_contract()["nested"]["memory"]), set(data))
         self.assertTrue(data["initialized"])
-        self.assertEqual(data["mode"], "spi")
+        self.assertEqual(data["mode"], "sdmmc")
         self.assertEqual(data["speed_mode"], "standard")
-        self.assertEqual(data["bus_clock_hz"], 10_000_000)
+        self.assertEqual(data["bus_clock_hz"], 25_000_000)
         self.assertEqual(data["capacity_bytes"], 4096 * 512)
         self.assertEqual(data["filesystem_format"], "fat32")
         self.assertIsNone(data["manufacturer"])
@@ -200,8 +200,8 @@ class ProtocolTests(unittest.TestCase):
             with self.subTest(flags=flags), self.assertRaises(ValueError):
                 parse_memory_report(storage_report(flags=flags), self.identity)
         bad_mode = bytearray(storage_report())
-        bad_mode[5] = 1
-        with self.assertRaisesRegex(ValueError, "SPI"):
+        bad_mode[5] = 2
+        with self.assertRaisesRegex(ValueError, "bus mode"):
             parse_memory_report(bad_mode, self.identity)
         for report in (storage_report(flags=1, msc=(0, 1, 0)), storage_report(flags=1, msc=(1, 0, 0)),
                        storage_report(flags=0x7F, cid=bytes.fromhex("1b53444341524431211234567801aaff")),

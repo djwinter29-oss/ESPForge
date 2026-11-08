@@ -190,7 +190,7 @@ internal static partial class HidProtocol
     public const byte CapabilityReboot = 1 << 1;
     public const byte CapabilitySettings = 1 << 2;
     public const byte CapabilitySpi = 1 << 3;
-    public const byte CapabilitySdio = 1 << 4;
+    public const byte CapabilitySdmmc = 1 << 4;
     public const byte CapabilitySelfTest = 1 << 5;
     public const byte CapabilityForcedSave = 1 << 6;
     public const byte CapabilityWireless = 1 << 7;
@@ -243,9 +243,9 @@ internal static partial class HidProtocol
         var productId = BinaryPrimitives.ReadUInt16LittleEndian(payload[1..]);
         Require(productId == FamilyId, $"unsupported ESPForge product ID 0x{productId:X4}");
         var capabilities = payload[17];
-        var spi = (capabilities & CapabilitySpi) != 0;
-        var sdio = (capabilities & CapabilitySdio) != 0;
-        Require(spi != sdio, "invalid HID capability flags");
+        var sdmmc = (capabilities & CapabilitySdmmc) != 0;
+        const byte supported = CapabilityReboot | CapabilitySettings | CapabilitySdmmc | CapabilityWireless;
+        Require(sdmmc && (capabilities & ~supported) == 0, "invalid HID capability flags");
         var mcuId = payload[14];
         var boardModel = payload[15];
         Require(boardModel != BoardEsp32S3DevKitC1 || mcuId == McuEsp32S3, "board model and MCU do not match");
@@ -291,11 +291,7 @@ internal static partial class HidProtocol
         var gpioLimit = identity.McuId == McuEsp32S3 ? 49 : 256;
         foreach (var pin in gpios.Concat([tx, rx, ledGpio, detectGpio]))
             Require(pin == byte.MaxValue || pin < gpioLimit, "GPIO is invalid for the reported MCU");
-        if ((identity.Capabilities & CapabilitySdio) != 0)
-            Require(gpios.All(pin => pin != byte.MaxValue), "SDIO requires six configured storage GPIOs");
-        else
-            Require(gpios.Take(4).All(pin => pin != byte.MaxValue)
-                && gpios.Skip(4).All(pin => pin == byte.MaxValue), "invalid SPI storage GPIO layout");
+        Require(gpios.All(pin => pin != byte.MaxValue), "4-bit SDMMC requires six configured storage GPIOs");
         return new(clock, sdProfile, uartIndex, tx, rx, gpios, flags, payload[14], ledGpio, detectGpio);
     }
 
@@ -359,8 +355,9 @@ internal static partial class HidProtocol
         Require(!capacityValid || blocks != 0, "valid capacity is zero");
         Require(capacityValid || blocks == 0, "invalid capacity has a block count");
         Require(cidValid || cid.IndexOfAnyExcept((byte)0) < 0, "invalid CID field is nonzero");
-        Require(!sampleValid || (configured && component == 1
-            && mode == (((identity.Capabilities & CapabilitySpi) != 0) ? 2 : 1)),
+        Require(!sampleValid || (configured && (initialized
+            ? component == 1 && mode == 3 && (identity.Capabilities & CapabilitySdmmc) != 0
+            : component == 0 && mode == 0)),
             "storage sample disagrees with selected transport");
         Require(sampleValid || ((flags & 0x3e) == 0 && component == 0 && mode == 0
             && clock == 0 && speed == 0 && blocks == 0 && cid.IndexOfAnyExcept((byte)0) < 0),
@@ -371,7 +368,7 @@ internal static partial class HidProtocol
         if (cidValid) identityInfo = ParseCid(cid);
         var memory = new MemoryStatusResponse(payload[1], configured, presenceKnown,
             presenceKnown ? present : null, initialized, component == 1 ? "sd-card" : null,
-            mode switch { 1 => "sdio", 2 => "spi", _ => null }, initialized ? clock : null,
+            mode == 3 ? "sdmmc" : null, initialized ? clock : null,
             capacityValid ? blocks : null, capacityValid ? (ulong)blocks * 512 : null,
             identityInfo, sampleValid, speed);
         return new(null, memory with

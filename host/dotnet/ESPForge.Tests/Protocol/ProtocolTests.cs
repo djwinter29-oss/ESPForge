@@ -22,7 +22,7 @@ public sealed class ProtocolTests
         Assert.Equal((ushort)3, identity.ProductId);
         Assert.Equal("ESP32-S3", identity.Mcu);
         Assert.Equal((byte)1, identity.BoardModel);
-        Assert.Equal((byte)0x8e, identity.Capabilities);
+        Assert.Equal((byte)0x96, identity.Capabilities);
         Assert.True(identity.WirelessSupported);
         Assert.Equal("0001020304050607", identity.SerialNumber);
         Assert.Equal((uint)524288, identity.RamTotalBytes);
@@ -32,7 +32,7 @@ public sealed class ProtocolTests
         Assert.Equal((byte)0, configuration.StoredSdCardProfile);
         Assert.Equal((0, 43, 44), (configuration.MonitorUartIndex, configuration.MonitorUartTxGpio,
             configuration.MonitorUartRxGpio));
-        Assert.Equal(new byte[] { 12, 11, 13, 10, 255, 255 }, configuration.StorageGpios);
+        Assert.Equal(new byte[] { 12, 11, 13, 14, 15, 10 }, configuration.StorageGpios);
         Assert.Equal((240, 0, 0), (configuration.SystemClockMhz, configuration.SdCardProfile, configuration.Radios));
         Assert.False(configuration.TcpCliEnabled);
     }
@@ -55,6 +55,7 @@ public sealed class ProtocolTests
     [InlineData(2, 0)]
     [InlineData(3, 1)]
     [InlineData(18, 0x9e)]
+    [InlineData(18, 0x8e)]
     [InlineData(18, 0x86)]
     [InlineData(19, 0)]
     public void RejectsIdentityOutsideTheEspForgeProfile(int index, byte value)
@@ -83,7 +84,7 @@ public sealed class ProtocolTests
     [InlineData(14, 0x24)]
     [InlineData(8, 49)]
     [InlineData(11, 255)]
-    [InlineData(13, 14)]
+    [InlineData(13, 255)]
     public void RejectsConfigurationOutsideTheEspForgeProfile(int index, byte value)
     {
         var report = ConfigurationReport();
@@ -130,15 +131,15 @@ public sealed class ProtocolTests
     }
 
     [Fact]
-    public void ParsesSpiStorageStatusWithoutCidOrMsc()
+    public void ParsesSdmmcStorageStatusWithoutCidOrMsc()
     {
         var hardware = HidProtocol.ParseIdentityReport(IdentityReport());
         var report = StorageReport();
         var result = HidProtocol.ParseStorageReport(report, hardware);
         Assert.Null(result.Runtime);
-        Assert.Equal("spi", result.Memory!.Mode);
+        Assert.Equal("sdmmc", result.Memory!.Mode);
         Assert.Equal((byte)1, result.Memory.SpeedMode);
-        Assert.Equal((uint)10_000_000, result.Memory.BusClockHz);
+        Assert.Equal((uint)25_000_000, result.Memory.BusClockHz);
         Assert.Equal((ulong)2_097_152, result.Memory.CapacityBytes);
         Assert.Equal("fat32", result.Memory.FilesystemFormat);
         Assert.Null(result.Memory.Manufacturer);
@@ -148,11 +149,11 @@ public sealed class ProtocolTests
         mountFailed[0] = HidProtocol.StorageReportId;
         mountFailed[1] = 1;
         mountFailed[3] = 0x41;
-        mountFailed[4] = 1;
-        mountFailed[5] = 2;
         var failed = HidProtocol.ParseStorageReport(mountFailed, hardware).Memory!;
         Assert.True(failed.SampleValid);
         Assert.False(failed.Initialized);
+        Assert.False(failed.PresenceKnown);
+        Assert.Null(failed.Mode);
         Assert.Null(failed.BusClockHz);
 
         foreach (var index in new[] { 32, 33, 34 })
@@ -161,9 +162,12 @@ public sealed class ProtocolTests
             msc[index] = 1;
             Assert.Throws<InvalidDataException>(() => HidProtocol.ParseStorageReport(msc, hardware));
         }
-        var sdio = StorageReport();
-        sdio[5] = 1;
-        Assert.Throws<InvalidDataException>(() => HidProtocol.ParseStorageReport(sdio, hardware));
+        foreach (var mode in new byte[] { 1, 2 })
+        {
+            var legacy = StorageReport();
+            legacy[5] = mode;
+            Assert.Throws<InvalidDataException>(() => HidProtocol.ParseStorageReport(legacy, hardware));
+        }
     }
 
     [Fact]
@@ -374,7 +378,7 @@ public sealed class ProtocolTests
         report[14] = 3;
         report[15] = HidProtocol.McuEsp32S3;
         report[16] = HidProtocol.BoardEsp32S3DevKitC1;
-        report[18] = 0x8e;
+        report[18] = 0x96;
         BinaryPrimitives.WriteUInt32LittleEndian(report.AsSpan(19), 524288);
         BinaryPrimitives.WriteUInt32LittleEndian(report.AsSpan(23), 100000);
         return report;
@@ -393,9 +397,9 @@ public sealed class ProtocolTests
         report[8] = 12;
         report[9] = 11;
         report[10] = 13;
-        report[11] = 10;
-        report[12] = 255;
-        report[13] = 255;
+        report[11] = 14;
+        report[12] = 15;
+        report[13] = 10;
         report[14] = HidProtocol.BoardFlagMonitorUart;
         report[15] = 1;
         report[16] = 255;
@@ -411,8 +415,8 @@ public sealed class ProtocolTests
         report[2] = 7;
         report[3] = 0x6f;
         report[4] = 1;
-        report[5] = 2;
-        BinaryPrimitives.WriteUInt32LittleEndian(report.AsSpan(6), 10_000_000);
+        report[5] = 3;
+        BinaryPrimitives.WriteUInt32LittleEndian(report.AsSpan(6), 25_000_000);
         report[10] = 1;
         BinaryPrimitives.WriteUInt32LittleEndian(report.AsSpan(11), 4096);
         report[31] = 3;

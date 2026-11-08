@@ -19,7 +19,7 @@ permissions:
 
 jobs:
   firmware:
-    name: Zephyr ESP32-S3-DevKitC (PROCPU, SPI)
+    name: Zephyr ESP32-S3-DevKitC (PROCPU, 4-bit SDMMC)
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:

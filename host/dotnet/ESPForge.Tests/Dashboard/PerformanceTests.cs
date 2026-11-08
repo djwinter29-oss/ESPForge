@@ -27,7 +27,7 @@ public sealed class PerformanceTests(ITestOutputHelper output)
             100_000, 520_192, 1);
         var status = new StatusResponse(true, null,
             MonitorCommandTests.Hardware(), runtime, DateTimeOffset.UtcNow,
-            new MemoryStatusResponse(1, true, true, true, true, "sd", "spi", 20_000_000, 1024, 524_288, null)
+            new MemoryStatusResponse(1, true, true, true, true, "sd", "sdmmc", 20_000_000, 1024, 524_288, null)
             {
                 FilesystemFormat = "fat32"
             },

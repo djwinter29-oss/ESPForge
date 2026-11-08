@@ -5,8 +5,8 @@ import { describe } from "../../web/js/ui/messages.mjs";
 import { BoardSession } from "../../web/js/board/session.mjs";
 import { HidTransport } from "../../web/js/transport/hid.mjs";
 
-/** @brief ESPForge capabilities: reboot, settings, SPI storage, wireless (0x8E). */
-export const CAPABILITIES = 2 | 4 | 8 | 128;
+/** @brief ESPForge capabilities: reboot, settings, SDMMC storage, wireless (0x96). */
+export const CAPABILITIES = 2 | 4 | 16 | 128;
 
 export function identity(capabilities = CAPABILITIES) {
   const bytes = new Uint8Array(26);
@@ -15,9 +15,9 @@ export function identity(capabilities = CAPABILITIES) {
   view.setUint32(18, 524288, true); view.setUint32(22, 65536, true);
   return bytes;
 }
-/** @brief Report 2 for the ESP32-S3-DevKitC-1: 240 MHz, monitor UART0 on GPIO43/44, SPI on GPIO12/11/13/10. */
+/** @brief Report 2: 240 MHz, UART0 on GPIO43/44, native SDMMC CLK/CMD/DAT0-3 on GPIO12/11/13/14/15/10. */
 export function config(radios = 0) {
-  return Uint8Array.from([1, 240, 0, 0, 0, 43, 44, 12, 11, 13, 10, 255, 255, 4 | radios << 3, 1, 255, 255]);
+  return Uint8Array.from([1, 240, 0, 0, 0, 43, 44, 12, 11, 13, 14, 15, 10, 4 | radios << 3, 1, 255, 255]);
 }
 export function telemetry() {
   const bytes = new Uint8Array(22); bytes[0] = 1; bytes[21] = 5;
@@ -26,9 +26,9 @@ export function telemetry() {
   view.setUint16(12, 1234, true); view.setUint16(14, 65535, true); view.setUint32(16, 240000000, true);
   return bytes;
 }
-/** @brief Report 10 with a mounted SPI card: no CID, no MSC. */
+/** @brief Report 10 with a mounted SDMMC card: no CID, no MSC. */
 export function storage() {
-  const bytes = new Uint8Array(34); bytes.set([1, 0, 111, 1, 2]);
+  const bytes = new Uint8Array(34); bytes.set([1, 0, 111, 1, 3]);
   const view = new DataView(bytes.buffer);
   view.setUint32(5, 25000000, true); bytes[9] = 1; view.setUint32(10, 100000, true);
   bytes[30] = 3;

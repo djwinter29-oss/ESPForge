@@ -83,7 +83,7 @@ def parse_identity_report(report: bytes | bytearray | list[int]) -> HardwareIden
         "led_available": bool(capabilities & CAP_LED),
         "reboot_available": bool(capabilities & CAP_REBOOT),
         "settings_supported": bool(capabilities & CAP_SAVE_SETTINGS),
-        "storage_transport": "spi",
+        "storage_transport": "sdmmc",
         "self_test_supported": bool(capabilities & CAP_SELF_TEST),
         "wireless_supported": bool(capabilities & CAP_WIRELESS),
         "ram_total_bytes": ram_total,
@@ -129,10 +129,8 @@ def parse_configuration_report(
     if flags & 0x04 and uart_index == 255:
         raise ValueError("enabled monitor UART is unavailable")
     transport = identity["storage_transport"]
-    if any(gpio == 255 for gpio in storage_gpios[:4]) or any(
-        gpio != 255 for gpio in storage_gpios[4:]
-    ):
-        raise ValueError("invalid SPI storage GPIO layout")
+    if any(gpio == 255 for gpio in storage_gpios):
+        raise ValueError("invalid 4-bit SDMMC storage GPIO layout")
     board_model = identity["board_model_id"]
     mcu_id = identity["mcu_id"]
     if mcu_id == ESP32S3_MCU or board_model == 1:

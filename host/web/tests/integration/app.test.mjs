@@ -125,12 +125,12 @@ test("settings presentation waits for fresh storage status", async context => {
     assert.equal(elements.get("#settings-note").hidden, false);
   }
   renderStatus(connected);
-  assert.equal(elements.get("#product-name").textContent, "ESPForge (SPI)");
+  assert.equal(elements.get("#product-name").textContent, "ESPForge (SDMMC)");
   assert.equal(elements.get("#settings-clock").disabled, false);
   assert.equal(Boolean(elements.get("#reboot-control").disabled), false);
-  renderStatus({ ...connected, hardware: { ...connected.hardware, capabilities: 4 | 8 } });
+  renderStatus({ ...connected, hardware: { ...connected.hardware, capabilities: 4 | 16 } });
   assert.equal(elements.get("#reboot-control").disabled, true, "reboot requires capability bit 1");
-  renderStatus({ ...connected, hardware: { ...connected.hardware, capabilities: 2 | 8 }, settings_dirty: true });
+  renderStatus({ ...connected, hardware: { ...connected.hardware, capabilities: 2 | 16 }, settings_dirty: true });
   assert.equal(elements.get("#settings-save").disabled, true, "saving requires capability bit 2");
   assert.equal(elements.get("#settings-save").title, "Firmware does not support saving boot settings.");
   renderStatus({ ...connected, settings_dirty: true });
@@ -154,7 +154,7 @@ test("ESP32-S3 clock choices are fixed and storage stays on the Standard profile
 
 test("storage telemetry, pin rows, and dashboard layout preserve presentation", async context => {
   const { connected, elements } = await appFixture(context);
-  connected.memory = { mode: "spi" };
+  connected.memory = { mode: "sdmmc" };
   delete connected.filesystem_format;
   renderStatus({ ...connected, memory: { configured: true, sample_valid: false, initialized: false } });
   assert.equal(elements.get("#memory-state").textContent, "Busy");
@@ -162,17 +162,17 @@ test("storage telemetry, pin rows, and dashboard layout preserve presentation", 
   assert.equal(elements.get("#memory-speed").textContent, "--");
   for (const speedMode of ["standard", 1]) {
     renderStatus({ ...connected, memory: { configured: true, sample_valid: true, initialized: true,
-      present: true, bus_clock_hz: 10000000, speed_mode: speedMode } });
+      present: true, bus_clock_hz: 25000000, speed_mode: speedMode } });
     assert.equal(elements.get("#memory-state").textContent, "Ready");
-    assert.equal(elements.get("#memory-speed").textContent, "10 MHz");
+    assert.equal(elements.get("#memory-speed").textContent, "25 MHz");
   }
   renderStatus({ ...connected, memory: { configured: true, sample_valid: true, initialized: false } });
   assert.equal(elements.get("#memory-state").textContent, "Not initialized");
   assert.equal(elements.get("#memory-note").textContent,
     "Card not mounted; check card insertion, UART logs and SD wiring.");
   const validStorage = { ...connected, filesystem_format: "exfat", memory: {
-    configured: true, sample_valid: true, initialized: true, present: true, mode: "spi",
-    bus_clock_hz: 10000000, speed_mode: "standard", capacity_bytes: 127865454592,
+    configured: true, sample_valid: true, initialized: true, present: true, mode: "sdmmc",
+    bus_clock_hz: 25000000, speed_mode: "standard", capacity_bytes: 127865454592,
     manufacturer: { id: 3, product_name: "SB128", product_revision: "8.0", manufacture_year: 2020,
       manufacture_month: 1, serial_number: 4089330880 },
   } };
@@ -202,10 +202,11 @@ test("storage telemetry, pin rows, and dashboard layout preserve presentation", 
   const rows = id => elements.get(id).children.map(row => row.children.map(cell => cell.textContent));
   renderStatus(connected);
   assert.equal(elements.get("#board-uart-title").textContent, "Monitor UART0");
-  assert.equal(elements.get("#board-storage-title").textContent, "Storage (SPI)");
+  assert.equal(elements.get("#board-storage-title").textContent, "Storage (SDMMC)");
   assert.deepEqual(rows("#board-uart"), [["TX", "RX"], ["GPIO43", "GPIO44"]]);
   assert.deepEqual(rows("#board-storage-pins"),
-    [["CLK", "MOSI", "MISO", "CS", "Card detect"], ["GPIO12", "GPIO11", "GPIO13", "GPIO10", "Unassigned"]]);
+    [["CLK", "CMD", "DAT0", "DAT1", "DAT2", "DAT3", "Card detect"],
+      ["GPIO12", "GPIO11", "GPIO13", "GPIO14", "GPIO15", "GPIO10", "Unassigned"]]);
   assert.equal(elements.get("#board-reset-cause").textContent, "Power-on");
   const uartRows = elements.get("#board-uart").children;
   const storageRows = elements.get("#board-storage-pins").children;
@@ -443,7 +444,7 @@ test("wireless provisioning and cancellation preserve draft and uncertainty inva
   } = await appFixture(context);
   const connected = boardStatuses.get("board-b");
   await switchBoard("board-b");
-  connected.hardware.capabilities = 0x8e;
+  connected.hardware.capabilities = 0x96;
   connected.settings.radios = 3;
   state.wirelessStatus = { ble_enabled: true, ble_key_configured: true };
   connected.storage_stale = false;

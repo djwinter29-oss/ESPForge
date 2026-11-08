@@ -4,18 +4,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  CAPABILITY_REBOOT, CAPABILITY_SETTINGS, CAPABILITY_SPI, CAPABILITY_WIRELESS,
+  CAPABILITY_REBOOT, CAPABILITY_SETTINGS, CAPABILITY_SDMMC, CAPABILITY_WIRELESS,
   commandEffects, commandSettled, createCommandState, observeCommandStatus, operationState,
 } from "../../src/js/operation-state.mjs";
 
 const ready = {
-  connected: true, hardware: { capabilities: 0x8e }, msc: { enabled: false, transition_pending: false },
+  connected: true, hardware: { capabilities: 0x96 }, msc: { enabled: false, transition_pending: false },
   storage_stale: false, memory: { initialized: true },
 };
 
 test("capability bits match the ESPForge profile", () => {
-  assert.deepEqual([CAPABILITY_REBOOT, CAPABILITY_SETTINGS, CAPABILITY_SPI, CAPABILITY_WIRELESS], [2, 4, 8, 128]);
-  assert.equal(CAPABILITY_REBOOT | CAPABILITY_SETTINGS | CAPABILITY_SPI | CAPABILITY_WIRELESS, 0x8e);
+  assert.deepEqual([CAPABILITY_REBOOT, CAPABILITY_SETTINGS, CAPABILITY_SDMMC, CAPABILITY_WIRELESS], [2, 4, 16, 128]);
+  assert.equal(CAPABILITY_REBOOT | CAPABILITY_SETTINGS | CAPABILITY_SDMMC | CAPABILITY_WIRELESS, 0x96);
 });
 
 test("one Save projection supplies eligibility and the same reason for all draft and board gates", () => {
@@ -28,7 +28,7 @@ test("one Save projection supplies eligibility and the same reason for all draft
     [{ connected: false }, {}, /Waiting for an ESPForge connection/],
     [{ settings_supported: false }, {}, /Boot settings unavailable/],
     [{ settings_supported: false, settings_message: "Settings report invalid." }, {}, /Settings report invalid/],
-    [{ hardware: { capabilities: 0x8e & ~CAPABILITY_SETTINGS } }, {}, /does not support/],
+    [{ hardware: { capabilities: 0x96 & ~CAPABILITY_SETTINGS } }, {}, /does not support/],
     [{}, { saving: true }, /pending operation/],
     [{}, { uncertain: true }, /recovery/],
     [{}, { rebootPending: true }, /pending operation/],

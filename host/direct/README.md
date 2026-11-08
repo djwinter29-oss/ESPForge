@@ -72,7 +72,7 @@ The layout follows the PicoForge Direct dashboard, but its implementation is ind
 |---|---|
 | Device information | Product, board/MCU, serial, system clock, reserved/total firmware RAM, and firmware version |
 | Board configuration | Next-boot clock, Wi-Fi and Bluetooth switches, and reset cause |
-| Pin configuration | Collapsible management UART and SD-card SPI GPIO tables |
+| Pin configuration | Collapsible management UART and six-signal SDMMC GPIO tables |
 | Live diagnostics | Uptime, Core 0 CPU load, temperature, storage bus speed, and wireless status |
 | Storage | Card state, capacity, filesystem, and card identity |
 
@@ -136,7 +136,7 @@ The dashboard implements the [HID report reference](../../docs/reference/usb-hid
 [Bluetooth LE protocol](../../docs/reference/bluetooth.md) as narrowed by the
 [ESPForge implementation reference](../../docs/reference/espforge-implementation.md):
 
-- USB `0xCAFE:0x4021`, product ID 3, MCU 3, board model 1, and capability byte `0x8E`.
+- USB `0xCAFE:0x4021`, product ID 3, MCU 3, board model 1, and capability byte `0x96` (native SDMMC).
 - Reports 1, 2, 3, 10, 12, and 20. Report 11 does not exist; unknown Input reports are ignored.
 - Opcodes 1, 3, 4, and 13 (LED, MSC, benchmark, TCP CLI proof) are unsupported and never sent.
   Save flag 1 (forced save) is not used; the wireless commit flag is USB-only.

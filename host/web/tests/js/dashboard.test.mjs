@@ -23,9 +23,9 @@ function withDocument(run) {
 
 function snapshot() {
   return { connected: true,
-    hardware: { product_name: "ESPForge", board_model: 1, mcu: "ESP32-S3", capabilities: 0x8e,
+    hardware: { product_name: "ESPForge", board_model: 1, mcu: "ESP32-S3", capabilities: 0x96,
       serial_number: "0102030405060708", ram_total_bytes: 524288, ram_reserved_bytes: 65536 },
-    settings: { system_clock_mhz: 160, sdcard_profile: 0, storage_gpios: [12, 11, 13, 10, 255, 255],
+    settings: { system_clock_mhz: 160, sdcard_profile: 0, storage_gpios: [12, 11, 13, 14, 15, 10],
       monitor_uart_index: 0, monitor_uart_tx_gpio: 43, monitor_uart_rx_gpio: 44, card_detect_gpio: 255 },
     self_test: null, self_test_stale: true,
     memory: { sample_valid: true, initialized: true, configured: true, presence_known: true, present: true },
@@ -184,12 +184,12 @@ test("diagnostic rendering distinguishes missing facts, explicit false and repor
     renderServerStatus({ ...snapshot(), board_configuration: { ...snapshot().settings, reset_cause: 1 } });
     assert.equal(el("#board-model").textContent, "ESP32-S3-DevKitC-1 (ESP32-S3)");
     assert.equal(el("#board-reset-cause").textContent, "Power-on");
-    assert.equal(el("#product-name").textContent, "ESPForge (SPI)");
-    assert.equal(el("#board-storage-title").textContent, "Storage (SPI)");
+    assert.equal(el("#product-name").textContent, "ESPForge (SDMMC)");
+    assert.equal(el("#board-storage-title").textContent, "Storage (SDMMC)");
     assert.deepEqual(el("#board-storage-pins").children[0].children.map(cell => cell.textContent),
-      ["CLK", "MOSI", "MISO", "CS", "Card detect"]);
+      ["CLK", "CMD", "DAT0", "DAT1", "DAT2", "DAT3", "Card detect"]);
     assert.deepEqual(el("#board-storage-pins").children[1].children.map(cell => cell.textContent),
-      ["GPIO12", "GPIO11", "GPIO13", "GPIO10", "Unassigned"]);
+      ["GPIO12", "GPIO11", "GPIO13", "GPIO14", "GPIO15", "GPIO10", "Unassigned"]);
     assert.deepEqual(el("#board-uart").children[1].children.map(cell => cell.textContent), ["GPIO43", "GPIO44"]);
   }));
 

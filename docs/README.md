@@ -25,8 +25,9 @@ Keep each topic in one document; other documents link rather than duplicate its 
 | Default radios, provisioning and security limits | [Wireless](guides/wireless.md) |
 | Layer responsibilities and service lifecycle | [Architecture](reference/architecture.md) |
 | Reference document map | [Repository README](../README.md#reference-map) |
-| ESPForge identity, report values, supported features and deviations from PicoForge | [ESPForge implementation](reference/espforge-implementation.md) |
-| USB HID and Bluetooth LE contract imported from PicoForge | [USB HID](reference/usb-hid.md), [Bluetooth LE](reference/bluetooth.md) |
+| Board identity, report values, supported features and platform behavior | [ESPForge implementation](reference/espforge-implementation.md) |
+| Shared report layouts, USB HID discovery, control and validation contract | [USB HID](reference/usb-hid.md) |
+| ESPForge BLE advertising, GATT, authentication and control contract | [Bluetooth LE](reference/bluetooth.md) |
 | Saved next-boot settings: record format, flash partition, clock and radio application | [Boot settings](reference/settings.md) |
 | SD pin allocation, driver configuration, mount behavior, status and data safety | [SD storage](reference/sdcard.md) |
 | Toolchains and software validation | [Firmware](development/firmware.md), [host tools](development/host-tools.md) |

@@ -8,11 +8,11 @@
 #define HWINFO_RESET_POR 0x08u
 #define HWINFO_RESET_WATCHDOG 0x10u
 
-/* DevKitC monitor UART0 and SPI2 SD-card pins; see docs/guides/hardware.md. */
+/* DevKitC monitor UART0 and native SDMMC pins; see docs/reference/sdcard.md. */
 #define MONITOR_UART_INDEX 0u
 #define MONITOR_UART_TX 43u
 #define MONITOR_UART_RX 44u
-static const uint8_t storage_gpios[6] = {12u, 11u, 13u, 10u, EF_GPIO_UNASSIGNED, EF_GPIO_UNASSIGNED};
+static const uint8_t storage_gpios[6] = {12u, 11u, 13u, 14u, 15u, 10u};
 
 #define CONFIG_FLAG_MONITOR_UART 0x04u
 #define CONFIG_FLAG_WIFI 0x08u
@@ -101,7 +101,7 @@ void ef_report_storage(const ef_storage_t *storage, uint8_t out[EF_STORAGE_SIZE]
 			put32(out + 10, storage->block_count);
 		}
 		out[3] = 1;
-		out[4] = 2;
+		out[4] = 3;
 		put32(out + 5, storage->bus_clock_hz);
 		out[9] = 1;
 	}

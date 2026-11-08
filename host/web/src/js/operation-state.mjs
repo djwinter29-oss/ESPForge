@@ -44,6 +44,7 @@
 export const CAPABILITY_REBOOT = 2;
 export const CAPABILITY_SETTINGS = 4;
 export const CAPABILITY_SPI = 8;
+export const CAPABILITY_SDMMC = 16;
 export const CAPABILITY_WIRELESS = 128;
 
 /** Fresh report evidence may settle readback-based uncertainty, but never a resync-only obligation.

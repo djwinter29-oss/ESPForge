@@ -48,7 +48,7 @@ export function decodeIdentityReport(report) {
   const capabilities = view.getUint8(17);
   const total = view.getUint32(18, true);
   const reserved = view.getUint32(22, true);
-  requireValid(Boolean(capabilities & CAP.SPI) && !(capabilities & ~ESPFORGE_CAPABILITIES)
+  requireValid(Boolean(capabilities & CAP.SDMMC) && !(capabilities & ~ESPFORGE_CAPABILITIES)
     && total > 0 && reserved <= total && (board !== 1 || mcu === 3), "identity");
   return {
     version: 1, product_id: product, product_name: "ESPForge",
@@ -56,7 +56,7 @@ export function decodeIdentityReport(report) {
     firmware_version: [11, 12, 13].map(offset => view.getUint8(offset)).join("."),
     mcu_id: mcu, mcu: ({ 3: "ESP32-S3" })[mcu] ?? null,
     board_model: board, board_name: ({ 0: "Unspecified", 1: "ESP32-S3-DevKitC-1" })[board] ?? null,
-    capabilities, transport: "spi",
+    capabilities, transport: "sdmmc",
     ram_total_bytes: total, ram_reserved_bytes: reserved,
   };
 }
@@ -77,7 +77,7 @@ export function decodeConfigReport(report, identity) {
     && (identity.capabilities & CAP.WIRELESS || !(flags & CONFIG_FLAGS.RADIO_MASK))
     && [0, 1].includes(uart) && tx !== 255 && rx !== 255 && led === 255 && detect === 255
     && [tx, rx, ...gpios].every(pin => pin === 255 || pin <= MAX_GPIO)
-    && gpios.slice(0, 4).every(pin => pin !== 255) && gpios.slice(4).every(pin => pin === 255),
+    && gpios.every(pin => pin !== 255),
   "board-configuration");
   return { ...settings, monitor_uart_index: uart, monitor_uart_tx_gpio: tx, monitor_uart_rx_gpio: rx,
     storage_gpios: gpios, board_flags: flags, reset_cause: view.getUint8(14) };
@@ -123,7 +123,7 @@ export function decodeStorageReport(report) {
   requireValid(!(flags & 128) && format <= 4 && zero(bytesAt(view, 31, 3))
     && (!sampleValid || configured) && (configured || !(flags & 126))
     && (sampleValid || (!(flags & 62) && zero(bytesAt(view, 3, 27))))
-    && (!sampleValid || (component === 1 && mode === 2))
+    && (!sampleValid || (initialized ? component === 1 && mode === 3 : component === 0 && mode === 0))
     && (!initialized || (flags & 15) === 15)
     && (!(flags & 48) || (sampleValid && initialized))
     && (!(flags & 4) || Boolean(flags & 2))
@@ -133,7 +133,7 @@ export function decodeStorageReport(report) {
   return {
     memory: { version: 1, sequence: view.getUint8(1), configured, sample_valid: sampleValid,
       presence_known: sampleValid && Boolean(flags & 2), present: sampleValid && Boolean(flags & 4),
-      initialized, mode: sampleValid ? "spi" : null, speed_mode: speed,
+      initialized, mode: initialized ? "sdmmc" : null, speed_mode: speed,
       bus_clock_hz: clock, capacity_bytes: flags & 32 ? blocks * 512 : null,
       cid: [...cid], manufacturer: flags & 16 ? decodeCid(cid) : null },
     filesystem_format: ["unknown", "fat12", "fat16", "fat32", "exfat"][format],

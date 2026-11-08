@@ -12,7 +12,7 @@ void test_identity_layout(void)
 		.ram_reserved_bytes = 0x01020304,
 	};
 	const uint8_t expected[EF_IDENTITY_SIZE] = {1, 0x03, 0x00, 0xA0, 0xB1, 0xC2, 0xD3, 0xE4, 0xF5, 0, 0, 0, 2, 1,
-						    3, 1, 0, 0x8E, 0x00, 0x00, 0x08, 0x00, 0x04, 0x03, 0x02, 0x01};
+						    3, 1, 0, 0x96, 0x00, 0x00, 0x08, 0x00, 0x04, 0x03, 0x02, 0x01};
 	uint8_t out[EF_IDENTITY_SIZE];
 
 	ef_report_identity(&identity, out);
@@ -23,7 +23,7 @@ void test_config_layout_reflects_saved_radios(void)
 {
 	ef_config_t config = {.stored_clock_mhz = 240, .stored_radios = 0x03,
 			      .reset_cause = 3};
-	const uint8_t expected[EF_CONFIG_SIZE] = {1, 240, 0, 0, 0, 43, 44, 12, 11, 13, 10, 255, 255, 0x1C, 3, 255, 255};
+	const uint8_t expected[EF_CONFIG_SIZE] = {1, 240, 0, 0, 0, 43, 44, 12, 11, 13, 14, 15, 10, 0x1C, 3, 255, 255};
 	uint8_t out[EF_CONFIG_SIZE];
 
 	ef_report_config(&config, out);
@@ -75,22 +75,33 @@ void test_storage_layout(void)
 	ef_report_storage(&storage, out);
 	TEST_ASSERT_EQUAL_HEX8(0x41, out[2]);
 	TEST_ASSERT_EQUAL_UINT8(0, out[3]);
+	for (size_t i = 4; i < EF_STORAGE_SIZE; ++i) {
+		TEST_ASSERT_EQUAL_UINT8(0, out[i]);
+	}
 	storage.initialized = true;
 	storage.capacity_valid = true;
-	storage.bus_clock_hz = 10000000;
+	storage.bus_clock_hz = 25000000;
 	storage.block_count = 0x00F00000;
 	storage.filesystem_format = 3;
 	ef_report_storage(&storage, out);
 	TEST_ASSERT_EQUAL_UINT8(4, out[1]);
 	TEST_ASSERT_EQUAL_HEX8(0x6F, out[2]);
 	TEST_ASSERT_EQUAL_UINT8(1, out[3]);
-	TEST_ASSERT_EQUAL_UINT8(2, out[4]);
-	TEST_ASSERT_EQUAL_HEX8(0x80, out[5]);
-	TEST_ASSERT_EQUAL_HEX8(0x96, out[6]);
-	TEST_ASSERT_EQUAL_HEX8(0x98, out[7]);
+	TEST_ASSERT_EQUAL_UINT8(3, out[4]);
+	TEST_ASSERT_EQUAL_HEX8(0x40, out[5]);
+	TEST_ASSERT_EQUAL_HEX8(0x78, out[6]);
+	TEST_ASSERT_EQUAL_HEX8(0x7D, out[7]);
+	TEST_ASSERT_EQUAL_HEX8(0x01, out[8]);
 	TEST_ASSERT_EQUAL_UINT8(1, out[9]);
 	TEST_ASSERT_EQUAL_HEX8(0xF0, out[12]);
 	TEST_ASSERT_EQUAL_UINT8(3, out[30]);
+	storage.capacity_valid = false;
+	ef_report_storage(&storage, out);
+	TEST_ASSERT_EQUAL_HEX8(0x4F, out[2]);
+	TEST_ASSERT_EQUAL_UINT8(3, out[4]);
+	for (size_t i = 10; i < 14; ++i) {
+		TEST_ASSERT_EQUAL_UINT8(0, out[i]);
+	}
 }
 
 void test_wireless_layout_clears_reserved_flags(void)

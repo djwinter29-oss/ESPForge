@@ -19,7 +19,7 @@ the board list. On Linux, grant HID access once with
 
 The host follows the [USB HID reference](../../../docs/reference/usb-hid.md) as amended by the
 [ESPForge implementation reference](../../../docs/reference/espforge-implementation.md): product `0x0003`, MCU `3` (ESP32-S3), board model `1`,
-capabilities `0x8E`, clocks `0`/`80`/`160`/`240` MHz, SD-card profile `0`, and radio switches bit 0 (Wi-Fi) and bit 1
+capabilities `0x96` (native SDMMC), clocks `0`/`80`/`160`/`240` MHz, SD-card profile `0`, and radio switches bit 0 (Wi-Fi) and bit 1
 (BLE). Identity, configuration, or storage reports outside that profile are rejected as invalid.
 
 ## HTTP API

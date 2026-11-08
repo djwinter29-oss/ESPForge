@@ -26,23 +26,25 @@ Connect both when you flash and manage the board from one computer. The USB conn
 interface: there is no CDC ACM console and no mass-storage gadget. After a Control key has been saved over USB,
 Bluetooth LE management needs only power; see the [wireless guide](wireless.md).
 
-## SD-card SPI wiring
+## SD-card SDMMC wiring
 
-Use a 3.3 V-compatible SD breakout with suitable pull-ups, short wires, and adequate regulated power.
+Use a 3.3 V-compatible SD socket exposing CLK, CMD and DAT0-DAT3, with suitable external command/data pull-ups,
+short wires and adequate regulated power. A SPI-only breakout is insufficient for four-bit operation.
 Wire with power disconnected. Do not apply 5 V to ESP32 GPIOs or a bare SD card.
 This is proposed wiring, not electrically qualified hardware.
 
-Follow the [SD pin allocation](../reference/sdcard.md#pin-allocation) for SPI signals, supply and ground.
+Follow the [SD pin allocation](../reference/sdcard.md#pin-allocation) for all six SDMMC signals, supply and ground.
 
-GPIO assignments use Zephyr's SPI2 default pinctrl and the project's overlay.
-SPI3 is disabled because its default signals can conflict with module flash/PSRAM connections.
+GPIO assignments use explicit native SDMMC slot-0 pinctrl in the project's overlay.
+SPI2 and SPI3 are disabled.
 Octal PSRAM occupies GPIO33-37, so those pins are not available on N16R8.
 Leave boot-strapping and onboard flash/PSRAM pins alone. Consult your exact board schematic.
-The requested SPI ceiling is 10 MHz; this is not a measured bus frequency or throughput claim.
+The requested SDMMC ceiling is 25 MHz; this is not a measured bus frequency or throughput claim.
 
 Prepare an existing FAT16/FAT32 volume on your computer and back up its data.
-Insert before boot: the starter mounts once at startup. Hot-plug, card-detect, power switching,
-SDMMC four-bit transport and automatic remount are not implemented.
+Insert before boot: the starter mounts once at startup. Hot-plug, card-detect, power switching
+and automatic remount are not implemented. Power-cycle the card when switching from SPI mode;
+a board-only reset may leave the card in SPI mode.
 Do not remove the card while powered/mounted. There is no host filesystem handoff.
 See the [SD contract](../reference/sdcard.md) for data-safety behavior.
 
