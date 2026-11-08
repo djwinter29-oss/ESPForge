@@ -7,9 +7,7 @@ advertising, the GATT
 layout, session unlock, per-command proofs, the 9-byte control form, and ATT error codes. Breaking wire changes use a
 new service UUID; compatible additions MAY retain this UUID. Byte 0 of each report and control payload remains its
 payload version. Payload layouts reused from USB and cross-transport command semantics are defined once in the [USB HID
-reference](usb-hid.md). The [ESPForge implementation reference](espforge-implementation.md) documents board-specific
-report values and supported features; it is not a separate protocol. Execution and locking are described in
-[architecture](architecture.md), and credential persistence in [boot settings](settings.md).
+reference](usb-hid.md). Credential persistence is defined in [boot settings](settings.md).
 For provisioning and dashboard setup, see the [wireless guide](../guides/wireless.md).
 
 The Direct dashboard implements BLE through Web Bluetooth. Python and .NET dashboards use USB HID only.
@@ -23,8 +21,8 @@ not hexadecimal text on the wire.
 The key words **MUST**, **MUST NOT**, **SHOULD**, **SHOULD NOT**, and **MAY** are to be interpreted as described
 in BCP 14 (RFC 2119, RFC 8174) when, and only when, they appear in all capitals.
 
-Protocol requirements apply to any client or server implementation of this service. References to Zephyr,
-source files and the Direct dashboard describe the current implementation, not additional wire fields.
+Protocol requirements apply to any client or server implementation of this service. References to Zephyr and
+the Direct dashboard describe the current implementation, not additional wire fields.
 Software tests do not establish hardware qualification; see [Conformance](#conformance).
 
 ## Availability
@@ -126,7 +124,7 @@ are rejected by the stack before the application callback, and Write Without Res
 client to inspect. The Control key is exactly 32 raw bytes (64 hexadecimal digits in the dashboard). Report `1`
 UID bytes are at payload offset 3, length 8, in report order. Clients MUST validate the ESPForge identity
 (`product_id = 0x0003`, MCU `3`) as described in the
-[implementation reference](espforge-implementation.md#report-1-identity).
+[USB identity contract](usb-hid.md#report-id-1-device-identity--capabilities).
 The `0101` proof write is 16 bytes and the `0014`
 request is 9 bytes; both fit in the default ATT MTU of 23. Clients MUST use Write Requests, not Write Without
 Response or Prepare/Execute (long) writes.

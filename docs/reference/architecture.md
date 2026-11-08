@@ -39,10 +39,10 @@ USB HID and BLE share ESPForge report payloads and Control semantics, defined by
 | --- | --- |
 | Application lifecycle | Boot order and periodic servicing of control, Wi-Fi, telemetry and USB |
 | Board integration | Shared state locking, UID/serial, reset cause, board facts and delayed reboot |
-| Control dispatcher | Report 20 opcode validation and execution shared by USB and BLE, with separate result slots |
-| Report encoding | Byte layouts of Reports 1, 2, 3, 10, 12 and 20 |
+| Control dispatcher | Command validation and execution shared by USB and BLE, with separate result slots |
+| Report encoding | Shared identity, configuration, telemetry, storage and wireless payloads |
 | Wireless staging and authentication | Expiring credential candidates, BLE session unlock and per-command HMAC proofs |
-| USB HID | Device `CAFE:4021`, Feature reports 1, 2, 12, 20 and periodic Input reports 3 and 10 |
+| USB HID | Native USB management, snapshots and periodic telemetry/storage delivery |
 | BLE | GATT service, read snapshots, Control writes and advertising |
 | Wi-Fi | Saved-network joins, candidate tests and scans |
 | Telemetry and storage | CPU load, temperature and clock; boot-time SD mount and cached card facts |
@@ -66,12 +66,12 @@ dispatcher, and every access to settings, staging and wireless state holds one a
 events are queued and applied by the main loop, which also starts connects, disconnects and scans outside the lock.
 Reboots are scheduled about one second after the reply so the host can read the result first.
 
-Hosts reject reports outside the ESPForge implementation contract and never retry a command whose outcome is uncertain; they block further
+Hosts reject reports outside the wire contracts and never retry a command whose outcome is uncertain; they block further
 writes until the user confirms a re-sync. There is no implicit demo fallback.
 
 ## Downstream development
 
 Fork this source foundation. Add product work in separate services rather than blocking the main loop or holding the
 application lock. Keep GPIO choices in board overlays, keep protocol changes versioned, and update the authoritative
-references and all three host paths together. ESPForge has no LED, USB mass storage, SD benchmark or TCP CLI, and runs
-on one core. It is not feature-for-feature PicoForge parity.
+references and all three host paths together. Platform-dependent work must respect the configured single-core
+application and existing resource ownership.

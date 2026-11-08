@@ -13,3 +13,18 @@ for working on this initial source setup, but do not claim unobserved hardware q
 
 Do not commit credentials, local environments, generated builds, or personal device data.
 See [security reporting](SECURITY.md) for sensitive reports.
+
+## Remove local branches
+
+From the repository root:
+
+```sh
+./tools/host/remove-local-branches.sh
+```
+
+**Warning:** this immediately force-deletes every local branch except `main`, including unmerged branches.
+There is no confirmation or `--apply` flag. Retain any needed commits before running; remote branches are untouched.
+
+The script does not switch branches. If a non-main branch is checked out in any worktree, it stops before deleting
+anything. Switch that worktree to `main` or detach it first.
+Use `./tools/host/remove-local-branches.sh --help` to view usage without deleting branches.

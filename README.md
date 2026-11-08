@@ -115,7 +115,7 @@ Keep bridge hosts on loopback and use one management client per board at a time.
 | Reference | Covers |
 | --- | --- |
 | [Architecture](docs/reference/architecture.md) | Connection paths, layer responsibilities and service lifecycle |
-| [ESPForge implementation](docs/reference/espforge-implementation.md) | Board identity, supported features and platform behavior |
+| [ESPForge implementation](docs/reference/espforge-implementation.md) | Platform integration and measurement limits |
 | [USB HID](docs/reference/usb-hid.md) | Report layouts, discovery, Control requests and opcode semantics |
 | [Bluetooth LE](docs/reference/bluetooth.md) | Advertising, GATT, session unlock and command proofs |
 | [Boot settings](docs/reference/settings.md) | Next-boot record, CPU/radio settings and flash safety |

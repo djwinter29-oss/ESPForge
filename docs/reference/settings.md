@@ -9,9 +9,7 @@ switches, and the private wireless credentials. They are changed at runtime, sav
 effect only at the next boot. This document owns the record format, the load/stage/save lifecycle, flash safety and
 how each setting is applied. The wire encoding is HID Feature report `2` and Feature report `20` opcode `5` in the
 [USB HID specification](usb-hid.md) and the [Bluetooth LE specification](bluetooth.md).
-The [implementation reference](espforge-implementation.md) records board/platform details, not a separate protocol.
-Radio behaviour is in the
-[wireless guide](../guides/wireless.md).
+For provisioning steps, use the [wireless guide](../guides/wireless.md).
 
 All record offsets and sizes are in bytes. Multibyte integers are little-endian.
 SSID and Control-key fields are raw bytes; the passphrase is a NUL-terminated byte string.

@@ -2,7 +2,7 @@
 
 USB HID control, diagnostics, and a local dashboard for ESPForge firmware on the ESP32-S3-DevKitC.
 The host talks to the board's native USB HID interface (VID:PID `0xCAFE:0x4021`) using the
-[USB HID contract](../../docs/reference/usb-hid.md) as narrowed by the [ESPForge implementation reference](../../docs/reference/espforge-implementation.md).
+[USB HID contract](../../docs/reference/usb-hid.md).
 Basic monitoring needs no SD card. Wireless controls depend on the connected firmware's capabilities.
 
 Python and .NET share their own frontend in `host/web/src`. The Direct dashboard is independent: **no code is shared
@@ -95,24 +95,9 @@ Host tests use fakes only; see the [qualification gaps](../../docs/validation/qu
 
 ## Dashboard HTTP API
 
-The routes and JSON field names match the PicoForge dashboard API so the Python and .NET hosts serve the same
-`host/web` frontend. Board-scoped routes accept `?board=ID` from `/api/boards`.
-
-| Route | Methods | Status |
-|---|---|---|
-| `/`, `/favicon.svg`, `/css/<path>`, `/js/<path>` | GET | Kept |
-| `/api/status`, `/api/boards` | GET | Kept |
-| `/api/settings` | POST | Kept; `sdcard_profile` must be 0 and `system_clock_mhz` 0, 80, 160 or 240 |
-| `/api/reboot`, `/api/control/resync` | POST | Kept |
-| `/api/wireless` | POST | Kept; `tcp_cli_enabled` is optional and may only be `false` |
-| `/api/wireless/scan`, `/api/wireless/test`, `/api/wireless/cancel` | POST | Kept |
-| `/console`, `/api/console` | | Dropped: no TCP CLI console |
-| `/api/led` | | Dropped: no board LED |
-| `/api/msc`, `/api/msc/force-return` | | Dropped: no USB drive or forced save |
-| `/api/self-test` | | Dropped: no SD benchmark (Report 11) |
-
-The status JSON keeps PicoForge's shape, including `self_test`, `self_test_stale`, `memory.msc` and
-`wireless.tcp_cli_enabled`, which ESPForge always reports as idle, absent or `false`.
+Python and .NET implement the [shared dashboard HTTP API](../web/README.md#http-api).
+That contract owns routes, request fields, reserved status values and unsupported operations.
+Use the board ID returned by discovery when selecting a board for API requests.
 
 ## Development and License
 

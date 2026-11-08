@@ -21,7 +21,7 @@ Native tests are grouped by the same service roles.
 
 ## Host-native unit tests
 
-Like PicoForge, ESPForge uses Ceedling 1.1.10 with Unity and CMock. Install Ruby 3.3,
+ESPForge uses Ceedling 1.1.10 with Unity and CMock. Install Ruby 3.3,
 Bundler 2.6.9 and a native GCC toolchain (`gcc` on PATH). These tests need neither
 Zephyr nor an ESP32-S3 board. From the repository root:
 
@@ -94,7 +94,7 @@ the `device_next` USB stack with HID. Both FAT mkfs options must remain disabled
 The configuration check also verifies native slot 0, four-bit width, the 25 MHz ceiling,
 GPIO12/11/13/14/15/10 in CLK/CMD/DAT0-DAT3 order, and command/data pull-up configuration.
 The management protocol runs over the ESP32-S3 native USB connector (USB HID, VID:PID `CAFE:4021`)
-and BLE GATT, as described in the [ESPForge implementation reference](../reference/espforge-implementation.md).
+and BLE GATT.
 The UART connector carries only the Zephyr console/log output and the ROM bootloader used for flashing;
 it has no management protocol.
 

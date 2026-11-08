@@ -1,8 +1,7 @@
 # Host development
 
 Python and .NET share a dashboard and HTTP API; each host owns the
-board's USB HID interface and decodes the [USB HID reports](../reference/usb-hid.md) with the board facts in the
-[ESPForge implementation reference](../reference/espforge-implementation.md). See [Shared dashboard](#shared-dashboard).
+board's USB HID interface and decodes the [USB HID reports](../reference/usb-hid.md).
 The [Direct dashboard](../../host/direct/README.md) is independent: see
 [Direct dashboard independence](#direct-dashboard-independence).
 

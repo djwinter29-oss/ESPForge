@@ -15,12 +15,10 @@ bytes, not NUL-terminated or hexadecimal text on the wire.
 The key words **MUST**, **MUST NOT**, **SHOULD**, **SHOULD NOT**, and **MAY** are to be interpreted as described
 in BCP 14 (RFC 2119, RFC 8174) when, and only when, they appear in all capitals.
 
-The [implementation reference](espforge-implementation.md) records board-specific values and platform behavior;
-it is not a separate protocol. [Boot settings](settings.md) owns credential persistence and flash safety,
-[SD storage](sdcard.md) owns mounting and data safety, and [architecture](architecture.md) owns execution and
-locking. For provisioning, see the [wireless guide](../guides/wireless.md).
+[Boot settings](settings.md) defines credential persistence and flash safety;
+[SD storage](sdcard.md) defines mounting and data safety.
 
-References to Zephyr, source files and host libraries describe the current implementation, not additional
+References to Zephyr and host libraries describe the current implementation, not additional
 wire fields. Software tests do not establish hardware qualification; see [Design Validation](#design-validation).
 
 ## USB Interface and Discovery
@@ -184,8 +182,8 @@ Display **Firmware RAM reserved / total**, in KiB and optionally as a percentage
 or a reservation greater than total. This is build accounting, not free heap, stack high-water use or runtime
 memory pressure.
 
-The current board reports 524288 bytes of internal SRAM. Reservation covers `_image_ram_start` through
-`_image_ram_end`, including the statically allocated Zephyr heap pool and thread stacks. PSRAM is separate and
+The current board reports 524288 bytes of internal SRAM. Reservation covers statically linked RAM,
+including the reserved Zephyr heap pool and thread stacks. PSRAM is separate and
 is not represented by these fields. Count each reservation once; do not infer live allocations.
 
 ## Report ID 2: Board Configuration
