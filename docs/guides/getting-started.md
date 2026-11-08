@@ -9,6 +9,18 @@ You can build and preview all three dashboards before connecting hardware.
 Build target: ESP32-S3-DevKitC-1 N16R8, PROCPU, 16 MB flash and 8 MB octal PSRAM.
 Check the module marking against the [hardware guide](hardware.md) before flashing.
 Linux instructions below use Python 3.12, Zephyr 4.3.2, and Zephyr SDK 0.17.4.
+For automatic setup on Debian/Ubuntu-compatible Linux or Raspberry Pi OS, run from your existing checkout:
+
+```sh
+tools/firmware/build.sh
+```
+
+The script installs missing host packages (requesting `sudo` when needed), creates/reuses a Python venv,
+initializes a workspace in the checkout's parent directory if none exists, downloads pinned modules and radio blobs,
+and installs the ESP32-S3 SDK toolchain before building. First use requires network access and several GB of disk space.
+See [build environment options](../development/firmware.md#zephyr-target-build) to choose a Python interpreter or venv.
+The following procedure is an alternative for manual setup.
+
 Install Zephyr's [host prerequisites](https://docs.zephyrproject.org/4.3.0/develop/getting_started/index.html)
 (CMake, Ninja, device-tree compiler, compiler utilities and Python venv support).
 
@@ -38,7 +50,7 @@ a second workspace inside an existing Zephyr workspace.
 
 ## 2. Build now; flash later
 
-Run from the workspace with its venv activated:
+Run from the workspace created above; missing build prerequisites are prepared automatically:
 
 ```sh
 bash espforge/tools/firmware/build.sh
@@ -60,8 +72,9 @@ bash espforge/tools/firmware/flash.sh --port /dev/ttyUSB0
 
 The [flash script](../../tools/firmware/flash.sh) requires an explicit port, checks the build
 artifacts and board target, and uses Zephyr's ESP32 runner to select the correct image offset
-and flash parameters. It uploads the existing build without rebuilding; run the build script
-again after changing firmware. It does not request a full-chip erase, but image sectors are
+and flash parameters. If required artifacts are missing or empty, it builds first, including during `--dry-run`.
+A complete existing build is reused; run the build script again after changing firmware.
+It does not request a full-chip erase, but image sectors are
 erased/replaced during flashing. Saved [boot settings](../reference/settings.md#flash-reservation) survive normal
 uploads. No SD-card access is performed.
 

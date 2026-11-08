@@ -72,13 +72,27 @@ Both must pass for firmware changes; a native test pass is not target-build or h
 
 ## Zephyr target build
 
-Follow [workspace setup](../guides/getting-started.md#1-prepare-a-zephyr-workspace) before building.
 Zephyr 4.3.2 and imported module commits are selected by `west.yml`; SDK 0.17.4 is the toolchain.
-Run the build script from anywhere within the initialized workspace, with its Python venv activated:
+The wrappers bootstrap missing prerequisites on Debian/Ubuntu-compatible Linux, including Raspberry Pi OS.
+Missing host packages are installed through `apt-get` with `sudo` when not root; a password may be requested.
+On other systems, install the reported host prerequisites with your package manager and rerun the script.
+If the checkout is not already in a workspace, its parent directory becomes the workspace; `.west`, `.venv`,
+Zephyr and modules are placed there. An existing ancestor workspace is reused rather than nested.
+The build and flash scripts create or reuse `.venv` at the workspace root and activate it for their subprocesses.
+They install `west` and the workspace's Zephyr base and Espressif Python requirements on each invocation;
+already satisfied dependencies are reused. Set `PYTHON` to choose the interpreter when creating the venv
+(for example `PYTHON=python3.12`), or `VENV_DIR` to use another venv. An unrelated active venv is not selected automatically.
+Activation does not change the calling shell; use `. .venv/bin/activate` from the workspace for manual `west` commands.
+They update modules to the pinned manifest, fetch required radio blobs and install SDK 0.17.4 with the ESP32-S3
+toolchain if no complete SDK is found in `ZEPHYR_SDK_INSTALL_DIR`, the home directory or `/opt`.
+First use requires network access and several GB of free space. Installation and build errors stop execution;
+no upload is attempted after a failed build. See [manual workspace setup](../guides/getting-started.md#1-prepare-a-zephyr-workspace)
+if you prefer to provision dependencies yourself.
+Run from the checkout:
 
 ```sh
-bash espforge/tools/firmware/build.sh
-python espforge/tools/check_firmware_config.py
+bash tools/firmware/build.sh
+python3 tools/check_firmware_config.py
 ```
 
 For changes to board/configuration selection, use a pristine build from the workspace:
@@ -107,14 +121,17 @@ See [release automation](../deployment/release.md) for package contents and pref
 
 ## USB upload wrapper
 
-After building, use [the USB flashing instructions](../guides/getting-started.md#2-build-now-flash-later).
+Use [the USB flashing instructions](../guides/getting-started.md#2-build-now-flash-later).
 `tools/firmware/flash.sh --port PORT` wraps `west flash` with the ESP32 runner,
 explicit port, 460800 upload baud, `--skip-rebuild` and `--no-erase`.
 `--baud` overrides upload speed; `--dry-run` validates artifacts and prints the command
-without accessing a device. Runner errors propagate to the caller.
+without accessing a device. Missing or empty required build artifacts trigger a build first;
+complete existing builds are reused. A wrong-board build is rejected. Runner errors propagate to the caller.
 
-This is a manual operator tool, with no dedicated automated test suite or CI test step.
+`--dry-run` also prepares dependencies and builds missing firmware, but does not access hardware.
 Use `--help` and `--dry-run` to inspect it before uploading to hardware.
+Software-only wrapper tests use mocked installers and runners:
+`python3 -m unittest discover -s firmware/tests/tooling -v`.
 
 Do not connect an SD card or run storage tests for software-only setup.
 Compilation does not validate initialization, USB enumeration, BLE/Wi-Fi coexistence, or filesystem reliability.
