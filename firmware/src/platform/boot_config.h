@@ -1,13 +1,14 @@
 /**
  * @file boot_config.h
- * @brief Boot settings loaded at the start of main(), then owned by the main (management) thread.
+ * @brief ESPForge boot settings for the ESP32-S3 Zephyr application.
  *
- * Adapted from PicoForge's platform/boot_config.h. One CRC-protected record in the `storage_partition` holds the
+ * One CRC-protected record in the `storage_partition` holds the
  * system clock profile, radio switches and credentials. Setters stage values in RAM; ef_boot_config_save() commits
  * them as one unit. Saved values apply at the next boot only.
  *
  * This API is not thread-safe. Call ef_boot_config_load() once before other threads use settings; afterwards all
- * mutations and saves must be serialized in the main thread, which is the single writer of the settings record.
+ * access must be serialized with the application lock (ef_lock()/ef_unlock()). Management callbacks can stage
+ * and save settings; ownership is not limited to the main thread.
  */
 
 #ifndef ESPFORGE_BOOT_CONFIG_H
@@ -30,7 +31,7 @@
 /** Serialized record size in bytes. */
 #define EF_BOOT_CONFIG_RECORD_SIZE 148u
 
-/** Saved Wi-Fi authentication state: unknown modes are probed, confirmed modes persist across reboot. */
+/** Stored authentication states; the current ESP32-S3 Wi-Fi implementation uses open networks or WPA2-PSK. */
 typedef enum {
 	EF_WIFI_AUTH_TRY_WPA2 = 0, /**< Mode unknown; try WPA2 first. */
 	EF_WIFI_AUTH_TRY_SAE = 1,  /**< Mode unknown; try WPA3-SAE. */
@@ -160,10 +161,11 @@ bool ef_boot_config_restart_required(void);
 /**
  * @brief Persist the staged configuration as one record.
  *
- * Clock profile, radio switches and credentials are committed as one unit: an interrupted write loads either the
- * complete new configuration or defaults.
+ * Clock profile, radio switches and credentials share one CRC-protected record. This single-copy write is not
+ * power-loss atomic: interrupted erase/program can destroy the old record. Boot loads a valid record or defaults.
  * @return 0 when unchanged or when the write and readback succeeded, otherwise a negative errno. On failure the
- * staged values are discarded so the RAM copy matches the last confirmed record; callers may re-stage.
+ * staged values are discarded so the RAM copy matches the last confirmed record; flash may already have changed.
+ * Callers may re-stage.
  */
 int ef_boot_config_save(void);
 /** @brief Drop all staged, unsaved values, restoring the last loaded or saved configuration. */

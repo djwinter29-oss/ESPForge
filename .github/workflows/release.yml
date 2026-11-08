@@ -154,7 +154,7 @@ jobs:
           Path("build/packages").mkdir(parents=True, exist_ok=True)
           footer = "Software checks do not qualify physical USB HID, Wi-Fi, BLE or SD behavior.\n"
 
-          # Direct is standalone: its own web/, server.py and LICENSE, like PicoForge Direct.
+          # ESPForge Direct is standalone: its own web/, server.py and LICENSE.
           direct = Path("build/direct-release")
           shutil.copytree("host/direct/web", direct / "web")
           shutil.copyfile("host/direct/server.py", direct / "server.py")
