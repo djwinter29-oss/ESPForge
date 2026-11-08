@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 // Copyright (c) 2026 Ji Dong
 
-/**
- * Firmware-defined values; see docs/reference/usb-hid.md, docs/reference/bluetooth.md and the ESPForge overrides in
- * docs/reference/espforge-implementation.md.
- */
+/** ESPForge device identity, capabilities and wire constants. */
 export const DEVICE_FILTER = Object.freeze({ vendorId: 0xcafe, usagePage: 0xff00, usage: 1 });
 /** USB product IDs of the development VID:PID pair. */
 export const PRODUCT_IDS = Object.freeze([0x4021]);
@@ -26,7 +23,7 @@ export const CONFIG_FLAGS = Object.freeze({
   VALID_MASK: 0x1c, RADIO_MASK: 0x18,
 });
 export const CLOCKS_MHZ = Object.freeze([0, 80, 160, 240]);
-/** Report IDs; see the HID report reference. ESPForge publishes no Report 11. */
+/** ESPForge report IDs; no Report 11 is published. */
 export const REPORT = Object.freeze({
   IDENTITY: 1, CONFIG: 2, TELEMETRY: 3, STORAGE: 10, WIRELESS: 12, CONTROL: 20,
 });

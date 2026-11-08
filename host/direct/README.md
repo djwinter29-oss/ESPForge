@@ -157,25 +157,25 @@ Direct owns its HTML, CSS, favicon, browser modules, and local server. It import
 not use Web Serial. See the
 [Direct independence policy](../../docs/development/host-tools.md#direct-dashboard-independence).
 
-| Source | Responsibility |
+| Layer | Responsibility |
 |---|---|
-| `server.py` | Loopback static server with security headers |
-| `web/js/app.mjs` | Browser composition root; the only module reading browser globals |
-| `web/js/protocol/` | Report codecs, constants, and opcode policy |
-| `web/js/transport/` | Abort-aware WebHID/Web Bluetooth byte pipes, framing, and link authentication |
-| `web/js/board/` | Session facade, connection lifecycle, command journal, recovery, polling, and use cases |
-| `web/js/state/` | Domain/UI stores, allowlisted events, readiness selectors, and errors |
-| `web/js/ui/` | Dashboard composition, view models, and DOM updates |
-| `web/js/timers.mjs` | Abortable waits and page-owned timer scopes |
+| Static server | Loopback hosting with security headers |
+| Application | Browser integration and lifecycle ownership |
+| Protocol | Report codecs, constants and opcode policy |
+| Transport | Abort-aware WebHID/Web Bluetooth byte pipes, framing and authentication |
+| Board session | Connection lifecycle, command journal, recovery, polling and use cases |
+| State | Domain/UI stores, allowlisted events, readiness selectors and errors |
+| Presentation | Dashboard composition, view models and DOM updates |
+| Timers | Abortable waits and page-owned timer scopes |
 
 ### Ownership rules
 
-- Protocol and state do not access the DOM or browser device APIs. `app.mjs` supplies browser dependencies.
+- Protocol and state do not access the DOM or browser device APIs; the application supplies browser dependencies.
 - Board modules write domain state through declared events; only the connection module advances connection phases.
 - Commands are journalled before writing. The single-flight queue rejects overlaps rather than buffering stale
   intents. Link policy belongs to opcode descriptors, not transports.
 - UI gating and use cases share `canRun`. Rendering reuses one eligibility snapshot and performs no device I/O.
-- Domain errors use reason codes; `ui/messages.mjs` converts them to display text.
+- Domain errors use reason codes; the presentation layer converts them to display text.
 - Dashboard-only state uses a separate UI store. Wireless drafts/phases stay local to the form controller.
 
 ## Checks
@@ -191,8 +191,7 @@ python3 -m unittest host.direct.tests.test_server -v
 npx --yes --package typescript@5.9.3 tsc --project host/direct/web/js/tsconfig.json
 ```
 
-JavaScript tests mirror `web/js` paths; for example, `board/commands.mjs` maps to
-`tests/board/commands.test.mjs`. To isolate a failure:
+To isolate command-lifecycle failures:
 
 ```sh
 node --test host/direct/tests/board/commands.test.mjs

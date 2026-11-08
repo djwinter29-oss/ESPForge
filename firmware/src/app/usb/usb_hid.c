@@ -1,6 +1,5 @@
 /*
- * Vendor HID interface on the native USB OTG port: Feature 1, 2, 12 and 20, Input 3 and 10 (docs/reference/usb-hid.md
- * with the docs/reference/espforge-implementation.md adaptations).
+ * Vendor HID interface on the native USB OTG port: Feature 1, 2, 12 and 20, Input 3 and 10.
  */
 #include "app/espforge.h"
 #include "app/control/control.h"

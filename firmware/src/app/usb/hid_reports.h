@@ -1,6 +1,6 @@
 /**
  * @file hid_reports.h
- * @brief Encoders for the HID/GATT report payloads (docs/reference/usb-hid.md, espforge-implementation.md).
+ * @brief Encoders for the ESPForge HID/GATT report payloads.
  *
  * Payloads exclude the USB report ID. Portable: the Zephyr glue samples the board and fills these structs.
  */

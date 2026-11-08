@@ -629,14 +629,11 @@ There is no wire-level SPI fallback or assumption that version `1` alone guarant
 Wire-layout versioning is independent of firmware semantic version and
 [persistent-record migration](settings.md#record-format). There is no legacy wire fallback.
 
-| Area | Verification |
-| --- | --- |
-| Report byte layouts, board facts, telemetry and storage flags | [test_hid_reports.c](../../firmware/tests/app/usb/test_hid_reports.c) |
-| Envelopes, opcode restrictions, save/commit, staging, scan and USB/BLE result isolation | [test_control.c](../../firmware/tests/app/control/test_control.c) |
-| Credential validation, expiry and candidate rules | [test_wireless_stage.c](../../firmware/tests/app/wireless/test_wireless_stage.c) |
-| Direct report codecs, field validation and request/result shapes | [codec.test.mjs](../../host/direct/tests/protocol/codec.test.mjs) |
-| Direct command lifecycle and result handling | [operations.test.mjs](../../host/direct/tests/board/operations.test.mjs) |
-| Python report validation and codecs | [test_protocol.py](../../host/python/tests/test_protocol.py) |
+Software checks cover report byte layouts, board facts, telemetry/storage flags, request envelopes,
+opcode restrictions, credential staging, save/commit, scans and USB/BLE result isolation.
+Host checks cover codecs, validation, request/result shapes and command lifecycle.
+Test commands are maintained in the [firmware](../development/firmware.md) and
+[host development](../development/host-tools.md) guides.
 
 These checks use portable firmware modules and synthetic host reports. They do not qualify USB enumeration,
 control-transfer stalls, real interrupt delivery, suspend/resume, card hardware or live radio behavior.
@@ -644,15 +641,6 @@ See [qualification gaps](../validation/qualification-gaps.md) and the
 [Bluetooth conformance list](bluetooth.md#conformance).
 
 ## Implementation and Integration
-
-| Component | Responsibility |
-| --- | --- |
-| [usb_hid.c](../../firmware/src/app/usb/usb_hid.c) | Zephyr `device_next` descriptor, GET/SET callbacks and Input scheduling |
-| [hid_reports.c](../../firmware/src/app/usb/hid_reports.c) | Portable payload encoders and board facts |
-| [control.c](../../firmware/src/app/control/control.c) | Portable command validation, execution and result slots |
-| [wireless_stage.c](../../firmware/src/app/wireless/wireless_stage.c) | Candidate validation, secret staging and expiry |
-| [boot_config.c](../../firmware/src/platform/boot_config.c) | Saved settings and credential record |
-| [storage.c](../../firmware/src/app/storage/storage.c) | One boot-time SD mount and cached storage facts |
 
 The native USB interface uses Zephyr's `udc_dwc2` driver. Feature GET supports IDs `1`, `2`, `12`, `20`;
 Input GET supports `3`, `10`. Unsupported type/ID or an insufficient GET buffer is rejected.

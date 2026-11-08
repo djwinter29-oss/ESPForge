@@ -1,6 +1,6 @@
 /**
  * @file wireless_auth.h
- * @brief Bluetooth LE session unlock and per-command proofs (docs/reference/bluetooth.md).
+ * @brief Bluetooth LE session unlock and per-command proofs.
  *
  * Portable state machine: the Zephyr glue supplies time, random challenges and the saved Control key. Results are
  * ATT error codes (0 when accepted). The retry delay is global across connections; the session is per connection.

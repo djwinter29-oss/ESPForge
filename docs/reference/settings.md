@@ -19,12 +19,12 @@ The persistent record version is independent of HID/BLE payload versions and fir
 
 The key words **MUST**, **MUST NOT**, **SHOULD**, **SHOULD NOT**, and **MAY** are to be interpreted as described
 in BCP 14 (RFC 2119, RFC 8174) when, and only when, they appear in all capitals.
-References to Zephyr and source functions describe the current implementation.
+API names describe the current implementation; internal source layout is not part of this contract.
 
-| Setting | Values | Default | Applied by |
+| Setting | Values | Default | Applied when |
 | --- | --- | --- | --- |
-| CPU clock (`ef_sysclk_profile_t`) | Default (devicetree build clock, 240 MHz), 80, 160 or 240 MHz | Default | `system_clock_apply()` at the start of `main()` |
-| Wi-Fi / Bluetooth switches | Enabled or disabled | Enabled | `ef_wifi_init()` / `ef_ble_init()` at boot |
+| CPU clock (`ef_sysclk_profile_t`) | Default (devicetree build clock, 240 MHz), 80, 160 or 240 MHz | Default | Early boot, before storage and radios |
+| Wi-Fi / Bluetooth switches | Enabled or disabled | Enabled | Radio initialization at boot |
 | Wi-Fi SSID, passphrase and auth state | See [record format](#record-format) | None | Saved-network connect at boot |
 | Control key | 32 raw bytes, see [record format](#record-format) | None | [BLE control](bluetooth.md) authentication; BLE does not start without a key |
 
@@ -32,7 +32,7 @@ Wi-Fi and BLE stay **enabled by default**: an erased, missing or invalid record 
 
 ## Architecture
 
-All settings pass through one RAM copy owned by [boot_config.c](../../firmware/src/platform/boot_config.c). Writers only
+All settings pass through the settings service's RAM state. Writers only
 stage values in RAM; one save call commits the complete record to flash. Boot initialization uses the boot
 snapshot. Saving does not reconfigure the running hardware; host save commands schedule a subsequent reboot.
 
@@ -42,7 +42,7 @@ flowchart LR
         HID["USB HID Feature 20 opcode 5"]
         BLE["BLE Control opcode 5 (switches unchanged)"]
     end
-    subgraph Facade["boot_config.c"]
+    subgraph Facade["Settings service"]
         RAM["RAM record copy"]
         Boot["Boot snapshot"]
     end
@@ -63,19 +63,19 @@ The design rules are:
   is applied. This is not a power-loss-atomic transaction.
 - **Next boot only.** The clock is set and the radios start once at boot, so setters change only RAM and saved
   values apply after reboot. Feature report `2` reports the saved values, not the ones running now.
-- **One lock.** `ef_boot_config_load()` runs first in `main()`, before USB and BLE start. Afterwards every read
+- **One lock.** `ef_boot_config_load()` runs during early boot, before USB and BLE start. Afterwards every read
   and save MUST be serialized under the application mutex (`ef_lock()`), whether the request
   arrived over USB HID or BLE. This is not a general thread-safe settings API.
 - **Boot never depends on flash.** Any missing, unreadable or invalid record loads complete defaults.
 - **No generic store.** The fixed record is read directly and written as one padded page through the
-  `flash_area` API. Zephyr's settings/NVS subsystems are not used. Record validation is private to `boot_config.c`
-  and flash access is private to [boot_flash.c](../../firmware/src/platform/boot_flash.c).
+  flash API. Zephyr's settings/NVS subsystems are not used. Record validation and flash access are internal
+  responsibilities of the settings service.
 
 ## RAM Copy Lifecycle
 
 The module holds three copies: **staged** (what setters change), **saved** (the last record loaded or confirmed) and
 **boot** (what was loaded for this boot). The boot snapshot is intended policy, not proof that clock or radio
-initialization succeeded. There is no lazy first-use loading: `main()` loads explicitly before settings consumers
+initialization succeeded. There is no lazy first-use loading: boot loads explicitly before settings consumers
 start. Later callers MUST hold the application lock.
 
 ```mermaid
@@ -98,7 +98,7 @@ a failed save restores the last confirmed RAM values:
 - **Opcode `5`:** stages the clock and radio switches and, when the commit flag is set, the wireless values staged
   by opcodes `6`-`8` (SSID, passphrase with auth state `0`, try WPA2, and Control key).
   Flash-save failure calls `ef_boot_config_discard()`. See [Host Dashboard Settings](#host-dashboard-settings).
-- Opcodes `6`-`8` hold their values in the control module's stage, not in `boot_config.c`, until opcode `5`
+- Opcodes `6`-`8` hold separate wireless candidates, not settings-service state, until opcode `5`
   commits them. Opcode `9` tests staged credentials without saving them.
 
 A failed save does not prove that flash is unchanged: an erase can complete before programming fails. The staged
@@ -111,32 +111,31 @@ assuming every failed command left flash unchanged. Failed commands do not sched
 
 ```mermaid
 sequenceDiagram
-    participant M as main()
-    participant B as boot_config
+    participant M as Boot lifecycle
+    participant B as Settings service
     participant F as storage_partition
     participant C as System clock
     participant W as Wireless
     participant S as Storage
     M->>B: ef_boot_config_load()
-    B->>F: flash_area_read of 148 bytes
+    B->>F: Read 148-byte record
     F-->>B: Record
     B-->>M: Validated copy, or defaults
-    M->>C: system_clock_apply(boot profile MHz)
-    C->>C: clock_control_configure(CPU) if different from the build clock
-    M->>S: ef_storage_init() - SD mount
-    M->>W: ef_wifi_init(boot Wi-Fi switch) - joins the saved network if an SSID is saved
-    M->>W: ef_ble_init(boot BLE switch) - starts only when a Control key is saved
-    M->>M: ef_usb_init(), then poll control, Wi-Fi, telemetry and USB
+    M->>C: Apply saved CPU clock profile
+    M->>S: Mount SD filesystem once
+    M->>W: Initialize Wi-Fi; join saved network when enabled
+    M->>W: Initialize BLE when enabled with a saved Control key
+    M->>M: Enable USB, then service management and telemetry
 ```
 
-The load runs in `main()` before USB and the BLE stack start, and before any other thread can read
+The load runs during early boot before USB and the BLE stack start, and before any other thread can read
 settings. Every later consumer reads the same copies.
 
 ### Loading and validation
 
 ```mermaid
 flowchart TD
-    Read["flash_area_read of 148 bytes from the partition start"] --> Ok{"Read succeeded?"}
+    Read["Read 148 bytes from the partition start"] --> Ok{"Read succeeded?"}
     Ok -->|No| Err["Defaults, source READ_ERROR"]
     Ok -->|Yes| Check{"Version 1 record valid?"}
     Check -->|Yes| Use["Copy record into RAM, source SAVED"]
@@ -158,10 +157,10 @@ flowchart TD
     Start["ef_boot_config_save()"] --> Same{"Staged identical to saved copy?"}
     Same -->|Yes| Ok["Return 0 - no erase"]
     Same -->|No| Build["Encode magic, version, size, fields and CRC"]
-    Build --> Erase["flash_area_erase of the first 4 KiB sector"]
+    Build --> Erase["Erase the first 4 KiB sector"]
     Erase --> Erased{"Erase succeeded?"}
     Erased -->|No| Fail["staged = saved, return negative errno"]
-    Erased -->|Yes| Program["flash_area_write one 256-byte page, padded with 0xFF"]
+    Erased -->|Yes| Program["Write one 256-byte page, padded with 0xFF"]
     Program --> Written{"Write succeeded?"}
     Written -->|No| Fail
     Written -->|Yes| Read["Read back the page"]
@@ -237,15 +236,12 @@ default-reset behavior; it MUST NOT silently reinterpret a previous record.
 ## Flash Reservation
 
 The record lives at offset `0` of the devicetree `storage_partition`. On the `esp32s3_devkitc/esp32s3/procpu`
-target, the [board overlay](../../firmware/boards/esp32s3_devkitc.overlay) selects Zephyr's 16 MB
-`partitions_0x0_amp_16M.dtsi` table for the N16R8 module: `0xFB0000`, 192 KiB. Only the first
-4 KiB sector is used. The offset is taken from devicetree (`FIXED_PARTITION_ID(storage_partition)`), not
-hard-coded in C.
+target, the N16R8 partition layout reserves 192 KiB at `0xFB0000`. Only the first
+4 KiB sector is used. The offset comes from board configuration, not a fixed application address.
 
 - The build uses ESP simple boot, so the image is flashed at `CONFIG_FLASH_LOAD_OFFSET` (`0x0`).
-  [check_firmware_config.py](../../tools/check_firmware_config.py) fails when `zephyr.bin` would reach
-  `storage_partition`. CI runs it after every firmware build.
-- [flash.sh](../../tools/firmware/flash.sh) passes `--no-erase`, so normal uploads keep saved settings. A full-chip
+  Build validation rejects a firmware image that would reach `storage_partition`.
+- The standard flashing procedure avoids a full-chip erase, so normal uploads keep saved settings. A full-chip
   erase, or a different partition table, clears them.
 - To reset settings manually, erase only the settings sector from an initialized workspace:
   `python -m esptool --chip esp32s3 --port PORT erase_region 0xFB0000 0x1000`. The next boot loads defaults.
@@ -254,15 +250,14 @@ A board or partition table without `storage_partition` does not build.
 
 ## System Clock
 
-The saved profile is applied in `main()` by `system_clock_apply()`
-([system_clock.c](../../firmware/src/platform/system_clock.c)), after the settings load and before the radios, SD mount and
+The saved profile is applied during early boot, after the settings load and before the radios, SD mount and
 USB start. It never writes flash.
 
 ```mermaid
 flowchart TD
-    A["ef_sysclk_profile_mhz(boot profile)"] --> B{"0 (Default) or equal to the devicetree clock?"}
+    A["Saved CPU clock in MHz"] --> B{"0 (Default) or equal to the build clock?"}
     B -->|Yes| Keep["Keep the build clock (240 MHz)"]
-    B -->|No| Cfg["clock_control_configure(clock, ESP32_CLOCK_CONTROL_SUBSYS_CPU) - PLL source, 40 MHz XTAL"]
+    B -->|No| Cfg["Configure CPU clock through the platform clock driver"]
     Cfg --> Result{"Clock apply succeeded?"}
     Result -->|Yes| Run["Continue boot - initialize storage and radios"]
     Result -->|No| Warn["Log clock apply error, continue boot"]
@@ -287,8 +282,7 @@ increase radio latency; none of them is hardware-qualified yet.
 ## SD-Card Speed
 
 There is no saved runtime SD speed profile. The SD card is attached through Zephyr's
-native `espressif,esp32-sdhc-slot` driver, with a four-bit bus and the devicetree `max-bus-freq` ceiling (25 MHz in
-[esp32s3_devkitc.overlay](../../firmware/boards/esp32s3_devkitc.overlay)). The SD stack negotiates clock/timing
+native SDMMC driver, with a four-bit bus and a configured 25 MHz ceiling. The SD stack negotiates clock/timing
 within that ceiling; the application exposes no runtime speed-setting operation. Record byte 9 remains reserved
 as zero; this transport change does not migrate the 148-byte settings record. Board-specific clock changes
 belong in the overlay and require hardware
@@ -296,7 +290,7 @@ validation. See the [SD storage reference](sdcard.md).
 
 ## Using the API
 
-The API is declared in [boot_config.h](../../firmware/src/platform/boot_config.h).
+The settings API provides explicit load, stage, save, discard and next-boot snapshot operations.
 Call `ef_boot_config_load()` once during boot before settings consumers start.
 Later callers MUST acquire the application lock, check each setter's boolean result, discard staged values on
 rejection and handle the save return value explicitly. Release the lock after the transaction.
@@ -332,20 +326,18 @@ to another save request. BLE opcode `5` requires all flags zero.
 
 | Item | Status |
 | --- | --- |
-| Record format, CRC, validation, staging, discard, restart-required | Implemented in `boot_config.c`; native tests |
-| `storage_partition` read, erase, program and readback | Implemented in `boot_flash.c`; builds, pending hardware |
-| CPU clock profile applied at boot | Implemented in `system_clock.c`; builds, pending hardware |
+| Record format, CRC, validation, staging, discard, restart-required | Implemented; native tests |
+| `storage_partition` read, erase, program and readback | Implemented; builds, pending hardware |
+| CPU clock profile applied at boot | Implemented; builds, pending hardware |
 | Radio switches applied at boot | Implemented; pending hardware |
-| Wi-Fi credentials staged by opcodes `6`/`7`, committed by opcode `5`, joined at boot | Implemented in `control.c` and `wifi.c`; native tests for the control path, pending hardware |
+| Wi-Fi credentials staged by opcodes `6`/`7`, committed by opcode `5`, joined at boot | Implemented; native tests for the control path, pending hardware |
 | WPA3-SAE probing and confirmed auth state | Field stored; firmware connects with WPA2-PSK |
-| Control key staged by opcode `8`; BLE authentication | Implemented in `control.c`, `wireless_auth.c` and `ble.c`; pending hardware |
+| Control key staged by opcode `8`; BLE authentication | Implemented; pending hardware |
 | Host settings editor (HID Feature `2` / `20` opcode `5`) | Implemented in the firmware and all three dashboards; pending hardware |
 
 ## Tests
 
-Host tests run with `bundle exec ceedling test:all`. The focused check is
-`bundle exec ceedling test:test_boot_config`. [test_boot_config.c](../../firmware/tests/platform/test_boot_config.c)
-replaces `boot_flash.c` with an in-memory fake. Its tests cover:
+Hardware-free settings tests use an in-memory flash substitute. They cover:
 
 - defaults from erased flash and from read errors;
 - the CRC-32 check value and the documented byte offsets;
@@ -354,7 +346,8 @@ replaces `boot_flash.c` with an in-memory fake. Its tests cover:
 - unchanged-save detection and failed-save discard;
 - setter limits, and every malformed field with a valid CRC.
 
-[test_control.c](../../firmware/tests/app/control/test_control.c) covers opcode `5`, the commit flag and the radio switches. Flash
+Control tests cover opcode `5`, the commit flag and the radio switches. See the
+[firmware development guide](../development/firmware.md#host-native-unit-tests) for test commands. Flash
 programming, clock changes and saved-network reconnects need hardware and are listed in the
 [qualification gaps](../validation/qualification-gaps.md).
 

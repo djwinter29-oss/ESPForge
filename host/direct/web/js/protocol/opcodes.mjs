@@ -4,7 +4,6 @@
 /**
  * @file Opcode descriptor table: the single source of every control opcode's capability, link policy, request and
  * result rules, journalled request facts, result confirmation and lifecycle limits. Adding an opcode is one row.
- * See docs/reference/usb-hid.md, docs/reference/bluetooth.md and docs/reference/espforge-implementation.md.
  */
 import { CAP, CLOCKS_MHZ, OP, UNSUPPORTED_OPCODES } from "./constants.mjs";
 

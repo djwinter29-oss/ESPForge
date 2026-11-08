@@ -1,6 +1,5 @@
 /*
- * Bluetooth LE peripheral: report mirrors, session unlock, command proofs and the 9-byte control characteristic
- * (docs/reference/bluetooth.md with the docs/reference/espforge-implementation.md adaptations).
+ * Bluetooth LE peripheral: report mirrors, session unlock, command proofs and the 9-byte control characteristic.
  */
 #include "app/espforge.h"
 #include "platform/boot_config.h"

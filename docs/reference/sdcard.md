@@ -34,14 +34,14 @@ There is no allocated card-detect or power-control GPIO. GPIO10 is DAT3, **not a
 When migrating a card previously used in SPI mode, disconnect card power before starting native SDMMC:
 a board reset alone does not necessarily reset the card's selected bus mode.
 
-The [board overlay](../../firmware/boards/esp32s3_devkitc.overlay) enables `sdhc` / `sdhc0`, labels slot 0
-`espforge_sd`, and supplies explicit native pinctrl, `bus-width = <4>` and `max-bus-freq = <25000000>`.
+The board configuration enables native SDMMC slot 0 with explicit pin allocation, a four-bit bus
+and a 25 MHz maximum frequency.
 SPI2 and SPI3 are disabled. GPIO33-37 are occupied by octal PSRAM on N16R8.
 
 Report `2` publishes storage GPIOs in CLK, CMD, DAT0, DAT1, DAT2, DAT3 order as
 `12, 11, 13, 14, 15, 10`. The card-detect GPIO is `255` (unassigned).
-If a downstream board changes the wiring, update both its overlay/pinctrl and the board facts encoded in
-[hid_reports.c](../../firmware/src/app/usb/hid_reports.c), then validate the new allocation.
+If a downstream board changes the wiring, its hardware configuration and reported pin allocation MUST agree;
+validate the new allocation before use.
 
 ## Driver and filesystem configuration
 
@@ -53,7 +53,7 @@ If a downstream board changes the wiring, update both its overlay/pinctrl and th
 | Filesystem | FatFs, mount point `/SD:` |
 | Requested SDMMC ceiling | 25 MHz; not a measured runtime clock or throughput |
 
-[prj.conf](../../firmware/prj.conf) enables GPIO/pinctrl, disk access, the SDMMC disk driver, `CONFIG_SDHC_ESP32`,
+The default firmware enables GPIO/pinctrl, disk access, the SDMMC disk driver, `CONFIG_SDHC_ESP32`,
 the filesystem API and FatFs. Both `CONFIG_FS_FATFS_MOUNT_MKFS` and `CONFIG_FS_FATFS_MKFS` are explicitly
 disabled: the application cannot automatically format a failed mount or call FatFs mkfs through these options.
 
@@ -64,10 +64,10 @@ in the default firmware. The report format reserves a value for exFAT; that does
 
 1. Insert the card before powering or rebooting the board.
 2. After boot settings, CPU clock application and telemetry initialization,
-   [main.c](../../firmware/src/main.c) calls `ef_storage_init()` once, before Wi-Fi, BLE and USB initialization.
-3. [storage.c](../../firmware/src/app/storage/storage.c) calls `fs_mount()` for `/SD:`.
+   storage initialization runs once, before Wi-Fi, BLE and USB initialization.
+3. The filesystem is mounted at `/SD:`.
 4. On success, it records the mounted state and FatFs filesystem type, then queries the disk sector count with
-   `DISK_IOCTL_GET_SECTOR_COUNT`. If the capacity query fails, the filesystem remains mounted but capacity
+   the disk API. If the capacity query fails, the filesystem remains mounted but capacity
    is unavailable.
 5. On failure, it logs `SD card mount failed: <error>` on the UART console and returns. Startup continues,
    so a failed mount does not prevent USB management or radio initialization.

@@ -4,10 +4,8 @@
 
 The starter targets `esp32s3_devkitc/esp32s3/procpu` in Zephyr 4.3.2.
 ESPForge builds for the ESP32-S3-DevKitC-1 **N16R8** (ESP32-S3-WROOM-1-N16R8 module): 16 MB quad flash and
-8 MB octal PSRAM. The upstream board DTS describes the N8 module, so
-[esp32s3_devkitc.overlay](../../firmware/boards/esp32s3_devkitc.overlay) sets 16 MB flash, the 16 MB partition
-table (settings in `storage_partition` at `0xFB0000`) and the 8 MB PSRAM, and [prj.conf](../../firmware/prj.conf)
-enables octal PSRAM (`CONFIG_ESP_SPIRAM`, `CONFIG_SPIRAM_MODE_OCT`) at 40 MHz with a boot-time memory test.
+8 MB octal PSRAM. The project configuration selects the N16R8 memory sizes and partition layout
+(settings in `storage_partition` at `0xFB0000`), with octal PSRAM at 40 MHz and a boot-time memory test.
 PSRAM provides a separate 1 MB shared multi-heap; the kernel heap, Wi-Fi and BLE buffers stay in internal RAM.
 Flash runs in DIO at 80 MHz.
 

@@ -8,7 +8,7 @@
 #define HWINFO_RESET_POR 0x08u
 #define HWINFO_RESET_WATCHDOG 0x10u
 
-/* DevKitC monitor UART0 and native SDMMC pins; see docs/reference/sdcard.md. */
+/* DevKitC monitor UART0 and native SDMMC pins. */
 #define MONITOR_UART_INDEX 0u
 #define MONITOR_UART_TX 43u
 #define MONITOR_UART_RX 44u

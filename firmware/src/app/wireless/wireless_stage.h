@@ -2,8 +2,7 @@
  * @file wireless_stage.h
  * @brief RAM-only staged Wi-Fi/Control-key candidates for USB Feature 20 opcodes 5-10.
  *
- * Implements the staging, expiry and test-eligibility rules of docs/reference/usb-hid.md
- * ("Wireless Command Rules"). Portable: callers pass the monotonic time and the saved network.
+ * Handles staging, expiry and test eligibility. Portable: callers pass the monotonic time and the saved network.
  */
 #ifndef ESPFORGE_WIRELESS_STAGE_H
 #define ESPFORGE_WIRELESS_STAGE_H

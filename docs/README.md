@@ -1,7 +1,8 @@
 # Documentation
 
-ESPForge follows PicoForge's documentation organization and wire protocol, not its hardware.
-Start with operating guides; distinguish implementation contracts from validation evidence.
+Start with operating guides; distinguish project contracts from validation evidence.
+Guides and references describe behavior, configuration and APIs rather than internal source-file walkthroughs.
+Development guides keep the source-layout and command details needed to build, test and extend the project.
 
 ## Reading order
 

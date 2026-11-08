@@ -219,9 +219,8 @@ These bytes are a public conformance vector, not a production key:
 | Command request | `010702010000000000` (confirmed reboot) |
 | Command proof | `c090cfe4b5d641b4dd4f8d710c7dad6d` |
 
-Proofs are the first 16 bytes of HMAC-SHA256 as defined above. The executable vector is checked by
-[test_wireless_auth.c](../../firmware/tests/app/wireless/test_wireless_auth.c) and the
-[Direct BLE tests](../../host/direct/tests/transport/ble.test.mjs).
+Proofs are the first 16 bytes of HMAC-SHA256 as defined above. Firmware authentication and Direct transport
+tests verify this vector.
 
 ## Exchange Sequence
 
@@ -370,29 +369,22 @@ force a save, or change USB storage ownership.
 
 | Test ID | Requirement | Verification |
 | --- | --- | --- |
-| BT-001 | Session unlock, one-use proofs and reconnect-persistent retry delay in the portable authentication module. | [test_wireless_auth.c](../../firmware/tests/app/wireless/test_wireless_auth.c) |
-| BT-002 | HMAC-SHA256 BLE proof vectors, including the worked vector above. | [test_wireless_auth.c](../../firmware/tests/app/wireless/test_wireless_auth.c), [Direct BLE tests](../../host/direct/tests/transport/ble.test.mjs) |
-| BT-003 | Service Changed subscription/fallback, UUID lookup, proof signing and the restricted 9-byte command envelope. | [Direct BLE tests](../../host/direct/tests/transport/ble.test.mjs) |
-| BT-004 | BLE opcode restrictions, save validation, result isolation and USB staging conflicts in the portable dispatcher. | [test_control.c](../../firmware/tests/app/control/test_control.c) |
+| BT-001 | Session unlock, one-use proofs and reconnect-persistent retry delay. | Firmware authentication tests |
+| BT-002 | HMAC-SHA256 BLE proof vectors, including the worked vector above. | Firmware authentication and Direct transport tests |
+| BT-003 | Service Changed subscription/fallback, UUID lookup, proof signing and the restricted 9-byte command envelope. | Direct transport tests |
+| BT-004 | BLE opcode restrictions, save validation, result isolation and USB staging conflicts. | Firmware control tests |
 
 These tests use portable modules and simulated browser transports. They do not qualify the Zephyr GATT callbacks,
 controller startup, over-the-air advertising, negotiated MTU or live cache behavior; those require ESP32-S3 hardware.
-See the [qualification gaps](../validation/qualification-gaps.md).
+See the [qualification gaps](../validation/qualification-gaps.md). Test commands are maintained in the
+[firmware](../development/firmware.md) and [host development](../development/host-tools.md) guides.
 
 ## Implementation
 
 The current firmware uses Zephyr's Bluetooth host with the ESP32-S3 controller.
 `CONFIG_BT_GATT_SERVICE_CHANGED` and `CONFIG_BT_GATT_CACHING` enable the standard caching attributes.
-Challenges are generated with `sys_csrand_get()` using the ESP32-S3 entropy source. The firmware revision is
-`ESPFORGE_VERSION`, and delayed reboot uses `EF_REBOOT_DELAY_MS = 1000`.
-
-| Component | Responsibility |
-| --- | --- |
-| [ble.c](../../firmware/src/app/wireless/bluetooth/ble.c) | Zephyr peripheral callbacks, GATT attributes, advertising, random challenges and read snapshots; one connection |
-| [wireless_auth.c](../../firmware/src/app/wireless/wireless_auth.c) | Loaded key, session unlock, HMAC proofs and global retry delay |
-| [control.c](../../firmware/src/app/control/control.c) | Shared opcode execution through `ef_control_ble_execute()` and a separate BLE result slot |
-| [boot_config.c](../../firmware/src/platform/boot_config.c) | Persistent credentials and next-boot settings |
-| [Direct BLE transport](../../host/direct/web/js/transport/ble.mjs) | Service discovery, Control-key proofs, report polling and restricted control requests |
+Challenges use the ESP32-S3 entropy source through Zephyr's cryptographically secure random API.
+Accepted reboot commands use a 1000 ms grace period.
 
 Bluetooth callbacks run in the Zephyr Bluetooth thread. They hold the application mutex while accessing
 authentication, read snapshots and the shared control dispatcher. Advertising slowdown uses delayed Zephyr work;

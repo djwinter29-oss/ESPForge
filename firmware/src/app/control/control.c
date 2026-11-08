@@ -342,7 +342,7 @@ static void execute(const request_t *request, result_t *result, int64_t now_ms)
 		}
 		break;
 	default:
-		/* LED, MSC, benchmark and TCP CLI proof are absent; see docs/reference/espforge-implementation.md. */
+		/* LED, MSC, benchmark and TCP CLI proof are absent. */
 		finish(result, EF_STATUS_UNSUPPORTED, EF_ERROR_CAPABILITY, 0);
 		break;
 	}
