@@ -78,31 +78,18 @@ facts even if the card is subsequently removed. Do not insert or remove a card w
 
 ## Status reporting
 
-Report `10` carries storage status over USB HID and BLE. Byte layouts are defined in the
-[USB HID reference](usb-hid.md); ESPForge-specific values are listed in the
-[implementation reference](espforge-implementation.md#report-10-storage).
-
-| Condition or field | ESPForge behavior |
-| --- | --- |
-| Every published sample | Configured and sample-valid flags are set |
-| Successful mount | Presence-known, present and initialized flags are set |
-| Failed mount | Only configured and sample-valid flags are set (`sd_flags = 0x41`); presence is unknown, not confirmed absent |
-| Capacity | Valid only after a successful mount and nonzero sector-count query; `block_count` counts 512-byte sectors, not free space |
-| Bus and speed | Native SDMMC (`bus_mode = 3`) and Standard (`speed_mode = 1`) after a successful mount; zero otherwise |
-| Bus clock | The configured 25 MHz ceiling after a successful mount; zero otherwise, not a measured frequency |
-| Filesystem | FatFs type: FAT12 `1`, FAT16 `2`, FAT32 `3`; zero when unavailable |
-| Card identity (CID) | Unavailable through the current Zephyr disk API; CID-valid is clear and CID bytes are zero |
-| USB mass-storage fields | Always zero; there is no MSC interface or handoff |
+Report `10` carries the cached mount outcome, filesystem type and available capacity over USB HID and BLE.
+The [USB HID specification](usb-hid.md#report-id-10-storage-status) owns field values, flags and validation.
+A successful mount establishes presence at boot; a failed mount leaves presence unknown.
+Capacity counts the whole volume in 512-byte sectors, not free space. The reported clock is the configured
+ceiling, not a runtime measurement. CID and negotiated bus state are unavailable.
 
 The mount error code is **only logged**, not retained in Report `10`. Hosts cannot distinguish a missing card,
 bad wiring, an unsupported filesystem or another mount error from this report alone. Use the UART log for
 diagnosis, and do not label every uninitialized sample "no card".
 
-Report `1` selects native SDMMC with capability bit 4 (`0x96` in the default build), not legacy SPI bit 3
-(`0x8E`). Bus mode `3` is a new value, distinct from legacy SPI `2` and reserved SDIO-PIO `1`.
-Payload sizes, offsets and layout version `1` are unchanged; the transport is explicitly capability-selected,
-not inferred from firmware version. Update firmware and hosts together: SPI-era hosts reject the new identity,
-and current hosts reject SPI-era firmware. There is no automatic SPI fallback.
+Update firmware and hosts together when migrating from SPI: current hosts require native SDMMC, and there is
+no automatic SPI fallback. Power-cycle the card as described in the wiring instructions.
 
 ## Safety and ownership
 

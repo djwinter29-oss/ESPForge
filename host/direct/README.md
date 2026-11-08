@@ -66,8 +66,6 @@ a board advertising as `ESPForge-…`. See [wireless setup](../../docs/guides/wi
 
 ## Dashboard layout
 
-The layout follows the PicoForge Direct dashboard, but its implementation is independent.
-
 | Section | What it shows or controls |
 |---|---|
 | Device information | Product, board/MCU, serial, system clock, reserved/total firmware RAM, and firmware version |
@@ -79,9 +77,8 @@ The layout follows the PicoForge Direct dashboard, but its implementation is ind
 Firmware RAM is boot-stable build accounting, not live heap or stack usage. ESPForge has one SD-card profile, so
 the dashboard always saves profile 0 and shows the bus clock actually reported by Storage.
 
-ESPForge does not implement the PicoForge LED, USB mass-storage handoff, storage benchmark, forced save, or TCP
-CLI console. The dashboard omits those controls rather than inventing values; see the
-[ESPForge implementation reference](../../docs/reference/espforge-implementation.md).
+ESPForge has no LED control, USB mass-storage handoff, storage benchmark, forced save or TCP CLI console.
+The dashboard omits those controls rather than inventing values.
 
 ## Controls
 
@@ -132,18 +129,9 @@ completions cannot clear newer post-reconnect drafts.
 
 ## Protocol and connection
 
-The dashboard implements the [HID report reference](../../docs/reference/usb-hid.md) and
-[Bluetooth LE protocol](../../docs/reference/bluetooth.md) as narrowed by the
-[ESPForge implementation reference](../../docs/reference/espforge-implementation.md):
-
-- USB `0xCAFE:0x4021`, product ID 3, MCU 3, board model 1, and capability byte `0x96` (native SDMMC).
-- Reports 1, 2, 3, 10, 12, and 20. Report 11 does not exist; unknown Input reports are ignored.
-- Opcodes 1, 3, 4, and 13 (LED, MSC, benchmark, TCP CLI proof) are unsupported and never sent.
-  Save flag 1 (forced save) is not used; the wireless commit flag is USB-only.
-- BLE service `ef5c0000-7c91-4d70-8b32-6e856443f502` with `ef5cXXXX-…` characteristics. Characteristic `000b`
-  is empty and not read. Zephyr's standard Service Changed is not awaited.
-- Every BLE command carries an HMAC-SHA256 proof from the session's Control key; the transport checks the
-  [worked proof vector](../../docs/reference/bluetooth.md#worked-proof-vector) in its tests.
+The [USB HID](../../docs/reference/usb-hid.md) and
+[Bluetooth LE](../../docs/reference/bluetooth.md) specifications own report layouts, discovery identifiers,
+capabilities, authentication and supported commands. Direct validates those contracts before enabling operations.
 
 WebHID provides payload bytes without the report ID; exact report lengths are required. Control operations
 serialize Feature 20 SET/GET transactions and match transaction ID and opcode. Reconnect identifies the board

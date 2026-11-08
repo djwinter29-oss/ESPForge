@@ -14,16 +14,20 @@ The radio switches are separate next-boot controls.
 
 ### Wi-Fi
 
-Select a scanned network or enter a hidden SSID, enter its password if needed, and test the connection. Only a
-successful test stages the credentials, and **Save&Reboot** is the only action that writes them to flash. Staged
-credentials expire after ten minutes. Canceling discards them and returns to the saved network. If a test succeeds,
-save before it expires or test again.
+Select a scanned network or enter a hidden SSID, enter its password if needed, and test the connection. Testing
+stages a temporary candidate; dashboard test-and-save flows require a successful test before saving it.
+**Save&Reboot** is the only dashboard action that writes credentials to flash. Staged credentials expire after ten
+minutes. Canceling discards them and returns to the saved network. If a test succeeds, save before it expires or
+test again. The control API also allows an untested staged pair to be saved.
+
+Scanning pauses an in-progress saved-network join, which resumes afterward. Scans and tests can run with the
+Wi-Fi boot switch off; that switch controls only the automatic saved-network join at boot.
 
 Use a 2.4 GHz WPA2-Personal or open network with DHCP; WPA3-SAE and enterprise networks are not supported. A test
 succeeds when the board has an IPv4 address. A join that does not finish within 30 seconds fails. While a saved
 network is lost, the board retries every 5 seconds, doubling the delay up to 60 seconds. The Zephyr ESP32 driver does
-not report why a join failed, so a wrong password and a missing network look the same; see the
-[ESPForge failure details](../reference/espforge-implementation.md#report-12-wireless).
+not report why a join failed, so a wrong password and a missing network look the same. Check the network band,
+SSID, password, DHCP availability and UART logs rather than assuming a specific cause.
 
 ### Bluetooth LE
 
@@ -32,8 +36,8 @@ stays off until a key is saved. To connect, choose the Direct dashboard's **Blue
 select `ESPForge-<serial>`. Use desktop Chrome or Edge with Web Bluetooth, served from localhost or HTTPS. Python and
 .NET can provision Bluetooth settings over USB but do not connect over BLE.
 
-The Control key authenticates commands. It is not a Bluetooth pairing password and does not encrypt the link. See the
-[Bluetooth LE protocol](../reference/bluetooth.md) and the [ESPForge differences](../reference/espforge-implementation.md#bluetooth-le-differences).
+The Control key authenticates commands. It is not a Bluetooth pairing password and does not encrypt the link.
+The [Bluetooth LE specification](../reference/bluetooth.md) defines authentication and client behavior.
 
 ### Save and dashboard differences
 
@@ -41,7 +45,7 @@ The Control key authenticates commands. It is not a Bluetooth pairing password a
 verified save. ESPForge has no USB mass storage, so there is no forced save.
 
 Python and .NET manage the selected USB-attached board. Direct supports USB (WebHID) and BLE, with a restricted set of
-actions over BLE. See the [Direct dashboard guide](../../host/direct/README.md).
+actions over BLE.
 
 Live diagnostics report the wireless state; an enabled switch does not mean the radio is connected. ESPForge has no
 TCP CLI.
