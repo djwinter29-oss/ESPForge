@@ -2,24 +2,22 @@
 
 ## Source layout
 
-Like PicoForge, the firmware is grouped by role under `firmware/src/`. Headers are included by their path
-under `src/`, for example `#include "platform/boot_config.h"`.
+The firmware is grouped by role: board configuration, platform integration and application services.
+Keep hardware-dependent integration separate from portable management logic.
 
 | Directory | Contents |
 | --- | --- |
-| `src/main.c` | Boot order and the application poll loop |
-| `src/config/` | Board identity, UID/serial, reset cause and the Identity/Configuration reports (`board.c`) |
-| `src/platform/` | Boot settings (`boot_config`), the settings-partition access (`boot_flash`), CPU clock (`system_clock.c`) and the `ef_platform.h` hooks the portable core calls |
-| `src/app/` | Shared services header (`espforge.h`) and telemetry (`telemetry.c`) |
+| `src/config/` | Board identity, UID/serial, reset cause and board facts |
+| `src/platform/` | Boot settings, flash access, CPU clock and platform hooks |
+| `src/app/` | Shared services and telemetry |
 | `src/app/control/` | Portable Report 20 control dispatcher shared by USB and BLE |
-| `src/app/usb/` | USB HID device (`usb_hid.c`) and portable report encoding (`hid_reports`) |
+| `src/app/usb/` | USB HID integration and portable report encoding |
 | `src/app/storage/` | SD-card mount and Storage report |
 | `src/app/wireless/` | Portable staging, command authentication and SHA-256/HMAC |
-| `src/app/wireless/bluetooth/` | BLE GATT service and advertising (`ble.c`) |
-| `src/app/wireless/wifi/` | Wi-Fi saved/test/scan state machine (`wifi.c`) |
+| `src/app/wireless/bluetooth/` | BLE GATT service and advertising |
+| `src/app/wireless/wifi/` | Wi-Fi saved-network joins, candidate tests and scans |
 
-`firmware/tests/` mirrors this tree: a module's suite lives in the matching directory, for example
-`tests/app/control/test_control.c` for `src/app/control/control.c`.
+Native tests are grouped by the same service roles.
 
 ## Host-native unit tests
 
@@ -47,20 +45,17 @@ bundle exec ceedling test:wireless_auth
 bundle exec ceedling clobber test:all
 ```
 
-The root [project.yml](../../project.yml) selects production C from `firmware/src/**`
-and tests from `firmware/tests/**`. Zephyr glue (`main.c`, `config/board.c`, `app/telemetry.c`,
-`app/storage/storage.c`, `app/usb/usb_hid.c`, `app/wireless/bluetooth/ble.c`, `app/wireless/wifi/wifi.c`,
-`platform/boot_flash.c` and `platform/system_clock.c`) is excluded from the native build. The portable protocol
-core talks to it only through [ef_platform.h](../../firmware/src/platform/ef_platform.h):
+The native build exercises portable production logic through narrow platform interfaces.
+Zephyr stack integration, hardware sampling, SD mounting, flash access and clock application are excluded:
 
 | Suite | Production logic exercised |
 | --- | --- |
-| `app/control/test_control.c` | Shared opcode dispatcher: status/error replies, Wi-Fi base/key staging, test/cancel/scan, settings, reboot, resync and unsupported opcodes |
-| `app/usb/test_hid_reports.c` | Exact USB HID/BLE report byte layouts, little-endian fields and flags |
-| `app/wireless/test_wireless_auth.c` | HMAC-SHA-256 command authentication, nonces, replay rejection and key-change handling |
-| `app/wireless/test_wireless_stage.c` | Staged Wi-Fi credentials, password rules, expiry, tested flag and key-only commits |
-| `app/wireless/test_sha256.c` | SHA-256/HMAC vectors |
-| `platform/test_boot_config.c` | [Boot settings](../reference/settings.md) record layout, CRC-32, validation, staging, discard, save failure and next-boot snapshots over an in-memory flash fake |
+| Control | Shared opcode dispatcher: status/error replies, Wi-Fi base/key staging, test/cancel/scan, settings, reboot, resync and unsupported opcodes |
+| Reports | Exact USB HID/BLE report byte layouts, little-endian fields and flags |
+| Authentication | HMAC-SHA-256 command authentication, nonces, replay rejection and key-change handling |
+| Wireless staging | Staged Wi-Fi credentials, password rules, expiry, tested flag and key-only commits |
+| Cryptography | SHA-256/HMAC vectors |
+| Settings | [Boot settings](../reference/settings.md) record layout, CRC-32, validation, staging, discard, save failure and next-boot snapshots over an in-memory flash fake |
 
 Platform hooks are CMock-generated mocks. **The tests do not compile the SD driver, mount a card,
 format, write or test SD storage.** The Zephyr application calls these same portable modules;
@@ -94,17 +89,19 @@ west build -p always -b esp32s3_devkitc/esp32s3/procpu espforge/firmware \
 ```
 
 Inspect generated `build/firmware/zephyr/.config` and `zephyr.dts`, not just source intent.
-Required defaults include Wi-Fi, BLE, software coexistence, SPI SDHC, SDMMC disk, FatFs and
+Required defaults include Wi-Fi, BLE, software coexistence, native Espressif SDHC, SDMMC disk, FatFs and
 the `device_next` USB stack with HID. Both FAT mkfs options must remain disabled.
+The configuration check also verifies native slot 0, four-bit width, the 25 MHz ceiling,
+GPIO12/11/13/14/15/10 in CLK/CMD/DAT0-DAT3 order, and command/data pull-up configuration.
 The management protocol runs over the ESP32-S3 native USB connector (USB HID, VID:PID `CAFE:4021`)
-and BLE GATT, as described in the [ESPForge profile](../reference/espforge-profile.md).
+and BLE GATT, as described in the [ESPForge implementation reference](../reference/espforge-implementation.md).
 The UART connector carries only the Zephyr console/log output and the ROM bootloader used for flashing;
 it has no management protocol.
 
 The reusable build also freezes the resolved west manifest and attaches binaries, configuration,
 dependency licenses and software-only flashing instructions. PRs and tagged releases use this same
 build path. An optional `ESPFORGE_VERSION=MAJOR.MINOR.PATCH` environment override sets the firmware
-version for release builds; an empty/unset override preserves `espforge.h`'s default.
+version for release builds; an empty/unset override preserves the development default.
 Invalid overrides fail configuration rather than silently using another version.
 See [release automation](../deployment/release.md) for package contents and preflight.
 

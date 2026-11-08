@@ -1,6 +1,6 @@
 /**
  * @file hid_reports.h
- * @brief Encoders for the HID/GATT report payloads (docs/reference/usb-hid.md, espforge-profile.md).
+ * @brief Encoders for the ESPForge HID/GATT report payloads.
  *
  * Payloads exclude the USB report ID. Portable: the Zephyr glue samples the board and fills these structs.
  */
@@ -33,9 +33,9 @@
 #define EF_CAP_LED 0x01u
 #define EF_CAP_REBOOT 0x02u
 #define EF_CAP_SETTINGS 0x04u
-#define EF_CAP_SPI 0x08u
+#define EF_CAP_SDMMC 0x10u
 #define EF_CAP_WIRELESS 0x80u
-#define EF_CAPABILITIES (EF_CAP_REBOOT | EF_CAP_SETTINGS | EF_CAP_SPI | EF_CAP_WIRELESS)
+#define EF_CAPABILITIES (EF_CAP_REBOOT | EF_CAP_SETTINGS | EF_CAP_SDMMC | EF_CAP_WIRELESS)
 
 #define EF_UID_SIZE 8u
 #define EF_SSID_MAX 32u

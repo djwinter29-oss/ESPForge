@@ -264,11 +264,11 @@ public sealed class WirelessLifecycleTests
                 for (var index = 0; index < 8; index++) identity[index + 4] = (byte)index;
                 identity[15] = HidProtocol.McuEsp32S3;
                 identity[16] = HidProtocol.BoardEsp32S3DevKitC1;
-                identity[18] = 0x8e;
+                identity[18] = 0x96;
                 BinaryPrimitives.WriteUInt32LittleEndian(identity.AsSpan(19), 520192);
                 return identity;
             }
-            if (id == 2) return [2, 1, 240, 0, 0, 0, 43, 44, 12, 11, 13, 10, 255, 255, 0x1c, 0, 255, 255];
+            if (id == 2) return [2, 1, 240, 0, 0, 0, 43, 44, 12, 11, 13, 14, 15, 10, 0x1c, 0, 255, 255];
             if (id == 12)
             {
                 if (Writes.LastOrDefault()?[3] == 9) Cancel?.Invoke();

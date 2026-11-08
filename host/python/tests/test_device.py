@@ -19,7 +19,7 @@ from espforge.reports import (
 
 def identity():
     report = bytes([1, 1]) + struct.pack("<H", 3) + bytes.fromhex("0123456789abcdef")
-    report += bytes([1, 2, 3, 3, 1, 0, 0x8E]) + struct.pack("<II", 524288, 100000)
+    report += bytes([1, 2, 3, 3, 1, 0, 0x96]) + struct.pack("<II", 524288, 100000)
     return parse_identity_report(report)
 
 
@@ -35,7 +35,7 @@ def control_result(opcode=2, status=2, error=0, transaction=1):
 
 def configuration(clock=240):
     payload = bytes([1]) + struct.pack("<H", clock) + bytes([
-        0, 0, 43, 44, 12, 11, 13, 10, 255, 255, 0x04, 1, 255, 255,
+        0, 0, 43, 44, 12, 11, 13, 14, 15, 10, 0x04, 1, 255, 255,
     ])
     return bytes([2]) + payload
 
@@ -342,7 +342,7 @@ class HidDeviceTests(unittest.TestCase):
         client.identity["capabilities"] = 0x0A
         with self.assertRaisesRegex(RuntimeError, "persistent settings"):
             client.set_settings({"system_clock_mhz": 240, "sdcard_profile": 0, "radios": 0})
-        client.identity["capabilities"] = 0x8E & ~128
+        client.identity["capabilities"] = 0x96 & ~128
         with self.assertRaisesRegex(RuntimeError, "Wireless"):
             client.cancel_wireless_test()
         self.assertEqual(client._device.sent, [])

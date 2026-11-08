@@ -2,7 +2,7 @@
 
 USB HID control, diagnostics, and a local dashboard for ESPForge firmware on the ESP32-S3-DevKitC.
 The host talks to the board's native USB HID interface (VID:PID `0xCAFE:0x4021`) using the
-[USB HID contract](../../docs/reference/usb-hid.md) as narrowed by the [ESPForge profile](../../docs/reference/espforge-profile.md).
+[USB HID contract](../../docs/reference/usb-hid.md) as narrowed by the [ESPForge implementation reference](../../docs/reference/espforge-implementation.md).
 Basic monitoring needs no SD card. Wireless controls depend on the connected firmware's capabilities.
 
 Python and .NET share their own frontend in `host/web/src`. The Direct dashboard is independent: **no code is shared
@@ -120,7 +120,7 @@ For host tests, type checks and frontend ownership, see [Host development](../..
 
 | Package | Responsibility |
 |---|---|
-| `espforge.reports` | Report codecs and validation for the ESPForge profile; never opens a device |
+| `espforge.reports` | Report codecs and ESPForge-specific validation; never opens a device |
 | `espforge.hid` | HIDAPI device access and Report 20 command exchange |
 | `espforge.dashboard` | Board monitor, multi-board selection, and the loopback Flask server |
 | `espforge.cli` | The `espforge` and `python -m espforge` entry point |

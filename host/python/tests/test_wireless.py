@@ -49,7 +49,7 @@ class WirelessTests(unittest.TestCase):
         client = ESPForgeHid.__new__(ESPForgeHid)
         client.closed = False
         client._close_error = None
-        client.identity = {"supported": True, "capabilities": 0x8E, "serial_number": "0123456789ABCDEF"}
+        client.identity = {"supported": True, "capabilities": 0x96, "serial_number": "0123456789ABCDEF"}
         client.configuration = {"radios": 3, "tcp_cli_enabled": False}
         client._transaction_id = 0
         client._command_uncertain = False

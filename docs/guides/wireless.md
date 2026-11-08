@@ -23,7 +23,7 @@ Use a 2.4 GHz WPA2-Personal or open network with DHCP; WPA3-SAE and enterprise n
 succeeds when the board has an IPv4 address. A join that does not finish within 30 seconds fails. While a saved
 network is lost, the board retries every 5 seconds, doubling the delay up to 60 seconds. The Zephyr ESP32 driver does
 not report why a join failed, so a wrong password and a missing network look the same; see the
-[profile's failure details](../reference/espforge-profile.md#report-12-wireless).
+[ESPForge failure details](../reference/espforge-implementation.md#report-12-wireless).
 
 ### Bluetooth LE
 
@@ -33,7 +33,7 @@ select `ESPForge-<serial>`. Use desktop Chrome or Edge with Web Bluetooth, serve
 .NET can provision Bluetooth settings over USB but do not connect over BLE.
 
 The Control key authenticates commands. It is not a Bluetooth pairing password and does not encrypt the link. See the
-[Bluetooth LE protocol](../reference/bluetooth.md) and the [ESPForge differences](../reference/espforge-profile.md#bluetooth-le-differences).
+[Bluetooth LE protocol](../reference/bluetooth.md) and the [ESPForge differences](../reference/espforge-implementation.md#bluetooth-le-differences).
 
 ### Save and dashboard differences
 

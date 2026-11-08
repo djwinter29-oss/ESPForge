@@ -1,0 +1,60 @@
+# SPDX-License-Identifier: BSD-3-Clause
+# Copyright (c) 2026 Ji Dong
+
+name: Bug Report
+description: Report unexpected behavior in ESPForge firmware or host tools
+labels: [bug]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened, and what did you expect instead?
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Firmware (ESP32-S3 / Zephyr)
+        - SD-card storage (native 4-bit SDMMC)
+        - Wi-Fi setup
+        - Bluetooth LE management
+        - Host Python
+        - Host .NET
+        - Direct dashboard (USB / Bluetooth)
+        - Build / CI / release tooling
+        - Documentation
+    validations:
+      required: true
+  - type: input
+    id: board
+    attributes:
+      label: Board and firmware version
+      description: Include the module variant and firmware version or commit, or state that no hardware was connected.
+      placeholder: ESP32-S3-DevKitC-1 N16R8, firmware version or commit
+  - type: input
+    id: environment
+    attributes:
+      label: Host environment
+      description: Operating system, browser/version, host application/version and USB HID or BLE connection, if relevant.
+  - type: textarea
+    id: storage
+    attributes:
+      label: Storage configuration
+      description: For storage issues, include card model/capacity, filesystem, six-signal SDMMC wiring, pull-ups and clock configuration.
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to Reproduce
+      description: Include setup steps and distinguish simulated results from observations on physical hardware.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Output
+      description: Include UART logs, dashboard status, browser errors or CI output. Remove passwords, Control keys and personal device identifiers.
+      render: shell
+

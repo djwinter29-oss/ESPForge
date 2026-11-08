@@ -28,7 +28,7 @@ class DashboardSnapshot(TypedDict):
     board_configuration: BoardConfiguration | None
     runtime: RuntimeStatus | None
     memory: MemoryStatus | None
-    # ESPForge has no benchmark; the key stays so the status shape matches PicoForge's API.
+    # ESPForge has no benchmark; this reserved status field is always null.
     self_test: None
     settings_supported: bool
     settings_message: str | None

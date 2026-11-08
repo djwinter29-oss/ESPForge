@@ -18,11 +18,11 @@ public sealed class MonitorCommandTests
 {
     private static readonly BootSettingsResponse Settings = new(240, 0, 0);
 
-    internal static HardwareInfoResponse Hardware(byte capabilities = 0x8e) =>
+    internal static HardwareInfoResponse Hardware(byte capabilities = 0x96) =>
         new("ESPForge", "ESP32-S3", 3, "0001020304050607", ProductId: 3, BoardModel: 1, Capabilities: capabilities);
 
     internal static readonly BoardConfigurationResponse Configuration =
-        new(240, 0, 0, 43, 44, [12, 11, 13, 10, 255, 255], 0x04, 0, 255, 255);
+        new(240, 0, 0, 43, 44, [12, 11, 13, 14, 15, 10], 0x04, 0, 255, 255);
 
     private static DeviceMonitor Attached(IHidCommands commands, StatusResponse status, TimeProvider? time = null)
     {
@@ -31,7 +31,7 @@ public sealed class MonitorCommandTests
         return monitor;
     }
 
-    internal static StatusResponse Ready(byte capabilities = 0x8e) =>
+    internal static StatusResponse Ready(byte capabilities = 0x96) =>
         new(true, null, Hardware(capabilities), null, null,
             new MemoryStatusResponse(1, true, true, true, false, null, null, null, null, null, null)
                 { Msc = new(false, false, false) },
@@ -352,7 +352,7 @@ public sealed class MonitorCommandTests
 
     private static ESPForgeHid Hid(Func<byte, int, byte[]> read, Action<byte[]> write, TimeProvider? time = null) =>
         new(Hardware(), (id, size) => id == 2
-            ? [2, 1, 240, 0, 0, 0, 43, 44, 12, 11, 13, 10, 255, 255, 4, 0, 255, 255]
+            ? [2, 1, 240, 0, 0, 0, 43, 44, 12, 11, 13, 14, 15, 10, 4, 0, 255, 255]
             : read(id, size), write, time);
 
     internal sealed class Commands : IHidCommands

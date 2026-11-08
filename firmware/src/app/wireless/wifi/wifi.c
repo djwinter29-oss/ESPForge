@@ -1,7 +1,7 @@
 /*
  * Wi-Fi station: saved-network join with paced retries, candidate tests and scans (Report 12, opcodes 9-12).
  *
- * Mirrors PicoForge's wifi.c on Zephyr net_mgmt. Driver events are queued by the net_mgmt callback and applied in
+ * Uses the ESP32-S3 Wi-Fi driver through Zephyr net_mgmt. Driver events are queued by the callback and applied in
  * ef_wifi_poll(); net_mgmt requests are issued from the poll without holding the application lock.
  */
 #include "app/espforge.h"

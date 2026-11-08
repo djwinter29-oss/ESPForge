@@ -1,8 +1,8 @@
 # Host development
 
-Python and .NET share the dashboard in `host/web/` and serve the same PicoForge-style HTTP API; each host owns the
-board's USB HID interface and decodes the [USB HID reports](../reference/usb-hid.md) as narrowed by the
-[ESPForge profile](../reference/espforge-profile.md). See [Shared dashboard](#shared-dashboard).
+Python and .NET share a dashboard and HTTP API; each host owns the
+board's USB HID interface and decodes the [USB HID reports](../reference/usb-hid.md) with the board facts in the
+[ESPForge implementation reference](../reference/espforge-implementation.md). See [Shared dashboard](#shared-dashboard).
 The [Direct dashboard](../../host/direct/README.md) is independent: see
 [Direct dashboard independence](#direct-dashboard-independence).
 
@@ -36,24 +36,20 @@ call [hid-permissions-check.sh](../../tools/host/hid-permissions-check.sh) befor
 
 ## Python host design
 
-`host/python/` follows the PicoForge Python project layout: an installable `src/espforge` package
-configured by [pyproject.toml](../../host/python/pyproject.toml), dependencies locked in `uv.lock`,
-a mirrored `LICENSE`, and `tests/` with its own tool [requirements](../../host/python/tests/requirements.txt).
-There is no `requirements.txt` or flat `server.py`; run the `espforge` command, `python -m espforge`,
-or [tools/host/run-python.sh](../../tools/host/run-python.sh) from a checkout.
+The Python host is an installable package with pinned dependencies and separate test tooling.
+Run `espforge`, `python -m espforge`, or the checkout launch script.
 
-| Path | Responsibility |
+| Layer | Responsibility |
 |---|---|
-| `src/espforge/__init__.py` | Version from the owning installed distribution, else `0.0.0-debug` |
-| `src/espforge/cli.py`, `__main__.py` | `status`, `web` and `reboot` commands with `--serial` / `--device-path` selection |
-| `src/espforge/reports/` | Pure decoders and encoders for Reports 1, 2, 3, 10, 12 and 20 with ESPForge profile checks |
-| `src/espforge/hid/` | `ESPForgeHid`: `hidapi` transport for `CAFE:4021`, Feature/Input reads and Control writes |
-| `src/espforge/dashboard/` | Flask app on loopback: board discovery, one serialized monitor per board, the HTTP API; serves `espforge/web` when installed, else `host/web/src` |
-| `tests/test_<area>.py` | Report codecs, HID device, monitor, boards, wireless, web API, CLI, version and packaging contracts |
+| Package identity | Version from the installed distribution, with a development fallback |
+| CLI | `status`, `web` and `reboot` commands with `--serial` / `--device-path` selection |
+| Reports | Pure decoders and encoders for Reports 1, 2, 3, 10, 12 and 20 with ESPForge-specific validation |
+| HID transport | Device discovery, Feature/Input reads and Control writes |
+| Dashboard services | Loopback Flask app, board discovery, one serialized monitor per board and the HTTP API |
+| Tests | Report codecs, HID device, monitor, boards, wireless, web API, CLI, version and packaging contracts |
 
-`[tool.setuptools]` maps `espforge.web` to `../web/src`, so the wheel bundles exactly the shared
-dashboard assets and nothing is copied into `host/python`. pyright runs in strict mode over
-`src/espforge`. After changing dependencies, update `pyproject.toml` and run `uv lock` in
+The wheel bundles the shared dashboard assets rather than maintaining a second frontend copy.
+Python type-checking runs in strict mode. After changing dependencies, update `pyproject.toml` and run `uv lock` in
 `host/python`; the packaging tests require the lock to match the declared pins and version.
 To check a wheel locally on Linux/macOS:
 
@@ -66,22 +62,21 @@ build/wheel-check/bin/python -I tools/check_python_wheel.py 0.0.0.dev0
 
 ## Shared dashboard
 
-`host/web/` follows the PicoForge shared-dashboard layout. Both hosts serve `src/` as the site root:
-Python reads it from the checkout, and .NET copies `src/**` into `wwwroot/` on build and publish.
+Both hosts serve the same static assets: Python uses the checkout or installed package,
+and .NET includes the assets during build and publication.
 
-| Path | Responsibility |
+| Layer | Responsibility |
 |---|---|
-| `src/index.html`, `src/favicon.svg`, `src/css/dashboard.css` | Static page, icon and styles; no inline code |
-| `src/js/app.mjs` | Composition root and session lifecycle; the only module reading browser globals |
-| `src/js/dashboard-api.mjs` | Client of the board, status, settings, reboot, re-sync and wireless routes |
-| `src/js/dashboard.mjs` | Rendering and required-element lookup; no I/O |
-| `src/js/operation-state.mjs` | Control eligibility shared by rendering and command handlers |
-| `src/js/wireless-form.mjs` | Wi-Fi scan/test and Control key dialog |
-| `tsconfig.json` | No-emit JSDoc type check of every `src/js` module |
+| Static assets | Page, icon and styles; no inline code |
+| Application lifecycle | Browser integration and session ownership |
+| API client | Board, status, settings, reboot, re-sync and wireless routes |
+| Presentation | Rendering without device or network I/O |
+| Operation policy | Control eligibility shared by rendering and command handlers |
+| Wireless forms | Wi-Fi scan/test and Control key dialog |
 
-`tests/js/X.test.mjs` mirrors `src/js/X.mjs`; `tests/integration/` mounts `app.mjs` on the parsed page,
-`status-contract.json` pins the status JSON shared by both hosts, and `tests/browser/` drives Chromium against the
-Python and .NET hosts with fake boards. See the [shared dashboard README](../../host/web/README.md) for the route table.
+Unit tests cover individual responsibilities; integration tests exercise the assembled page and shared status
+contract. Browser checks drive Chromium against both hosts with fake boards.
+See the [shared dashboard README](../../host/web/README.md) for the route table.
 
 ```sh
 node host/web/tests/run-tests.mjs
@@ -91,13 +86,12 @@ python3 host/web/tests/browser/run.py   # requires the editable host/python inst
 
 ## Direct dashboard independence
 
-`host/direct/` follows the PicoForge Direct layout and owns everything it serves: `web/index.html`,
-`web/favicon.svg`, `web/css/`, layered ES modules in `web/js/`, and the loopback `server.py`.
+Direct owns its static page, styles, layered browser modules and loopback static server.
 
 - Direct must not import, link or copy at runtime from `host/web/`; `host/web/` must not reference Direct.
-- Only `web/js/app.mjs` reads browser globals; lower layers receive dependencies by injection.
-- Every module except `app.mjs` is listed in `web/js/tsconfig.json` and starts with `// @ts-check`.
-- Each `tests/X.test.mjs` mirrors `web/js/X.mjs`; `tests/contracts/` enforces these rules.
+- Browser integration belongs at the application boundary; lower layers receive dependencies by injection.
+- Lower-layer JavaScript is type-checked.
+- Unit and architectural contract tests enforce the layer boundaries.
 
 ```sh
 node host/direct/tests/run-tests.mjs

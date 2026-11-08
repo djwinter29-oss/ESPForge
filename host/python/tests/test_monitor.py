@@ -21,7 +21,7 @@ class MonitorCommandTests(unittest.TestCase):
     def test_settings_have_no_forced_save_and_refuse_unexpected_msc_state(self):
         settings = {"system_clock_mhz": 240, "sdcard_profile": 0, "radios": 0}
         snapshot = {**_empty_snapshot(), "connected": True, "settings_supported": True,
-                    "hardware": {"capabilities": 0x8E, "storage_transport": "spi"},
+                    "hardware": {"capabilities": 0x96, "storage_transport": "sdmmc"},
                     "memory": {"msc": {"enabled": False, "transition_pending": False}}}
         self.monitor._snapshot = dict(snapshot)
         self.client.set_settings.return_value = settings
@@ -246,12 +246,12 @@ class MonitorReconnectTests(unittest.TestCase):
         client.read_info.return_value = {
             "supported": True, "product_name": "ESPForge", "settings_supported": True,
             "wireless_supported": False,
-            "storage_transport": "spi",
+            "storage_transport": "sdmmc",
             "self_test_supported": False,
         }
         client.read_configuration.return_value = {
             "system_clock_mhz": 240, "sdcard_profile": 0, "stored_sysclk_profile": 240,
-            "stored_sdcard_profile": 0, "radios": 0, "tcp_cli_enabled": False, "storage_transport": "spi",
+            "stored_sdcard_profile": 0, "radios": 0, "tcp_cli_enabled": False, "storage_transport": "sdmmc",
         }
         client.read_input_report.side_effect = lambda timeout_ms: monitor._stop.set()
         monitor._client_factory = lambda: client
@@ -274,7 +274,7 @@ class MonitorReconnectTests(unittest.TestCase):
         client.read_info.return_value = {
             "supported": True, "product_name": "ESPForge", "settings_supported": False,
             "wireless_supported": False,
-            "storage_transport": "spi", "self_test_supported": False,
+            "storage_transport": "sdmmc", "self_test_supported": False,
         }
         client.read_configuration.return_value = {
             "system_clock_mhz": 0,
@@ -355,7 +355,7 @@ class MonitorSettingsTests(unittest.TestCase):
         self.client = Mock()
         self.monitor = make_monitor(self.client, {
             "connected": True,
-            "hardware": {"storage_transport": "spi"},
+            "hardware": {"storage_transport": "sdmmc"},
             "settings_supported": True,
             "board_configuration": {"system_clock_mhz": 0, "sdcard_profile": 0, "radios": 0, "reset_cause": 1},
             "memory": {"msc": {"enabled": False, "transition_pending": False}},

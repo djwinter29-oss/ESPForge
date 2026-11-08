@@ -1,20 +1,17 @@
 // SPDX-License-Identifier: BSD-3-Clause
 // Copyright (c) 2026 Ji Dong
 
-/**
- * Firmware-defined values; see docs/reference/usb-hid.md, docs/reference/bluetooth.md and the ESPForge overrides in
- * docs/reference/espforge-profile.md.
- */
+/** ESPForge device identity, capabilities and wire constants. */
 export const DEVICE_FILTER = Object.freeze({ vendorId: 0xcafe, usagePage: 0xff00, usage: 1 });
 /** USB product IDs of the development VID:PID pair. */
 export const PRODUCT_IDS = Object.freeze([0x4021]);
 /** Report 1 `product_id` of ESPForge. */
 export const PRODUCT_ID = 0x0003;
 export const CAP = Object.freeze({
-  LED: 1, REBOOT: 2, SETTINGS: 4, SPI: 8, SDIO: 16, SELF_TEST: 32, FORCED_SAVE: 64, WIRELESS: 128,
+  LED: 1, REBOOT: 2, SETTINGS: 4, SPI: 8, SDMMC: 16, SELF_TEST: 32, FORCED_SAVE: 64, WIRELESS: 128,
 });
-/** Capability bits an ESPForge board may report; LED, SDIO, benchmark and forced save are never present. */
-export const ESPFORGE_CAPABILITIES = CAP.REBOOT | CAP.SETTINGS | CAP.SPI | CAP.WIRELESS;
+/** Capability bits an ESPForge board may report; LED, SPI, benchmark and forced save are never present. */
+export const ESPFORGE_CAPABILITIES = CAP.REBOOT | CAP.SETTINGS | CAP.SDMMC | CAP.WIRELESS;
 export const OP = Object.freeze({
   REBOOT: 2, SAVE_SETTINGS: 5, STAGE_SSID: 6, STAGE_PASSWORD: 7, STAGE_KEY: 8, TEST_WIFI: 9, CANCEL_TEST: 10,
   SCAN: 11, SCAN_ENTRY: 12,
@@ -26,7 +23,7 @@ export const CONFIG_FLAGS = Object.freeze({
   VALID_MASK: 0x1c, RADIO_MASK: 0x18,
 });
 export const CLOCKS_MHZ = Object.freeze([0, 80, 160, 240]);
-/** Report IDs; see the HID report reference. ESPForge publishes no Report 11. */
+/** ESPForge report IDs; no Report 11 is published. */
 export const REPORT = Object.freeze({
   IDENTITY: 1, CONFIG: 2, TELEMETRY: 3, STORAGE: 10, WIRELESS: 12, CONTROL: 20,
 });

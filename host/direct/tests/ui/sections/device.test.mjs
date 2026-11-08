@@ -34,7 +34,7 @@ test("identity RAM stays build accounting while stale inputs show no current val
   renderStatus(state);
   assert.equal(el("#ram-usage").textContent, "64.0 / 512 KiB (12.5%)");
   assert.equal(el("#board-model").textContent, "ESP32-S3-DevKitC-1 (ESP32-S3)");
-  assert.equal(el("#product-name").textContent, "ESPForge (SPI)");
+  assert.equal(el("#product-name").textContent, "ESPForge (SDMMC)");
   assert.equal(el("#identity-clock").textContent, "240 MHz");
   assert.equal(el("#cpu-usage-core0").textContent, "12.3%");
   assert.match(el("#uptime").textContent, /104249991d/);
@@ -42,8 +42,9 @@ test("identity RAM stays build accounting while stale inputs show no current val
   const rows = id => el(id).children.map(row => row.children.map(cell => cell.textContent));
   assert.equal(el("#board-uart-title").textContent, "Monitor UART0");
   assert.deepEqual(rows("#board-uart"), [["TX", "RX"], ["GPIO43", "GPIO44"]]);
-  assert.equal(el("#board-storage-title").textContent, "Storage (SPI)");
-  assert.deepEqual(rows("#board-storage-pins"), [["CLK", "MOSI", "MISO", "CS"], ["GPIO12", "GPIO11", "GPIO13", "GPIO10"]]);
+  assert.equal(el("#board-storage-title").textContent, "Storage (SDMMC)");
+  assert.deepEqual(rows("#board-storage-pins"),
+    [["CLK", "CMD", "DAT0", "DAT1", "DAT2", "DAT3"], ["GPIO12", "GPIO11", "GPIO13", "GPIO14", "GPIO15", "GPIO10"]]);
   assert.ok(el("#board-storage-pins").children[0].children.every(cell => cell.scope === "col"));
   assert.deepEqual(el("#settings-clock").children.map(option => option.value), ["0", "80", "160", "240"]);
   state.runtime = null; state.memory = null;

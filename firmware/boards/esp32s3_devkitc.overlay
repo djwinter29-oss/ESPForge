@@ -1,4 +1,5 @@
 #include <zephyr/dt-bindings/gpio/gpio.h>
+#include <zephyr/dt-bindings/pinctrl/esp32s3-pinctrl.h>
 
 /*
  * ESP32-S3-DevKitC-1 N16R8 (ESP32-S3-WROOM-1-N16R8): 16 MB quad flash and 8 MB octal PSRAM.
@@ -31,20 +32,38 @@
 	status = "okay";
 };
 
-&spi2 {
-	status = "okay";
-	cs-gpios = <&gpio0 10 GPIO_ACTIVE_LOW>;
-	espforge_sd: sdhc@0 {
-		compatible = "zephyr,sdhc-spi-slot";
-		reg = <0>;
-		status = "okay";
-		spi-max-frequency = <10000000>;
-		mmc {
-			compatible = "zephyr,sdmmc-disk";
-			disk-name = "SD";
-			status = "okay";
+&pinctrl {
+	espforge_sd_default: espforge_sd_default {
+		clock {
+			pinmux = <SDHC0_CLKOUT_GPIO12>;
+		};
+		command_data {
+			pinmux = <SDHC0_CMD_GPIO11>, <SDHC0_DATA0_GPIO13>,
+				 <SDHC0_DATA1_GPIO14>, <SDHC0_DATA2_GPIO15>, <SDHC0_DATA3_GPIO10>;
+			bias-pull-up;
 		};
 	};
+};
+
+&sdhc {
+	status = "okay";
+};
+
+espforge_sd: &sdhc0 {
+	status = "okay";
+	pinctrl-0 = <&espforge_sd_default>;
+	pinctrl-names = "default";
+	bus-width = <4>;
+	max-bus-freq = <25000000>;
+	mmc {
+		compatible = "zephyr,sdmmc-disk";
+		disk-name = "SD";
+		status = "okay";
+	};
+};
+
+&spi2 {
+	status = "disabled";
 };
 
 /* SPI3's default pins overlap the module's internal flash/PSRAM signals (octal PSRAM uses GPIO33-37). */

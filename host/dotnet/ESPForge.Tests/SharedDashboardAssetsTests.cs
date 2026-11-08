@@ -47,7 +47,7 @@ public sealed class SharedDashboardAssetsTests
         var populated = empty with
         {
             Connected = true,
-            Memory = new(1, true, true, true, true, "sd", "spi", 10_000_000, 1024, 524_288, null)
+            Memory = new(1, true, true, true, true, "sd", "sdmmc", 25_000_000, 1024, 524_288, null)
             {
                 Msc = new(false, false, false), FilesystemFormat = "fat32"
             },

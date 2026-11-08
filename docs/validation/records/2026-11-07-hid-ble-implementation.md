@@ -3,7 +3,7 @@
 Date: 2026-11-07. Scope: the firmware, Python, .NET and Direct implementation of the
 [USB HID](../../reference/usb-hid.md), [Bluetooth](../../reference/bluetooth.md) and
 [settings](../../reference/settings.md) specifications as amended by the
-[ESPForge profile](../../reference/espforge-profile.md).
+[ESPForge implementation reference](../../reference/espforge-implementation.md).
 
 ## What ran
 
