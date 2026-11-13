@@ -14,7 +14,7 @@ import { deriveOperationEligibility } from "../../state/selectors.mjs";
 export function deriveViewEligibility(state, formBusy = false) {
   const eligibility = deriveOperationEligibility(state);
   return formBusy ? { ...eligibility, blocked: true, settingsReady: false, wirelessReady: false, mscReady: false,
-    benchmarkReady: false, benchmarkCancelReady: false }
+    benchmarkReady: false, benchmarkCancelReady: false, ledReady: false }
     : eligibility;
 }
 

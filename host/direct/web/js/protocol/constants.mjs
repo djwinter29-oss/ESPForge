@@ -11,16 +11,16 @@ export const CAP = Object.freeze({
   LED: 1, REBOOT: 2, SETTINGS: 4, SPI: 8, SDMMC: 16, SELF_TEST: 32, FORCED_SAVE: 64, WIRELESS: 128,
 });
 /** Capability bits an ESPForge board may report; the benchmark is optional. */
-export const ESPFORGE_CAPABILITIES = CAP.REBOOT | CAP.SETTINGS | CAP.SDMMC | CAP.SELF_TEST | CAP.WIRELESS;
+export const ESPFORGE_CAPABILITIES = CAP.LED | CAP.REBOOT | CAP.SETTINGS | CAP.SDMMC | CAP.SELF_TEST | CAP.WIRELESS;
 export const OP = Object.freeze({
-  REBOOT: 2, MSC: 3, BENCHMARK: 4, SAVE_SETTINGS: 5, STAGE_SSID: 6, STAGE_PASSWORD: 7, STAGE_KEY: 8, TEST_WIFI: 9, CANCEL_TEST: 10,
+  LED: 1, REBOOT: 2, MSC: 3, BENCHMARK: 4, SAVE_SETTINGS: 5, STAGE_SSID: 6, STAGE_PASSWORD: 7, STAGE_KEY: 8, TEST_WIFI: 9, CANCEL_TEST: 10,
   SCAN: 11, SCAN_ENTRY: 12,
 });
-/** LED (1) and TCP CLI proof (13): ESPForge answers only Unsupported/error 4. */
-export const UNSUPPORTED_OPCODES = Object.freeze([1, 13]);
+/** TCP CLI proof (13): ESPForge answers only Unsupported/error 4. */
+export const UNSUPPORTED_OPCODES = Object.freeze([13]);
 export const CONFIG_FLAGS = Object.freeze({
   CARD_DETECT: 0x01, LED: 0x02, MONITOR_UART: 0x04, WIFI: 0x08, BLE: 0x10, TCP_CLI: 0x20,
-  MSC: 0x40, VALID_MASK: 0x5d, RADIO_MASK: 0x18,
+  MSC: 0x40, VALID_MASK: 0x5f, RADIO_MASK: 0x18,
 });
 export const CLOCKS_MHZ = Object.freeze([0, 80, 160, 240]);
 /** ESPForge report IDs; Report 11 is conditional on the benchmark capability. */

@@ -331,6 +331,16 @@ public sealed class MonitorCommandTests
             new { system_clock_mhz = 80, sdcard_profile = 0, radios = 0, confirm_data_loss = false });
         Assert.Equal(HttpStatusCode.OK, unconfirmed.StatusCode);
         Assert.Equal(2, commands.Saves);
+        foreach (var payload in new object[] { new { }, new { colour = true }, new { colour = "4" },
+                     new { colour = 8 }, new { colour = -1 }, new { colour = 4, extra = 1 } })
+        {
+            var response = await client.PostAsJsonAsync("/api/led?board=board-a", payload);
+            Assert.True(response.StatusCode == HttpStatusCode.BadRequest,
+                $"LED input {JsonSerializer.Serialize(payload)} returned {response.StatusCode}: "
+                + await response.Content.ReadAsStringAsync());
+        }
+        Assert.Equal(HttpStatusCode.Conflict,
+            (await client.PostAsJsonAsync("/api/led?board=board-a", new { colour = 4 })).StatusCode);
         foreach (var payload in new object[] { new { }, new { enabled = 1 }, new { enabled = false },
                      new { enabled = true, extra = true } })
             Assert.Equal(HttpStatusCode.BadRequest,
@@ -356,7 +366,7 @@ public sealed class MonitorCommandTests
             .StatusCode);
         Assert.Equal(new[] { (true, false), (false, true) }, commands.MscRequests);
         Assert.True(monitor.Snapshot.StorageStale);
-        foreach (var removed in new[] { "/api/led", "/api/msc/force-return", "/api/self-test" })
+        foreach (var removed in new[] { "/api/msc/force-return", "/api/self-test" })
         {
             var response = await client.PostAsJsonAsync(removed + "?board=board-a", new { });
             Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
@@ -414,6 +424,7 @@ public sealed class MonitorCommandTests
         }
         public WirelessStatusResponse ReadWireless() => throw new NotSupportedException();
         public void Benchmark(bool start, int sizeMib) => throw new NotSupportedException();
+        public void SetLedColour(int colour) => throw new NotSupportedException();
         public void SetMsc(bool enabled, bool confirmEjected)
         {
             MscRequests.Add((enabled, confirmEjected));

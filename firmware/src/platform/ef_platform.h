@@ -16,6 +16,12 @@
 
 /** Queue a reset after the result-read grace period. */
 int ef_platform_schedule_reboot(void);
+/** Initialize the onboard addressable LED to Off before management starts. */
+void ef_platform_led_init(void);
+/** Queue an RGB bitmask (red=1, green=2, blue=4); returns zero or negative errno without SPI I/O. */
+int ef_platform_led_request(uint8_t colour);
+/** Copy the last successfully transmitted colour and driver availability. */
+void ef_platform_led_status(uint8_t *colour, bool *available);
 /** True while the storage worker is busy or USB exclusively owns the card. */
 bool ef_platform_storage_busy(void);
 /** Admit one USB ownership request without doing disk I/O; correlate its result before USB refresh. */

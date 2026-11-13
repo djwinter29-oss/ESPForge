@@ -196,6 +196,14 @@ def _register_api_routes(app: Flask, boards: DashboardBoards) -> None:
             return jsonify({"error": "Confirm file writes with 1..1024 MiB, or cancel with zero size"}), 400
         return jsonify(_board(boards).benchmark(start, size))
 
+    @app.post("/api/led")
+    def led() -> Response | tuple[Response, int]:
+        payload = request.get_json(silent=True)
+        if (not isinstance(payload, dict) or set(payload) != {"colour"}
+                or type(payload["colour"]) is not int or not 0 <= payload["colour"] <= 7):
+            return jsonify({"error": "Expected colour as an RGB bitmask 0..7"}), 400
+        return jsonify(_board(boards).set_led_colour(payload["colour"]))
+
     @app.post("/api/control/resync")
     def resync_control() -> Response | tuple[Response, int]:
         payload = request.get_json(silent=True)

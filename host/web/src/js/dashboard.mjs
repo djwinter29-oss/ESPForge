@@ -90,6 +90,10 @@ export function renderStatus(snapshot, operations = operationState(snapshot, {
     : "--";
   element("#identity-clock").textContent = clock;
   renderSettings(snapshot, operations);
+  element("#led-control").hidden = !((hardware?.capabilities ?? 0) & 1);
+  const ledControl = /** @type {HTMLSelectElement} */ (element("#led-colour"));
+  ledControl.value = snapshot.telemetry_stale ? "" : String(runtime?.led_colour ?? "");
+  ledControl.disabled = !operations.canSetLed;
   element("#cpu-usage-core0").textContent = [
     runtime?.cpu_usage_core0_basis_points, runtime?.cpu_usage_core1_basis_points,
   ].map(load => load == null ? "--" : `${(load / 100).toFixed(1)}%`).join(" / ");

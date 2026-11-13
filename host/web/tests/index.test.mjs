@@ -34,8 +34,9 @@ test("server dashboard keeps radio dialogs and confirmation controls without dro
     assert.match(footer, /id="status-message"[\s\S]*id="settings-note"/);
     assert.equal([...dashboard.matchAll(/id="settings-note"/g)].length, 1);
     assert.doesNotMatch(dashboard,
-      /id="(self-test[^"]*|led-control|share-dialog|return-dialog|configuration-force-warning|cdc-state)"/);
-    assert.doesNotMatch(dashboard, /\/console|Board LED/);
+      /id="(self-test[^"]*|share-dialog|return-dialog|configuration-force-warning|cdc-state)"/);
+    assert.doesNotMatch(dashboard, /\/console/);
+    assert.match(dashboard, /id="led-colour"/);
     assert.match(dashboard, /id="benchmark-start"/);
     assert.match(dashboard, /id="benchmark-cancel"/);
     assert.match(dashboard, /id="msc-enable"/);

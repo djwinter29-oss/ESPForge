@@ -156,7 +156,7 @@ export class Polling {
       return;
     }
     try {
-      const changes = id === REPORT.TELEMETRY ? { runtime: decodeTelemetryReport(event.data) }
+      const changes = id === REPORT.TELEMETRY ? { runtime: decodeTelemetryReport(event.data, this.session.state.hardware) }
         : id === REPORT.BENCHMARK ? { self_test: decodeBenchmarkReport(event.data) } : decodeStorageReport(event.data);
       this.receipts.record(id);
       this.scheduleExpiry();
@@ -167,6 +167,14 @@ export class Polling {
   expireReports(suspended = false) {
     const changes = this.receipts.expire(this.session.state.freshness, suspended);
     if (changes) this.session.emit("report/expired", changes);
+    this.scheduleExpiry();
+  }
+
+  /** Require a new LED/telemetry observation after admission or reconciliation. */
+  invalidateTelemetry() {
+    this.receipts.received.delete(REPORT.TELEMETRY);
+    this.session.emit("report/expired", { ...STALE[REPORT.TELEMETRY],
+      freshness: { ...this.session.state.freshness, [REPORT.TELEMETRY]: "stale" } });
     this.scheduleExpiry();
   }
 

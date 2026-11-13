@@ -75,27 +75,32 @@ export function decodeConfigReport(report, identity) {
   requireValid(validSettings(settings) && !(flags & ~CONFIG_FLAGS.VALID_MASK)
     && Boolean(flags & CONFIG_FLAGS.MONITOR_UART)
     && (identity.capabilities & CAP.WIRELESS || !(flags & CONFIG_FLAGS.RADIO_MASK))
-    && [0, 1].includes(uart) && tx !== 255 && rx !== 255 && led === 255
+    && [0, 1].includes(uart) && tx !== 255 && rx !== 255
+    && Boolean(flags & CONFIG_FLAGS.LED) === (led !== 255)
+    && (led === 255 || Boolean(identity.capabilities & CAP.LED))
     && Boolean(flags & CONFIG_FLAGS.CARD_DETECT) === (detect !== 255)
-    && [tx, rx, detect, ...gpios].every(pin => pin === 255 || pin <= MAX_GPIO)
+    && [led, tx, rx, detect, ...gpios].every(pin => pin === 255 || pin <= MAX_GPIO)
     && gpios.every(pin => pin !== 255),
   "board-configuration");
   return { ...settings, monitor_uart_index: uart, monitor_uart_tx_gpio: tx, monitor_uart_rx_gpio: rx,
-    storage_gpios: gpios, board_flags: flags, reset_cause: view.getUint8(14), card_detect_gpio: detect };
+    storage_gpios: gpios, board_flags: flags, reset_cause: view.getUint8(14), card_detect_gpio: detect, led_gpio: led };
 }
 
-export function decodeTelemetryReport(report) {
+export function decodeTelemetryReport(report, identity = null) {
   const view = payload(report, 22);
   const flags = view.getUint8(21);
   const loads = [view.getUint16(12, true), view.getUint16(14, true)];
   const temperature = view.getInt16(2, true);
   const clock = view.getUint32(16, true);
-  // No LED, no CDC: the LED byte and extension bits 1 and 3 stay clear; the APP CPU reports no load.
-  requireValid(view.getUint8(1) === 0 && !(flags & ~5) && (Boolean(flags & 4) || temperature === 0) && clock > 0
+  const colour = view.getUint8(1);
+  requireValid(colour <= 7 && !(flags & ~13) && (!colour || Boolean(flags & 8))
+    && (!identity || !(flags & 8) || Boolean(identity.capabilities & CAP.LED))
+    && (Boolean(flags & 4) || temperature === 0) && clock > 0
     && (loads[0] <= 10000 || loads[0] === 65535) && loads[1] === 65535, "telemetry");
   return { version: 1, sequence: view.getUint8(20), uptime_ms: view.getBigUint64(4, true),
     system_clock_hz: clock, usb_mounted: Boolean(flags & 1),
     temperature_valid: Boolean(flags & 4), temperature_centidegrees: flags & 4 ? temperature : null,
+    led_available: Boolean(flags & 8), led_on: colour !== 0, led_colour: flags & 8 ? colour : null,
     cpu_usage_core0_basis_points: loads[0] === 65535 ? null : loads[0],
     cpu_usage_core1_basis_points: loads[1] === 65535 ? null : loads[1] };
 }

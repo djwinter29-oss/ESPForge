@@ -147,7 +147,7 @@ Board model `1` requires MCU `3`; model `0` makes no board claim.
 
 | Capability bit | Meaning | Current device |
 | ---: | --- | --- |
-| 0 | Identification LED | Clear |
+| 0 | RGB LED control | Set |
 | 1 | Confirmed standalone reboot | Set |
 | 2 | Persistent boot-settings save | Set |
 | 3 | Legacy SPI storage transport | Clear |
@@ -156,15 +156,15 @@ Board model `1` requires MCU `3`; model `0` makes no board claim.
 | 6 | Forced settings save | Clear |
 | 7 | Wireless capability | Set |
 
-The capability byte is `0x96`, or `0xB6` with benchmarking enabled.
+The capability byte is `0x97`, or `0xB7` with benchmarking enabled. Hosts also accept older firmware without bit 0.
 Extension bits are unassigned: devices MUST transmit zero, and hosts
 MUST NOT assign meaning to unknown extension bits. Firmware version is diagnostic information, not a substitute
 for capabilities.
 
 Bits 1 and 2 identify reboot and settings-save support. Bit 4 selects the six-signal native SDMMC layout of Report `2`;
 it does **not** imply USB mass-storage support. Report `2` board flag bit 6 advertises MSC ownership control.
-LED and forced-save support are absent: opcode `1` and opcode `5` flag bit 0 return
-Unsupported/error `4`. When bit 5 is clear, opcode `4` is also unsupported and Report `11` is unavailable.
+Forced-save support is absent: opcode `5` flag bit 0 returns Unsupported/error `4`.
+When bit 5 is clear, opcode `4` is also unsupported and Report `11` is unavailable.
 Wireless capability does not imply that Wi-Fi is connected
 or that BLE has started.
 
@@ -204,14 +204,14 @@ Settings describe the next boot, while GPIOs describe configured board facts.
 | 7 | 6 | `storage_gpios` | Native SDMMC order: CLK, CMD, DAT0, DAT1, DAT2, DAT3 |
 | 13 | 1 | `board_flags` | Flags below |
 | 14 | 1 | `reset_cause` | Reset enum below |
-| 15 | 1 | `led_gpio` | `255`; no LED control |
+| 15 | 1 | `led_gpio` | Configured RGB data GPIO; `255` if unallocated |
 | 16 | 1 | `card_detect_gpio` | `8`, active-high card-detect input; `255` on older firmware without detection |
 | **Total** | **17** | | **18 bytes including report ID** |
 
 | Board flag bit | Meaning | Current device |
 | ---: | --- | --- |
 | 0 | Card detect configured | Set |
-| 1 | Direct GPIO LED configured | Clear |
+| 1 | RGB LED data GPIO allocated | Set |
 | 2 | Monitor UART enabled | Set |
 | 3 | Wi-Fi enabled for next boot | Saved switch |
 | 4 | BLE enabled for next boot | Saved switch |
@@ -246,7 +246,7 @@ failed submissions can therefore leave gaps. Sequences are not delivery acknowle
 | Offset | Size | Field | Meaning |
 | -----: | ---: | ----- | ------- |
 | 0 | 1 | `version` | Layout version, `1` |
-| 1 | 1 | `led_flags` | Zero; no identification output |
+| 1 | 1 | `led_flags` | Last transmitted RGB mask: red bit 0, green bit 1, blue bit 2; bits 3-7 zero |
 | 2 | 2 | `temperature_centidegrees_celsius` | Signed die-temperature estimate, hundredths of a degree Celsius |
 | 4 | 8 | `uptime_ms` | Monotonic milliseconds since boot |
 | 12 | 2 | `core0_service_load_basis_points` | Core 0 load; 10000 = 100%; `65535` unavailable |
@@ -257,7 +257,9 @@ failed submissions can therefore leave gaps. Sequences are not delivery acknowle
 | **Total** | **22** | | **23 bytes including report ID** |
 
 `espforge_flags`: bit 0 USB configured; bit 1 reserved CDC-open indication, always clear; bit 2 temperature valid;
-bit 3 reserved LED-available indication, always clear; bits 4-7 zero.
+bit 3 LED driver available; bits 4-7 zero. Unavailable LEDs transmit a zero colour mask.
+Masks 0-7 mean Off, Red, Green, Yellow, Blue, Purple, Cyan and White. Driver availability and successful transmission
+do not prove an LED is fitted, the selected data GPIO is correct, or the physical colour.
 USB configured means the host configured the device, not storage ownership.
 When temperature-valid is clear, the temperature field MUST be zero and MUST NOT be displayed as a measurement.
 
@@ -380,7 +382,7 @@ Argument offsets in the following table are relative to the 64-byte `arguments` 
 
 | Opcode | Operation | Flags | Arguments / support |
 | ---: | --- | --- | --- |
-| `1` | Reserved LED control | - | Unsupported/error `4` |
+| `1` | RGB LED colour | `0` | Byte 0 RGB mask `0`-`7`; bytes 1-63 zero |
 | `2` | Reboot | Bit 0 confirmation required; other bits zero | All zero |
 | `3` | USB MSC ownership | Enable: `0`; return: bit 0 eject confirmation required | Byte 0: `1` USB, `0` firmware; bytes 1-63 zero |
 | `4` | Optional storage benchmark | `0` | Byte 0 action: `1` start, `0` cancel; bytes 1-4 LE32 size MiB; bytes 5-63 zero |
@@ -670,7 +672,10 @@ constraints. Feature `1` validates identity and memory accounting; Feature `2` v
 facts; Input `3` validates sensor/load availability; Input `10` validates initialization/capacity and zeroed
 unsupported fields. Unsupported layouts and failed mandatory reads are explicit errors, not zero-filled fallbacks.
 
-Only Feature `20` is writable. Hosts MUST hide or disable LED, forced-save and TCP CLI controls.
+Only Feature `20` is writable. Hosts MUST hide or disable forced-save and TCP CLI controls.
+LED controls require capability bit 0 and fresh telemetry with an available driver. Completed acknowledges queued
+transmission, not optical verification. Colour is volatile, starts Off, needs no settings save and is never replayed
+automatically after an uncertain command. LED requests are independent of storage ownership and benchmark activity.
 Benchmark writes require capability bit 5, USB transport and fresh benchmark/storage state.
 MSC requires Report `2` flag bit 6, USB transport and fresh, settled ownership status.
 For settings-only save, leave flag bit 1 clear; for credential commit, set it explicitly.

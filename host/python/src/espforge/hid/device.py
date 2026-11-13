@@ -26,6 +26,7 @@ from ..reports.models import (
     WirelessTestResult,
 )
 from ..reports import (
+    CAP_LED,
     CAP_WIRELESS,
     ControlOpcode,
     ProtocolError,
@@ -279,6 +280,17 @@ class ESPForgeHid:
         """ESPForge has no TCP CLI, so its saved switch is always clear."""
         _validate_settings(settings)
         return {**settings, "tcp_cli_enabled": False}
+
+    @_serialized
+    def set_led_colour(self, colour: int) -> ControlResult:
+        self._require_open()
+        self._require(CAP_LED, "RGB LED control is unavailable on this firmware")
+        if type(colour) is not int or not 0 <= colour <= 7:
+            raise ValueError("LED colour must be an RGB bitmask 0..7")
+        command = build_control_command_report(
+            self._next_transaction_id(), ControlOpcode.LED, arguments=bytes((colour,)),
+        )
+        return self._execute_control(command, ControlOpcode.LED)
 
     @_serialized
     def reboot(self) -> ControlResult:

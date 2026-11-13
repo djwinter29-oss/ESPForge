@@ -534,6 +534,7 @@ public sealed class MonitorLifecycleTests
         public WirelessStatusResponse ReadWireless() => Wireless?.Invoke() ?? new();
         public void SetMsc(bool enabled, bool confirmEjected) => throw new NotSupportedException();
         public void Benchmark(bool start, int sizeMib) => throw new NotSupportedException();
+        public void SetLedColour(int colour) => throw new NotSupportedException();
         public CommandResyncResult? ReconcileOutcome(ControlCommandReference? command,
             WirelessOperationReference? operation) => Reconciled ?? throw new NotSupportedException();
         public WirelessStatusResponse SetWireless(WirelessRequest settings) => throw new NotSupportedException();

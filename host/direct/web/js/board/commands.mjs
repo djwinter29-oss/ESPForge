@@ -123,6 +123,7 @@ export class Commands {
     this.persist(null, wireless);
     if (succeeded && request.opcode === OP.MSC) this.session.polling.invalidateStorage();
     if (succeeded && request.opcode === OP.BENCHMARK) this.session.polling.invalidateBenchmark();
+    if (succeeded && request.opcode === OP.LED) this.session.polling.invalidateTelemetry();
     this.session.emit("command/retired", { pending_request: null, pending_wireless: wireless });
   }
 

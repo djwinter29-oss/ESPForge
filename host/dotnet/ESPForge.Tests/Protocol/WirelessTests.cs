@@ -162,7 +162,7 @@ public sealed class WirelessTests
     }
 
     [Theory]
-    [InlineData(1, 5, 5, 0)]
+    [InlineData(1, 5, 5, 1)]
     [InlineData(2, 3, 3, 0)]
     [InlineData(5, 3, 2, 0)]
     [InlineData(6, 1, 0, 0)]

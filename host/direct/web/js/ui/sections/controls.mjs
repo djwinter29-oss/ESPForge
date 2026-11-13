@@ -108,6 +108,10 @@ export function deriveControlsViewModel(state, ui, environment) {
  *   environment: Parameters<typeof deriveControlsViewModel>[2]) => void} */
 export function renderControls(state, ui, environment) {
   const model = deriveControlsViewModel(state, ui, environment);
+  element("led-control").hidden = !((state.hardware?.capabilities ?? 0) & 1);
+  queryElement("select#led-colour").value = state.freshness?.[3] === "fresh"
+    ? String(state.runtime?.led_colour ?? "") : "";
+  queryElement("select#led-colour").disabled = ui.formBusy || !ui.eligibility.ledReady;
   element("msc-controls").hidden = !((state.settings?.board_flags ?? 0) & 64) || state.link === "ble";
   if (model.settingsValues) {
     queryElement("select#settings-clock").value = String(model.settingsValues.system_clock_mhz);
@@ -118,7 +122,7 @@ export function renderControls(state, ui, environment) {
   setText(model.text);
   queryElement("select#settings-clock").disabled = model.settingsDisabled;
   for (const [id, disabled] of Object.entries(model.disabled)) {
-    if (id === "direct-ble-control-key") queryElement(`input#${id}`).disabled = disabled;
+    if (id === "direct-ble-control-key" || id === "benchmark-size") queryElement(`input#${id}`).disabled = disabled;
     else queryElement(`button#${id}`).disabled = disabled;
   }
   for (const [id, title] of Object.entries(model.titles)) element(id).title = title;

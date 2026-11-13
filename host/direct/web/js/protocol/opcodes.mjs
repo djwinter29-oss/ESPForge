@@ -58,6 +58,10 @@ const UNSUPPORTED = Object.freeze({ capability: 0, ble: null, unsupported: true,
 /** @type {Readonly<Record<number, OpcodeDescriptor>>} */
 export const OPCODES = Object.freeze({
   ...Object.fromEntries(UNSUPPORTED_OPCODES.map(opcode => [opcode, UNSUPPORTED])),
+  [OP.LED]: { capability: CAP.LED, ble: { proof: false, flags: false }, excluded: [1],
+    request: (r, unused) => r[3] === 0 && r[4] <= 7 && unused(5),
+    facts: { keys: ["led_colour"], read: r => ({ led_colour: r[4] }),
+      valid: facts => inRange(facts.led_colour, 0, 7) } },
   [OP.REBOOT]: { capability: CAP.REBOOT, ble: { proof: true, flags: true }, reboots: true, excluded: [4],
     rejections: [1, 2], details: { 1: 5, 2: 5, 28: 5 }, request: (r, unused) => r[3] === 1 && unused(4) },
   [OP.MSC]: { capability: CAP.SDMMC, ble: null, rejections: [1, 2, 3], details: { 1: 5, 2: 5 },

@@ -321,6 +321,18 @@ static void execute(const request_t *request, result_t *result, int64_t now_ms)
 		return;
 	}
 	switch (request->opcode) {
+	case EF_OP_LED:
+		if (!args_clear(request, 1)) {
+			finish(result, EF_STATUS_INVALID, EF_ERROR_MALFORMED, 0);
+		} else if (request->args[0] > 7) {
+			finish(result, EF_STATUS_INVALID, EF_ERROR_ARGUMENT, 0);
+		} else {
+			int err = ef_platform_led_request(request->args[0]);
+
+			finish(result, err == 0 ? EF_STATUS_COMPLETED : err == -EBUSY ? EF_STATUS_BUSY : EF_STATUS_FAILED,
+			       err == 0 ? EF_ERROR_NONE : err == -EBUSY ? EF_ERROR_BUSY : EF_ERROR_FAILED, 0);
+		}
+		break;
 	case EF_OP_BENCHMARK:
 #if EF_ENABLE_STORAGE_BENCHMARK
 		if (!args_clear(request, 5) || request->args[0] > 1) {

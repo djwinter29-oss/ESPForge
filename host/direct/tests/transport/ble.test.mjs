@@ -89,7 +89,8 @@ test("BLE maps normalized68byte control to restricted9byte wire form and HMACs t
     assert.deepEqual(writes[0], [257, sign(writes[1][1])]);
     patchState(client, { reboot_pending: false });
     await assert.rejects(client.command(5, { flags: 2, args: [160, 0, 0, 3] }), says(/requires USB/));
-    for (const opcode of [1, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13]) {
+    await assert.rejects(client.command(1), says(/Unavailable capability/));
+    for (const opcode of [3, 4, 6, 7, 8, 9, 10, 11, 12, 13]) {
       await assert.rejects(client.command(opcode), says(/requires USB/));
     }
     await client.readWireless();

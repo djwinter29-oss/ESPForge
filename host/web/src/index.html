@@ -39,6 +39,19 @@ Copyright (c) 2026 Ji Dong
       <div class="section-heading">
         <h2 id="identity-title">Device information</h2>
         <div class="actions" aria-label="Board identification and controls">
+          <label id="led-control" hidden>Board LED
+            <select id="led-colour" aria-label="Board LED colour" disabled>
+              <option value="" disabled>--</option>
+              <option value="0">Off</option>
+              <option value="4">Blue</option>
+              <option value="2">Green</option>
+              <option value="3">Yellow</option>
+              <option value="1">Red</option>
+              <option value="6">Cyan</option>
+              <option value="5">Purple</option>
+              <option value="7">White</option>
+            </select>
+          </label>
           <button class="button button-led" id="rescan-boards" type="button">Rescan</button>
           <select id="board-select" aria-label="Board attached to this server" title="Select the board managed by this host" disabled>
             <option value="">Scanning boards...</option>

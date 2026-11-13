@@ -124,11 +124,27 @@ void test_unassigned_and_unsupported_opcodes(void)
 {
 	assert_result(usb(0, 0, NULL, 0, 0), EF_STATUS_UNSUPPORTED, EF_ERROR_OPCODE, 0);
 	assert_result(usb(14, 0, NULL, 0, 0), EF_STATUS_UNSUPPORTED, EF_ERROR_OPCODE, 0);
-	assert_result(usb(EF_OP_LED, 0, NULL, 0, 0), EF_STATUS_UNSUPPORTED, EF_ERROR_CAPABILITY, 0);
 #if !EF_ENABLE_STORAGE_BENCHMARK
 	assert_result(usb(EF_OP_BENCHMARK, 0, NULL, 0, 0), EF_STATUS_UNSUPPORTED, EF_ERROR_CAPABILITY, 0);
 #endif
 	assert_result(usb(EF_OP_TCP_PROOF, 0, NULL, 0, 0), EF_STATUS_UNSUPPORTED, EF_ERROR_CAPABILITY, 0);
+}
+
+void test_led_admission_and_invalid_arguments(void)
+{
+	const uint8_t blue = 4;
+	const uint8_t invalid = 8;
+	const uint8_t tail[] = {1, 1};
+
+	ef_platform_led_request_ExpectAndReturn(blue, 0);
+	assert_result(usb(EF_OP_LED, 0, &blue, 1, 0), EF_STATUS_COMPLETED, EF_ERROR_NONE, 0);
+	ef_platform_led_request_ExpectAndReturn(blue, -EBUSY);
+	assert_result(usb(EF_OP_LED, 0, &blue, 1, 0), EF_STATUS_BUSY, EF_ERROR_BUSY, 0);
+	ef_platform_led_request_ExpectAndReturn(blue, -ENODEV);
+	assert_result(usb(EF_OP_LED, 0, &blue, 1, 0), EF_STATUS_FAILED, EF_ERROR_FAILED, 0);
+	assert_result(usb(EF_OP_LED, 0, &invalid, 1, 0), EF_STATUS_INVALID, EF_ERROR_ARGUMENT, 0);
+	assert_result(usb(EF_OP_LED, 1, &blue, 1, 0), EF_STATUS_INVALID, EF_ERROR_MALFORMED, 0);
+	assert_result(usb(EF_OP_LED, 0, tail, sizeof(tail), 0), EF_STATUS_INVALID, EF_ERROR_MALFORMED, 0);
 }
 
 void test_benchmark_admission_size_and_transport_rules(void)
@@ -408,7 +424,8 @@ void test_ble_rejects_usb_only_opcodes(void)
 {
 	assert_result(ble(EF_OP_STAGE_SSID, 0, NULL, 0), EF_STATUS_UNSUPPORTED, EF_ERROR_CAPABILITY, 0);
 	assert_result(ble(EF_OP_SCAN, 0, NULL, 0), EF_STATUS_UNSUPPORTED, EF_ERROR_CAPABILITY, 0);
-	assert_result(ble(EF_OP_LED, 0, NULL, 0), EF_STATUS_UNSUPPORTED, EF_ERROR_CAPABILITY, 0);
+	ef_platform_led_request_ExpectAndReturn(0, 0);
+	assert_result(ble(EF_OP_LED, 0, NULL, 0), EF_STATUS_COMPLETED, EF_ERROR_NONE, 0);
 	assert_result(ble(14, 0, NULL, 0), EF_STATUS_UNSUPPORTED, EF_ERROR_OPCODE, 0);
 }
 

@@ -16,6 +16,7 @@ target_sources(app PRIVATE
   src/app/control/control.c
   src/app/storage/storage.c
   src/platform/storage.c
+  src/platform/led.c
   src/app/usb/hid_reports.c
   src/app/usb/usb_hid.c
   src/app/wireless/sha256.c

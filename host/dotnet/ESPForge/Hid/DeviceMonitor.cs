@@ -22,6 +22,7 @@ internal interface IDeviceMonitor : IDisposable, IAsyncDisposable
     void Reboot(CancellationToken cancel = default);
     void SetMsc(bool enabled, bool confirmEjected, CancellationToken cancel = default);
     void Benchmark(bool start, int sizeMib, CancellationToken cancel = default);
+    void SetLedColour(int colour, CancellationToken cancel = default);
     WirelessResponse SetWireless(WirelessRequest settings, CancellationToken cancel = default);
     IReadOnlyList<WirelessNetworkResponse> ScanWireless(CancellationToken cancel = default);
     WirelessOperationResponse TestWireless(string ssid, string password, string? ssidHex = null,
@@ -46,6 +47,7 @@ internal interface IHidCommands
     void Reboot();
     void SetMsc(bool enabled, bool confirmEjected);
     void Benchmark(bool start, int sizeMib);
+    void SetLedColour(int colour);
     WirelessStatusResponse ReadWireless();
     CommandResyncResult? ReconcileOutcome(ControlCommandReference? command,
         WirelessOperationReference? wirelessOperation);
@@ -403,6 +405,20 @@ internal sealed class DeviceMonitor : BackgroundService, IDeviceMonitor
             throw new BoardStateException("Wait for idle firmware-owned storage; safely eject and return the USB drive first");
     }
 
+    public void SetLedColour(int colour, CancellationToken cancel = default)
+    {
+        using (Device(cancel))
+        {
+            var status = Snapshot;
+            if (status.Hardware is null || (status.Hardware.Capabilities & HidProtocol.CapabilityLed) == 0)
+                throw new BoardStateException("RGB LED control is unavailable on this firmware");
+            if (status.TelemetryStale || status.Runtime?.LedAvailable != true)
+                throw new BoardStateException("Waiting for an available RGB LED and fresh telemetry");
+            var client = Client();
+            ExecuteCommand(client, () => client.SetLedColour(colour));
+        }
+    }
+
     public void Benchmark(bool start, int sizeMib, CancellationToken cancel = default)
     {
         using (Device(cancel))
@@ -693,6 +709,7 @@ internal sealed class DeviceMonitor : BackgroundService, IDeviceMonitor
         lock (gate)
         {
             if (result.Opcode == Opcode.Msc) storageReceipt = 0;
+            if (result.Opcode == Opcode.Led) telemetryReceipt = 0;
             if (result.Opcode == Opcode.SelfTest) storageReceipt = benchmarkReceipt = 0;
             snapshot = snapshot with
             {

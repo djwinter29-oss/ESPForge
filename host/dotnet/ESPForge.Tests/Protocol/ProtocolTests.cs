@@ -16,6 +16,29 @@ namespace ESPForge.Tests;
 public sealed class ProtocolTests
 {
     [Fact]
+    public void RgbColoursAndUnavailableDriverAreValidated()
+    {
+        var report = new byte[23];
+        report[0] = 3; report[1] = 1; report[22] = 8;
+        BinaryPrimitives.WriteUInt32LittleEndian(report.AsSpan(17), 240000000);
+        for (byte colour = 0; colour <= 7; colour++)
+        {
+            report[2] = colour;
+            var runtime = HidProtocol.ParseTelemetryReport(report);
+            Assert.Equal(colour, runtime.LedColour);
+            Assert.Equal(colour != 0, runtime.LedOn);
+            var arguments = new byte[64]; arguments[0] = colour;
+            Assert.Equal(colour, HidProtocol.BuildControlRequest(7, Opcode.Led, 0, arguments)[5]);
+        }
+        report[2] = 0; report[22] = 0;
+        Assert.Null(HidProtocol.ParseTelemetryReport(report).LedColour);
+        report[2] = 4;
+        Assert.Throws<InvalidDataException>(() => HidProtocol.ParseTelemetryReport(report));
+        var invalid = new byte[64]; invalid[0] = 8;
+        Assert.Throws<ArgumentException>(() => HidProtocol.BuildControlRequest(7, Opcode.Led, 0, invalid));
+    }
+
+    [Fact]
     public void BenchmarkCountersRatesAndTerminalFactsAreValidated()
     {
         var report = new byte[33];

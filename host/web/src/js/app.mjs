@@ -678,6 +678,30 @@ async function benchmark(start) {
     void updateStatus();
   }
 }
+element("led-colour").addEventListener("change", async () => {
+  if (!operationState().canSetLed) return;
+  const colour = Number(/** @type {HTMLSelectElement} */ (element("led-colour")).value);
+  const boardId = selectedBoard;
+  commandVersion++;
+  settingsRequestInProgress = true;
+  if (currentSnapshot) renderStatus(currentSnapshot);
+  try {
+    const response = await fetchWithDeadline(boardUrl("/api/led", boardId), {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ colour }),
+    }, 15000);
+    publishCommandResult(acknowledge(await responseJson(response, "LED colour request failed", true), 1));
+    if (currentSnapshot) currentSnapshot.telemetry_stale = true;
+  } catch (error) {
+    if (!(error instanceof Error)) throw error;
+    if (!markCommandOutcomeUncertain(error, undefined, { kind: "resync" }, boardId))
+      settingsMessage = `LED colour request failed: ${error.message}`;
+  } finally {
+    commandVersion++;
+    settingsRequestInProgress = false;
+    if (currentSnapshot) renderStatus(currentSnapshot);
+    void updateStatus();
+  }
+});
 element("benchmark-start").addEventListener("click", () => benchmark(true));
 element("benchmark-cancel").addEventListener("click", () => benchmark(false));
 element("msc-enable").addEventListener("click", () => requestMsc(true));

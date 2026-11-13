@@ -63,7 +63,7 @@ export const UI_KEYS = Object.freeze([
  * @typedef {{operation: number, generation: number}} WirelessLifecycle
  * @typedef {{transaction_id: number, opcode: number, lifecycle?: WirelessLifecycle, settings?: BoardSettings,
  *   commit_mask?: number, scan_index?: number, scan_generation?: number, msc_enabled?: boolean,
- *   benchmark_start?: boolean, benchmark_size_mib?: number}} PendingRequest
+ *   benchmark_start?: boolean, benchmark_size_mib?: number, led_colour?: number}} PendingRequest
  * @typedef {{version: 2, kind: "control", uid: string, request: PendingRequest}
  *   | {version: 2, kind: "wireless-lifecycle", uid: string, operation: number, generation: number}} PendingOperation
  */

@@ -121,7 +121,7 @@ internal sealed class ESPForgeHid : IHidClient
             var data = inputReport.AsSpan(0, count);
             return data[0] switch
             {
-                HidProtocol.TelemetryReportId => new(HidProtocol.ParseTelemetryReport(data), null),
+                HidProtocol.TelemetryReportId => new(HidProtocol.ParseTelemetryReport(data, identity), null),
                 HidProtocol.StorageReportId => HidProtocol.ParseStorageReport(data, identity),
                 HidProtocol.BenchmarkReportId when (identity.Capabilities & HidProtocol.CapabilitySelfTest) != 0 =>
                     new(null, null, HidProtocol.ParseBenchmarkReport(data)),
@@ -175,6 +175,15 @@ internal sealed class ESPForgeHid : IHidClient
         var arguments = new byte[64];
         arguments[0] = enabled ? (byte)1 : (byte)0;
         SendCommand(Opcode.Msc, enabled ? (byte)0 : (byte)1, arguments);
+    }
+
+    public void SetLedColour(int colour)
+    {
+        EnsureCapability(HidProtocol.CapabilityLed, "RGB LED");
+        if (colour is < 0 or > 7) throw new ArgumentOutOfRangeException(nameof(colour));
+        var arguments = new byte[64];
+        arguments[0] = (byte)colour;
+        SendCommand(Opcode.Led, 0, arguments);
     }
 
     public void Benchmark(bool start, int sizeMib)

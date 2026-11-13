@@ -121,6 +121,11 @@ export function mountDashboard({ session, selectTransport, timers, environment }
     try { await operation(); } catch (error) { setUi({ action_error: describe(error) }); }
   }
 
+  element("led-colour").addEventListener("change", () => run(async () => {
+    const control = /** @type {HTMLSelectElement} */ (element("led-colour"));
+    if (!control.disabled) await client.setLedColour(Number(control.value));
+  }));
+
   element("benchmark-start").addEventListener("click", () => run(async () => {
     if (button("benchmark-start").disabled) return;
     const size = Number(/** @type {HTMLInputElement} */ (element("benchmark-size")).value);

@@ -166,8 +166,8 @@ challenge read, not a usable nonce; clients MUST validate its length before sign
 
 ## Command Proofs
 
-Opcode `1` has a proof exemption on an unlocked link, but returns Unsupported/error `4`
-because ESPForge has no LED control. It leaves any pending nonce, proof and rate limit untouched.
+Opcode `1` has a per-command proof exemption on an unlocked link. It leaves any pending nonce, proof and rate limit
+untouched; the session still requires Control-key authentication.
 Every other valid-envelope write to `0014`, including an unsupported opcode, consumes a fresh
 proof:
 
@@ -265,7 +265,9 @@ Writes to `0014` use a 9-byte form, not a truncated USB Feature `20` report. Sta
 | 3 | 1 | `flags` | Opcode `2` requires confirmation bit 0; opcode `5` requires zero (no forced save or wireless commit). |
 | 4 | 5 | `arguments` | Opcode arguments; unused bytes zero. |
 
-Opcode `1` returns Unsupported/error `4`; there is no LED to change. Opcode `2` has zero arguments and requires
+Opcode `1` uses argument byte 0 as an RGB mask `0`-`7`, with flags and other arguments zero, as specified in
+[USB HID](usb-hid.md). Completed means queued transmission, not physical verification.
+Opcode `2` has zero arguments and requires
 flag bit 0. For opcode `5`, bytes 4-5 are the system clock in MHz (little-endian): `0` (build default), `80`, `160`
 or `240`. Byte 6 MUST be `0` (Standard SD-card profile), byte 7 is the switch mask (bit 0 Wi-Fi, bit 1 BLE),
 and byte 8 MUST be zero. All opcode `5` flags MUST be zero.
@@ -300,7 +302,7 @@ prove which connection produced it.
 4. Opcodes `3`, `4` and `6`-`13` (assigned but USB-only): Unsupported/error `4` in the result slot.
    Unassigned opcodes: Unsupported/error `7`.
 5. Opcodes `1`, `2` and `5` follow the shared [error precedence](usb-hid.md#get-result) for their arguments and
-   state, with ESPForge's unsupported-feature restrictions. Opcode `1` returns Unsupported/error `4`.
+   state, with ESPForge's unsupported-feature restrictions.
    Valid save arguments are checked before USB staging conflicts: opcode `5` returns Busy/error `5` with
    detail `28` while unexpired USB-staged wireless values exist. Opcode `2` also returns Busy/error `5`,
    detail `28` in that case, after validating its arguments and confirmation flag.

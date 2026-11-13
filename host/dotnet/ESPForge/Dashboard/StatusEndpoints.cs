@@ -27,6 +27,9 @@ internal static class StatusEndpoints
     /// <summary>Start authorized temporary-file writes or cancel the admitted run.</summary>
     [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
     public sealed record BenchmarkRequest(bool? Start, int SizeMib = 0, bool Confirm = false);
+    /// <summary>An additive RGB colour bitmask, with zero meaning Off.</summary>
+    [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+    public sealed record LedRequest([property: JsonNumberHandling(JsonNumberHandling.Strict)] int? Colour);
     /// <summary>Every <c>/api</c> error body, matching the Python server.</summary>
     public sealed record ApiError(string Error);
     /// <summary>Empty success response.</summary>
@@ -158,6 +161,11 @@ internal static class StatusEndpoints
             .WithSummary("Start or cancel the optional temporary-file benchmark")
             .Produces<EmptyResponse>(StatusCodes.Status200OK)
             .Errors(CommandErrors);
+        endpoints.MapPost("/api/led", Led)
+            .WithName("LedColour")
+            .WithSummary("Set the onboard RGB LED colour")
+            .Produces<EmptyResponse>(StatusCodes.Status200OK)
+            .Errors(CommandErrors);
         return endpoints;
     }
 
@@ -191,6 +199,14 @@ internal static class StatusEndpoints
     {
         if (!request.Confirm) throw new ApiInputException("Explicit confirm: true is required");
         return Results.Ok(dashboard.Monitor(board).ResyncCommand(true, cancel));
+    }
+
+    private static IResult Led(LedRequest request, string? board, IDashboardBoards dashboard, CancellationToken cancel)
+    {
+        if (request.Colour is not { } colour || colour is < 0 or > 7)
+            throw new ApiInputException("Expected colour as an RGB bitmask 0..7");
+        dashboard.Monitor(board).SetLedColour(colour, cancel);
+        return Results.Ok(new EmptyResponse());
     }
 
     private static IResult Benchmark(BenchmarkRequest request, string? board, IDashboardBoards dashboard,

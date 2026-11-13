@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <zephyr/devicetree.h>
+#include <zephyr/dt-bindings/pinctrl/esp-pinctrl-common.h>
 #include <zephyr/drivers/hwinfo.h>
 #include <zephyr/kernel.h>
 #include <zephyr/linker/linker-defs.h>
@@ -86,6 +87,9 @@ void ef_config_report(uint8_t out[EF_CONFIG_SIZE])
 		.card_detect_available = true,
 		.card_detect_gpio = DT_GPIO_PIN(DT_PATH(zephyr_user), sd_detect_gpios),
 		.msc_supported = IS_ENABLED(CONFIG_USBD_MSC_CLASS),
+		.led_available = true,
+		.led_gpio = DT_PROP_BY_IDX(DT_CHILD(DT_NODELABEL(espforge_led_default), mosi), pinmux, 0)
+			    & ESP32_PIN_NUM_MASK,
 	};
 
 	ef_lock();

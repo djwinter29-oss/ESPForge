@@ -36,7 +36,13 @@ Follow the [SD pin allocation](../reference/sdcard.md#pin-allocation) for all si
 card detection, supply and ground. An unwired detection input reads absent and prevents mounting.
 
 GPIO assignments use explicit native SDMMC slot-0 pinctrl in the project's overlay.
-SPI2 and SPI3 are disabled.
+SPI2 is dedicated to the onboard WS2812-compatible RGB LED, with only MOSI allocated; SPI3 remains disabled.
+The default LED data pin is GPIO48. This is unverified for the diymore dual-USB-C N16R8 clone; official DevKitC-1
+revisions use GPIO48 (v1.0) or GPIO38 (v1.1). For GPIO38, change the LED pinctrl selection from
+`SPIM2_MOSI_GPIO48` to `SPIM2_MOSI_GPIO38` in the hardware overlay and rebuild. Reported board facts derive from that
+selection. No SPI clock, MISO or chip-select pin is assigned. The driver uses a low fixed intensity, boots Off and
+transmits an eight-bit SPI waveform at up to 6.4 MHz with a 350-microsecond reset. GPIO choice, waveform and optical
+colour still require physical qualification. A logged transmission failure disables LED control until reboot.
 Octal PSRAM occupies GPIO33-37, so those pins are not available on N16R8.
 Leave boot-strapping and onboard flash/PSRAM pins alone. Consult your exact board schematic.
 The requested SDMMC ceiling is 25 MHz; this is not a measured bus frequency or throughput claim.

@@ -18,7 +18,7 @@ from .common import (
     _ALLOWED_STATUS_ERRORS, _OPCODE_STATUSES, _bytes, _feature_payload, _validate_settings,
 )
 
-_UNSUPPORTED_OPCODES = (ControlOpcode.LED, ControlOpcode.TCP_PROOF)
+_UNSUPPORTED_OPCODES = (ControlOpcode.TCP_PROOF,)
 
 
 def build_settings_command_report(
@@ -57,6 +57,8 @@ def build_control_command_report(
         raise ValueError("control command arguments exceed 64 bytes")
     args = args.ljust(64, b"\0")
     # Keep this final wire check as the guard for every direct builder caller before a HID write.
+    if opcode == ControlOpcode.LED and (flags or args[0] > 7 or any(args[1:])):
+        raise ValueError("LED colour must be an RGB bitmask 0..7 with zero flags and padding")
     if opcode == ControlOpcode.REBOOT and (flags != 1 or any(args)):
         raise ValueError("reboot requires confirmation and zero arguments")
     if opcode == ControlOpcode.MSC and (

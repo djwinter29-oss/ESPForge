@@ -44,7 +44,8 @@ test("standalone dashboard labels profiles, active measurements, controls and ac
     assert.match(footer, /role="status" aria-live="polite"/);
     assert.match(footer, /id="status-message"[\s\S]*id="settings-note"/);
     assert.equal([...dashboard.matchAll(/id="settings-note"/g)].length, 1);
-    assert.doesNotMatch(dashboard, /self-test|led-control|console/);
+    assert.doesNotMatch(dashboard, /self-test|console/);
+    assert.match(dashboard, /id="led-colour"/);
     assert.match(dashboard, /id="benchmark-start"/);
     assert.match(dashboard, /id="benchmark-cancel"/);
     assert.match(dashboard, /id="msc-controls"/);

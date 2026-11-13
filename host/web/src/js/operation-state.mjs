@@ -12,6 +12,8 @@
  * @property {boolean} [reboot_pending]
  * @property {boolean} [telemetry_stale]
  * @property {boolean} [storage_stale]
+ * @property {boolean} [telemetry_stale]
+ * @property {{led_available?: boolean, led_colour?: number | null} | null} [runtime]
  * @property {boolean} [self_test_stale]
  * @property {{active?: boolean} | null} [self_test]
  * @property {{capabilities?: number} | null} [hardware]
@@ -161,6 +163,8 @@ export function operationState(snapshot, activity = {}) {
   const canManageMsc = Boolean(snapshot?.connected && mscSupported && storageStatusReady
     && !snapshot.msc?.transition_pending && !benchmarkPending && !busy && !settingsBusy);
   return {
+    canSetLed: Boolean(snapshot?.connected && capabilities & 1 && snapshot.telemetry_stale === false
+      && snapshot.runtime?.led_available && Number.isInteger(snapshot.runtime.led_colour) && !busy && !settingsBusy),
     outcomeUncertain, rebootPending, storageCommandPending, storageStatusReady,
     storageBlockReason, wirelessStatusReady, wirelessBlockReason, busy,
     canProvisionWireless, canSaveSettings: saveBlockReason === null, saveBlockReason,

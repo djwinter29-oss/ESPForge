@@ -39,7 +39,7 @@ public sealed record RuntimeStatusResponse(byte Sequence, uint UptimeMs, uint Sy
     bool UsbMounted, bool CdcOpen, bool TemperatureValid, short? TemperatureCentidegrees,
     bool LedAvailable, bool LedOn, ushort? CpuUsageCore0BasisPoints = null,
     ushort? CpuUsageCore1BasisPoints = null, uint? RamUsedBytes = null, uint? RamTotalBytes = null,
-    ulong UptimeMilliseconds = 0);
+    ulong UptimeMilliseconds = 0, byte? LedColour = null);
 
 /// <summary>Card identity decoded from the SD CID register.</summary>
 public sealed record SdCardIdentity(byte ManufacturerId, string OemId, string ProductName,
@@ -260,7 +260,7 @@ internal static partial class HidProtocol
         Require(productId == FamilyId, $"unsupported ESPForge product ID 0x{productId:X4}");
         var capabilities = payload[17];
         var sdmmc = (capabilities & CapabilitySdmmc) != 0;
-        const byte supported = CapabilityReboot | CapabilitySettings | CapabilitySdmmc | CapabilitySelfTest | CapabilityWireless;
+        const byte supported = CapabilityLed | CapabilityReboot | CapabilitySettings | CapabilitySdmmc | CapabilitySelfTest | CapabilityWireless;
         Require(sdmmc && (capabilities & ~supported) == 0, "invalid HID capability flags");
         var mcuId = payload[14];
         var boardModel = payload[15];
@@ -293,7 +293,7 @@ internal static partial class HidProtocol
         const int wirelessFlags = BoardFlagWifi | BoardFlagBle;
         Require(IsValidClock(clock), "unsupported persisted system-clock profile");
         Require(sdProfile == 0, "unsupported persisted SD-card profile");
-        Require((flags & ~(BoardFlagMonitorUart | BoardFlagCardDetect | BoardFlagMsc | wirelessFlags)) == 0,
+        Require((flags & ~(BoardFlagLed | BoardFlagMonitorUart | BoardFlagCardDetect | BoardFlagMsc | wirelessFlags)) == 0,
             "unknown board-configuration flags");
         Require((flags & wirelessFlags) == 0 || identity.WirelessSupported,
             "wireless service switches reported without wireless capability");
@@ -335,7 +335,7 @@ internal static partial class HidProtocol
             (flags & 1) != 0, (flags & 2) != 0);
     }
 
-    public static RuntimeStatusResponse ParseTelemetryReport(ReadOnlySpan<byte> report)
+    public static RuntimeStatusResponse ParseTelemetryReport(ReadOnlySpan<byte> report, HardwareInfoResponse? identity = null)
     {
         var payload = InputPayload(report, TelemetryReportId, TelemetryPayloadSize);
         Require(payload[0] == ReportVersion, "unsupported HID telemetry report version");
@@ -346,19 +346,21 @@ internal static partial class HidProtocol
         var core1 = BinaryPrimitives.ReadUInt16LittleEndian(payload[14..]);
         var clock = BinaryPrimitives.ReadUInt32LittleEndian(payload[16..]);
         var flags = payload[21];
-        Require((ledFlags & ~1) == 0 && (flags & ~0x0f) == 0, "unknown HID telemetry flags");
+        Require((ledFlags & ~7) == 0 && (flags & ~0x0f) == 0, "unknown HID telemetry flags");
         Require((core0 <= 10000 || core0 == ushort.MaxValue)
             && (core1 <= 10000 || core1 == ushort.MaxValue), "invalid per-core service load");
         Require(clock != 0, "invalid system clock in HID telemetry");
         var temperatureValid = (flags & 0x04) != 0;
         var ledAvailable = (flags & 0x08) != 0;
-        var ledOn = (ledFlags & 1) != 0;
+        Require(!ledAvailable || identity is null || (identity.Capabilities & CapabilityLed) != 0,
+            "LED telemetry contradicts device capabilities");
+        var ledOn = ledFlags != 0;
         Require(!ledOn || ledAvailable, "LED state reported without an available LED");
         Require(temperatureValid || temperature == 0, "invalid telemetry temperature must be zero");
         return new(payload[20], (uint)uptime, clock, (flags & 1) != 0, (flags & 2) != 0,
             temperatureValid, temperatureValid ? temperature : null, ledAvailable, ledOn,
             core0 == ushort.MaxValue ? null : core0, core1 == ushort.MaxValue ? null : core1,
-            UptimeMilliseconds: uptime);
+            UptimeMilliseconds: uptime, LedColour: ledAvailable ? ledFlags : null);
     }
 
 
@@ -441,6 +443,9 @@ internal static partial class HidProtocol
         if (opcode == Opcode.Msc && (arguments[0] > 1 || flags != (arguments[0] == 0 ? 1 : 0)
             || arguments[1..].IndexOfAnyExcept((byte)0) >= 0))
             throw new ArgumentException("MSC return requires OS-eject confirmation; export requires zero flags");
+        if (opcode == Opcode.Led && (flags != 0 || arguments[0] > 7
+            || arguments[1..].IndexOfAnyExcept((byte)0) >= 0))
+            throw new ArgumentException("LED colour must be an RGB bitmask 0..7");
         var report = new byte[ControlFeatureSize];
         report[0] = ControlReportId;
         report[1] = ReportVersion;
@@ -484,9 +489,8 @@ internal static partial class HidProtocol
             "control result has an unsupported opcode/status combination");
         Require(result.Opcode switch
         {
-            // LED remains unavailable.
             Opcode.Led => result.Status is ControlStatus.Pending or ControlStatus.Completed
-                or ControlStatus.Invalid or ControlStatus.Unsupported or ControlStatus.Failed,
+                or ControlStatus.Invalid or ControlStatus.Unsupported or ControlStatus.Busy or ControlStatus.Failed,
             Opcode.Msc => result.Status is ControlStatus.Pending or ControlStatus.Completed
                 or ControlStatus.Invalid or ControlStatus.Unsupported or ControlStatus.Busy or ControlStatus.Failed,
             Opcode.Reboot => result.Status is ControlStatus.Pending or ControlStatus.Completed

@@ -77,6 +77,7 @@ export class BoardSession {
   reboot(confirmed) { return this.operations.reboot(confirmed); }
   setMsc(enabled, confirmEjected) { return this.operations.setMsc(enabled, confirmEjected); }
   benchmark(start, sizeMib, confirmed) { return this.operations.benchmark(start, sizeMib, confirmed); }
+  setLedColour(colour) { return this.operations.setLedColour(colour); }
   saveSettings(settings) { return this.operations.saveSettings(settings); }
   /** @param {import("./operations.mjs").ConfigurationIntent} intent */
   saveConfiguration(intent) { return this.operations.saveConfiguration(intent); }

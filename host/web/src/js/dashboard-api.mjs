@@ -8,7 +8,8 @@
  * firmware_version?: string, serial_number?: string, ram_reserved_bytes?: number, ram_total_bytes?: number}} Hardware
  * @typedef {{led_available?: boolean, led_on?: boolean, system_clock_hz?: number, uptime_milliseconds?: number,
  * uptime_ms?: number, cpu_usage_core0_basis_points?: number | null, cpu_usage_core1_basis_points?: number | null,
- * cdc_open?: boolean, temperature_valid?: boolean, temperature_centidegrees?: number | null}} Runtime
+ * led_colour?: number | null, cdc_open?: boolean, temperature_valid?: boolean,
+ * temperature_centidegrees?: number | null}} Runtime
  * @typedef {{enabled?: boolean, transition_pending?: boolean, request_rejected?: boolean}} Msc
  * @typedef {{id?: number, manufacturer_id?: number, product_name?: string, product_revision?: string | number,
  * manufacture_year?: number, manufacture_month?: number, serial_number?: number}} Manufacturer
@@ -160,6 +161,8 @@ function diagnosticFields(result) {
     ["board_model", value => text(value) || numeric(value)],
   ]);
   const runtime = clean(result.runtime, "runtime", [
+    ["led_colour", value => value === null || Number.isInteger(value) && Number(value) >= 0 && Number(value) <= 7],
+    ...fields("led_available led_on", flag),
     ...fields("system_clock_hz uptime_milliseconds uptime_ms", numeric),
     ...fields("cpu_usage_core0_basis_points cpu_usage_core1_basis_points temperature_centidegrees",
       value => value === null || numeric(value)),

@@ -83,6 +83,12 @@ export class Operations {
     return this.session.command(OP.MSC, { flags: enabled ? 0 : 1, args: [Number(enabled)] });
   }
 
+  async setLedColour(colour) {
+    requireValid(Number.isInteger(colour) && colour >= 0 && colour <= 7, "command-arguments");
+    this.require("led");
+    return this.session.command(OP.LED, { args: [colour] });
+  }
+
   async benchmark(start, sizeMib = 0, confirmed = false) {
     requireValid(typeof start === "boolean" && Number.isInteger(sizeMib)
       && (start ? sizeMib >= 1 && sizeMib <= 1024 && confirmed === true : sizeMib === 0), "command-arguments");

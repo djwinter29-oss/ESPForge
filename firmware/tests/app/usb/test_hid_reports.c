@@ -29,11 +29,11 @@ void test_identity_layout(void)
 		.ram_reserved_bytes = 0x01020304,
 	};
 	uint8_t expected[EF_IDENTITY_SIZE] = {1, 0x03, 0x00, 0xA0, 0xB1, 0xC2, 0xD3, 0xE4, 0xF5, 0, 0, 0, 2, 1,
-						    3, 1, 0, 0x96, 0x00, 0x00, 0x08, 0x00, 0x04, 0x03, 0x02, 0x01};
+						    3, 1, 0, 0x97, 0x00, 0x00, 0x08, 0x00, 0x04, 0x03, 0x02, 0x01};
 	uint8_t out[EF_IDENTITY_SIZE];
 
 #if EF_ENABLE_STORAGE_BENCHMARK
-	expected[17] = 0xB6;
+	expected[17] = 0xB7;
 #endif
 	ef_report_identity(&identity, out);
 	TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, out, sizeof(out));
@@ -84,6 +84,15 @@ void test_telemetry_layout(void)
 	ef_report_telemetry(&telemetry, out);
 	TEST_ASSERT_EQUAL_HEX8(0, out[2]);
 	TEST_ASSERT_EQUAL_HEX8(0, out[3]);
+	TEST_ASSERT_EQUAL_HEX8(0, out[21]);
+	telemetry.led_available = true;
+	telemetry.led_colour = 6;
+	ef_report_telemetry(&telemetry, out);
+	TEST_ASSERT_EQUAL_HEX8(6, out[1]);
+	TEST_ASSERT_EQUAL_HEX8(8, out[21]);
+	telemetry.led_available = false;
+	ef_report_telemetry(&telemetry, out);
+	TEST_ASSERT_EQUAL_HEX8(0, out[1]);
 	TEST_ASSERT_EQUAL_HEX8(0, out[21]);
 }
 

@@ -40,7 +40,7 @@
 /** Optional temporary-file benchmark capability. */
 #define EF_CAP_BENCHMARK 0x20u
 #define EF_CAP_WIRELESS 0x80u
-#define EF_CAPABILITIES (EF_CAP_REBOOT | EF_CAP_SETTINGS | EF_CAP_SDMMC | EF_CAP_WIRELESS | \
+#define EF_CAPABILITIES (EF_CAP_LED | EF_CAP_REBOOT | EF_CAP_SETTINGS | EF_CAP_SDMMC | EF_CAP_WIRELESS | \
 			(EF_ENABLE_STORAGE_BENCHMARK ? EF_CAP_BENCHMARK : 0))
 
 #define EF_UID_SIZE 8u
@@ -64,6 +64,8 @@ typedef struct {
 	bool card_detect_available; /**< A physical card-present GPIO is allocated. */
 	uint8_t card_detect_gpio; /**< Board card-present input, valid when allocated. */
 	bool msc_supported; /**< Native USB mass-storage class is enabled. */
+	bool led_available; /**< Addressable RGB LED is allocated in hardware configuration. */
+	uint8_t led_gpio; /**< LED data pin, valid when allocated. */
 } ef_config_t;
 
 typedef struct {
@@ -74,6 +76,8 @@ typedef struct {
 	uint32_t system_clock_hz;
 	uint8_t sequence;
 	bool usb_configured;
+	bool led_available; /**< Last LED transmission succeeded. */
+	uint8_t led_colour; /**< Last transmitted RGB bitmask: red=1, green=2, blue=4. */
 } ef_telemetry_t;
 
 /** Coherent storage snapshot; invalid samples carry no live SD fields on the wire. */

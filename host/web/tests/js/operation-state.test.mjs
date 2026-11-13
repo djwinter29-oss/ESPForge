@@ -13,6 +13,19 @@ const ready = {
   storage_stale: false, memory: { initialized: true },
 };
 
+test("RGB controls require fresh known colour and remain independent of storage", () => {
+  const state = { ...ready, hardware: { capabilities: 0xb7 }, telemetry_stale: false,
+    runtime: { led_available: true, led_colour: 4 }, storage_stale: true,
+    self_test: { active: true }, self_test_stale: false, msc: { enabled: true } };
+  assert.equal(operationState(state).canSetLed, true);
+  for (const changes of [{ telemetry_stale: true }, { telemetry_stale: undefined },
+    { runtime: { led_available: false, led_colour: null } }, { runtime: { led_available: true } },
+    { hardware: { capabilities: 0xb6 } }, { command_outcome_uncertain: true }])
+    assert.equal(operationState({ ...state, ...changes }).canSetLed, false);
+  assert.equal(operationState(state, { saving: true }).canSetLed, false);
+  assert.equal(operationState(state, { wirelessInFlight: true }).canSetLed, false);
+});
+
 test("MSC controls require advertised support, a mounted card, and settled ownership", () => {
   const supported = { ...ready, board_configuration: { board_flags: 0x45 } };
   assert.equal(operationState(ready).canEnableMsc, false);

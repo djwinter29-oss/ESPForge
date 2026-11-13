@@ -7,6 +7,32 @@ import { config, telemetry, storage, fakeConnection, emit, says } from "../suppo
 import { Operations } from "../../web/js/board/operations.mjs";
 import { BOARD, connected, radio } from "../support/wireless.mjs";
 
+test("LED commands use reported colour, ignore SD readiness and never replay uncertain writes", async () => {
+  const { client, device, sent, pendingStore } = fakeConnection({ capabilities: 0x97 });
+  await client.connect();
+  const status = telemetry(); status[21] |= 8;
+  emit(device, 3, status);
+  await client.setLedColour(4);
+  assert.deepEqual(sent[0].slice(0, 6), [20, 1, 1, 1, 0, 4]);
+  assert.equal(client.state.runtime, null);
+  await assert.rejects(client.setLedColour(2));
+  const receive = device.receiveFeatureReport;
+  device.receiveFeatureReport = async id => {
+    if (id === 20) throw new Error("lost LED acknowledgement");
+    return receive(id);
+  };
+  emit(device, 3, status);
+  await assert.rejects(client.setLedColour(6));
+  assert.equal(client.state.outcome_uncertain, true);
+  assert.equal(JSON.parse(pendingStore.getItem("espforge.direct.pending-operation")).request.led_colour, 6);
+  device.receiveFeatureReport = receive;
+  await client.disconnect();
+  await client.connect();
+  assert.equal(sent.length, 2, "Re-sync reads the original result without replay");
+  assert.equal(client.state.runtime, null);
+  await client.disconnect();
+});
+
 test("benchmark admission invalidates snapshots and uncertain starts are never replayed", async () => {
   const { client, device, sent, pendingStore } = fakeConnection({ capabilities: 0xb6 });
   await client.connect();

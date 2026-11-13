@@ -70,6 +70,21 @@ def control_result(opcode, status, error=0, transaction=11, data=b""):
 
 
 class ProtocolTests(unittest.TestCase):
+    def test_rgb_led_colour_and_driver_failure_are_truthful(self):
+        identity = parse_identity_report(identity_report(0x97))
+        for colour in range(8):
+            status = parse_status_report(telemetry_report(led_flags=colour, flags=0x0D), identity)
+            self.assertEqual(status["led_colour"], colour)
+            self.assertEqual(status["led_on"], colour != 0)
+            command = build_control_command_report(7, 1, arguments=bytes((colour,)))
+            self.assertEqual(command[:6], bytes((20, 1, 7, 1, 0, colour)))
+        self.assertIsNone(parse_status_report(telemetry_report(), identity)["led_colour"])
+        with self.assertRaises(ValueError):
+            parse_status_report(telemetry_report(led_flags=4, flags=0x0D), self.identity)
+        for flags, args in ((1, b"\4"), (0, b"\10"), (0, b"\4\1")):
+            with self.assertRaises(ValueError):
+                build_control_command_report(7, 1, flags=flags, arguments=args)
+
     def test_benchmark_progress_rates_and_terminal_validation(self):
         report = bytearray(33)
         report[:5] = bytes((11, 1, 9, 3, 3))
@@ -197,7 +212,7 @@ class ProtocolTests(unittest.TestCase):
             parse_status_report(telemetry_report(flags=0x01), self.identity)
         for report in (telemetry_report(flags=0x07), telemetry_report(flags=0x0D),
                        telemetry_report(led_flags=1), telemetry_report(core1=5678)):
-            with self.subTest(report=report), self.assertRaisesRegex(ValueError, "ESPForge profile"):
+            with self.subTest(report=report), self.assertRaisesRegex(ValueError, "ESPForge profile|LED"):
                 parse_status_report(report, self.identity)
         bad_load = bytes([3]) + struct.pack("<BBhQHHIBB", 1, 0, 0, 1, 10001, 0xFFFF, 240_000_000, 0, 0)
         with self.assertRaisesRegex(ValueError, "CPU usage"):
@@ -274,7 +289,7 @@ class ProtocolTests(unittest.TestCase):
                 build_settings_command_report(invalid)
         with self.assertRaises(TypeError):
             build_settings_command_report(settings, force=True)
-        for opcode in (ControlOpcode.LED, ControlOpcode.TCP_PROOF):
+        for opcode in (ControlOpcode.TCP_PROOF,):
             with self.subTest(opcode=opcode), self.assertRaisesRegex(ValueError, "not available"):
                 build_control_command_report(1, opcode)
         for flags, arguments in ((1, struct.pack("<HBB", 240, 0, 0)), (0, struct.pack("<HBB", 240, 0, 4)),
@@ -313,7 +328,7 @@ class ProtocolTests(unittest.TestCase):
             result_report(0, clock=200),
             control_result(5, 2, data=struct.pack("<HBBB", 240, 1, 0, 0)),
             control_result(13, 2, data=bytes(range(16))),
-            control_result(1, 2),
+            control_result(1, 2, data=b"\1"),
             control_result(4, 1),
         ):
             with self.subTest(report=malformed), self.assertRaises(ValueError):

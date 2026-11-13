@@ -12,6 +12,24 @@ from espforge.reports import ProtocolError
 
 
 class MonitorCommandTests(unittest.TestCase):
+    def test_led_requires_capability_and_fresh_driver_status_then_invalidates_telemetry(self):
+        client = Mock()
+        monitor = make_monitor(client, {"connected": True, "hardware": {"capabilities": 0x97},
+            "runtime": {"led_available": True, "led_colour": 0}, "memory": {"sample_valid": False}})
+        monitor._input_received_at["runtime"] = float("inf")
+        result = {"status": "completed", "opcode": 1, "error": "none"}
+        client.set_led_colour.return_value = result
+        self.assertEqual(monitor.set_led_colour(4), {"control_result": result})
+        client.set_led_colour.assert_called_once_with(4)
+        self.assertTrue(monitor.snapshot()["telemetry_stale"])
+        with self.assertRaises(BoardConflict):
+            monitor.set_led_colour(2)
+        monitor._input_received_at["runtime"] = float("inf")
+        monitor._snapshot["hardware"]["capabilities"] = 0x96
+        with self.assertRaises(BoardConflict):
+            monitor.set_led_colour(2)
+        client.set_led_colour.assert_called_once()
+
     def test_benchmark_start_cancel_and_confirmed_admission_invalidate_snapshots(self):
         client = Mock()
         monitor = make_monitor(client, {"connected": True, "hardware": {"self_test_supported": True},

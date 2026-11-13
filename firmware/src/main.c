@@ -1,6 +1,7 @@
 #include "app/espforge.h"
 #include "platform/boot_config.h"
 #include "app/control/control.h"
+#include "platform/ef_platform.h"
 
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
@@ -25,6 +26,7 @@ int main(void)
 		printk("CPU clock change failed: %d\n", err);
 	}
 	ef_telemetry_init();
+	ef_platform_led_init();
 	ef_storage_init();
 	ef_wifi_init((radios & EF_WIRELESS_WIFI) != 0);
 	ef_ble_init((radios & EF_WIRELESS_BLE) != 0);

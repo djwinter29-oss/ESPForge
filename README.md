@@ -145,7 +145,9 @@ see the [release guide](docs/deployment/release.md).
 - BLE commands are Control-key authenticated, but the link is **not encrypted**; flash credentials are also unencrypted.
 - Settings use a single flash record and are **not power-loss atomic**.
 - The TCP diagnostic shell is unauthenticated plaintext: use only on trusted networks, without port forwarding.
-- There is no LED control, file-transfer API or dual-core application workload.
+- The onboard RGB LED has a volatile colour dropdown beside Device information; see the [hardware guide](docs/guides/hardware.md)
+  for the unverified default pin and board-revision alternative.
+- There is no file-transfer API or dual-core application workload.
 
 Read the [validation records](docs/validation/records/README.md) for observed evidence, not inferred guarantees.
 

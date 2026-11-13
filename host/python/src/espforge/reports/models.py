@@ -88,6 +88,7 @@ class RuntimeStatus(TypedDict):
     led_available: bool
     led_on: bool
     led_flags: int
+    led_colour: int | None
     espforge_flags: int
     cpu_usage_core0_basis_points: int | None
     cpu_usage_core1_basis_points: int | None

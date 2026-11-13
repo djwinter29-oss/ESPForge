@@ -19,6 +19,7 @@ Board-scoped routes take `?board=ID` from `/api/boards`.
 | `GET /api/status` | Identity, telemetry, storage, boot configuration and wireless status |
 | `POST /api/settings` | Save clock and radio switches, then reboot; `system_clock_mhz` is `0`, `80`, `160` or `240`, `sdcard_profile` is `0`, `radios` is `0`-`3` |
 | `POST /api/reboot` | Confirmed reboot, with `{"confirm":true}` |
+| `POST /api/led` | Volatile onboard RGB colour |
 | `POST /api/msc` | Explicitly enable USB storage or return it after confirmed OS eject |
 | `POST /api/control/resync` | Explicitly reconcile an uncertain command outcome |
 | `POST /api/wireless` | Save Wi-Fi credentials, Control key and radio switches |
@@ -40,7 +41,7 @@ Python includes `control_result`, while .NET returns `{}`. Poll `/api/status` fo
 `enabled` and `request_rejected`; do not automatically replay. See the
 [SD handoff contract](../../docs/reference/sdcard.md#usb-drive-handoff) for OS eject, reconnect and safety limitations.
 
-Unsupported routes are not served: `/console`, `/api/console`, `/api/led`,
+Unsupported routes are not served: `/console`, `/api/console`,
 `/api/msc/force-return` and `/api/self-test`. The UI never requests them.
 
 `POST /api/benchmark` accepts `{"start":true,"size_mib":32,"confirm":true}` or
@@ -78,3 +79,10 @@ python host/web/tests/browser/run.py
 ```
 
 The browser checks need Playwright for Python and the .NET SDK because they serve the UI through both hosts.
+
+## RGB LED control
+
+`POST /api/led` accepts only `{"colour":0..7}` with an integer additive RGB mask: red=1, green=2, blue=4,
+zero=Off. Capability and fresh available-driver telemetry are required; storage activity does not block it.
+Success means queued transmission, not physical verification or persistence. The shared dropdown beside Device
+information displays reported colour and uses the existing explicit Re-sync flow after an uncertain outcome.

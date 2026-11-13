@@ -243,7 +243,7 @@ test("storage telemetry, pin rows, and dashboard layout preserve presentation", 
   assert.deepEqual([...diagnostics.matchAll(/<dt>([^<]+)<\/dt>/g)].map(match => match[1]),
     ["Uptime", "Reset cause", "Service load (Core 0 / Core 1)", "Board temperature", "Storage bus speed",
       "Wi-Fi", "Bluetooth"]);
-  assert.doesNotMatch(html, /id="cpu-usage-core1"|id="cdc-state"|id="led-control"|id="msc-control"|id="self-test/);
+  assert.doesNotMatch(html, /id="cpu-usage-core1"|id="cdc-state"|id="msc-control"|id="self-test/);
   assert.doesNotMatch(html, /\bPico\b|>PF</);
   const storage = html.split('aria-labelledby="memory-title"')[1].split("</section>")[0];
   assert.deepEqual([...storage.matchAll(/<dt>([^<]+)<\/dt>/g)].map(match => match[1]),

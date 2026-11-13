@@ -49,6 +49,9 @@ void ef_report_config(const ef_config_t *config, uint8_t out[EF_CONFIG_SIZE])
 {
 	uint8_t flags = CONFIG_FLAG_MONITOR_UART;
 
+	if (config->led_available) {
+		flags |= 0x02u;
+	}
 	if (config->card_detect_available) {
 		flags |= 0x01u;
 	}
@@ -71,7 +74,7 @@ void ef_report_config(const ef_config_t *config, uint8_t out[EF_CONFIG_SIZE])
 	memcpy(out + 7, storage_gpios, sizeof(storage_gpios));
 	out[13] = flags;
 	out[14] = config->reset_cause;
-	out[15] = EF_GPIO_UNASSIGNED;
+	out[15] = config->led_available ? config->led_gpio : EF_GPIO_UNASSIGNED;
 	out[16] = config->card_detect_available ? config->card_detect_gpio : EF_GPIO_UNASSIGNED;
 }
 
@@ -79,7 +82,7 @@ void ef_report_telemetry(const ef_telemetry_t *telemetry, uint8_t out[EF_TELEMET
 {
 	memset(out, 0, EF_TELEMETRY_SIZE);
 	out[0] = 1;
-	out[1] = 0;
+	out[1] = telemetry->led_available ? telemetry->led_colour : 0;
 	if (telemetry->temperature_valid) {
 		put16(out + 2, (uint16_t)telemetry->temperature_centi_c);
 	}
@@ -89,7 +92,8 @@ void ef_report_telemetry(const ef_telemetry_t *telemetry, uint8_t out[EF_TELEMET
 	put16(out + 14, EF_LOAD_UNAVAILABLE);
 	put32(out + 16, telemetry->system_clock_hz);
 	out[20] = telemetry->sequence;
-	out[21] = (uint8_t)((telemetry->usb_configured ? 0x01u : 0) | (telemetry->temperature_valid ? 0x04u : 0));
+	out[21] = (uint8_t)((telemetry->usb_configured ? 0x01u : 0) | (telemetry->temperature_valid ? 0x04u : 0) |
+			   (telemetry->led_available ? 0x08u : 0));
 }
 
 void ef_report_storage(const ef_storage_t *storage, uint8_t out[EF_STORAGE_SIZE])

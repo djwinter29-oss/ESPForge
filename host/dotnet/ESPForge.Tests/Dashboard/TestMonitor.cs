@@ -26,6 +26,7 @@ internal class TestMonitor : IDeviceMonitor
         throw new NotSupportedException();
     public virtual void Benchmark(bool start, int sizeMib, CancellationToken cancel = default) =>
         throw new NotSupportedException();
+    public virtual void SetLedColour(int colour, CancellationToken cancel = default) => throw new NotSupportedException();
     public virtual WirelessResponse SetWireless(WirelessRequest settings, CancellationToken cancel = default) =>
         throw new NotSupportedException();
     public virtual IReadOnlyList<WirelessNetworkResponse> ScanWireless(CancellationToken cancel = default) =>

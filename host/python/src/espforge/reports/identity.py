@@ -58,7 +58,7 @@ def parse_identity_report(report: bytes | bytearray | list[int]) -> HardwareIden
     firmware = tuple(payload[11:14])
     mcu_id, board_model, _, capabilities = payload[14:18]
     ram_total, ram_reserved = struct.unpack_from("<II", payload, 18)
-    if capabilities not in (ESPFORGE_CAPABILITIES, ESPFORGE_CAPABILITIES | CAP_SELF_TEST):
+    if capabilities & ~(CAP_LED | CAP_SELF_TEST) != ESPFORGE_CAPABILITIES:
         raise ValueError("HID identity capabilities do not match the ESPForge profile")
     if board_model == 1 and mcu_id != ESP32S3_MCU:
         raise ValueError("board model and MCU disagree in HID identity report")
@@ -107,7 +107,7 @@ def parse_configuration_report(
         raise ValueError("invalid stored board configuration profile")
     if flags & ~0x7F:
         raise ValueError("unknown board configuration flags")
-    if flags & 0x22 or not flags & 0x04:
+    if flags & 0x20 or not flags & 0x04:
         raise ValueError("board configuration flags do not match the ESPForge profile")
     radios = flags >> 3 & 3
     if flags & 0x38 and not identity.get("wireless_supported"):

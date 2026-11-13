@@ -24,7 +24,7 @@ from ..reports.models import (
     WirelessStatus,
     WirelessTestResult,
 )
-from ..reports import ProtocolError
+from ..reports import CAP_LED, ProtocolError
 from ..reports.common import BoardConflict as BoardConflict, ControlOpcode
 from .models import (
     ControlResponse,
@@ -259,6 +259,8 @@ class DeviceMonitor:
                 self._wireless_cleanup_required = False
             if result["status"] == "completed" and result.get("opcode") == ControlOpcode.MSC:
                 self._input_received_at.pop("memory", None)
+            if result["status"] == "completed" and result.get("opcode") == ControlOpcode.LED:
+                self._input_received_at.pop("runtime", None)
             if result["status"] == "completed" and result.get("opcode") == ControlOpcode.SELF_TEST:
                 self._input_received_at.pop("memory", None)
                 self._input_received_at.pop("self_test", None)
@@ -316,6 +318,18 @@ class DeviceMonitor:
             saved = self._send_control(client.set_settings, settings)
             self._publish_saved_settings(saved)
             return {"settings": saved, "control_result": client.last_command_result}
+
+    def set_led_colour(self, colour: int) -> ControlResponse:
+        with self._device():
+            snapshot = self.snapshot()
+            if not snapshot["hardware"] or not snapshot["hardware"]["capabilities"] & CAP_LED:
+                raise BoardConflict("RGB LED control is unavailable on this firmware")
+            if (snapshot["telemetry_stale"] or snapshot["runtime"] is None
+                    or not snapshot["runtime"]["led_available"]):
+                raise BoardConflict("Waiting for an available RGB LED and fresh telemetry")
+            result = self._send_control(self._client().set_led_colour, colour)
+            ESPForgeHid.require_completed(result, "LED colour request")
+            return {"control_result": result}
 
     def benchmark(self, start: bool, size_mib: int = 0) -> ControlResponse:
         with self._device():

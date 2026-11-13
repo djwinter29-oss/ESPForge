@@ -10,7 +10,7 @@ import { REASON } from "./errors.mjs";
 
 const { COMMAND_BLOCKED: BLOCKED, CAPABILITY_UNAVAILABLE: NO_CAPABILITY } = REASON;
 /** @typedef {import("./reducer.mjs").DashboardState} DashboardState */
-/** @typedef {"reboot" | "settings" | "wireless" | "msc" | "benchmark" | "benchmark-cancel"} Operation */
+/** @typedef {"led" | "reboot" | "settings" | "wireless" | "msc" | "benchmark" | "benchmark-cancel"} Operation */
 
 /** @brief True while a control request or an accepted wireless lifecycle has no known outcome.
  * @param {DashboardState} state */
@@ -44,6 +44,8 @@ export function deriveOperationEligibility(state) {
   return {
     blocked,
     storageReady,
+    ledReady: !blocked && Boolean(caps & CAP.LED) && state.freshness?.[3] === "fresh"
+      && state.runtime?.led_available === true,
     benchmarkSupported,
     benchmarkReady: !blocked && !bluetooth && benchmarkSupported && benchmarkFresh && storageReady
       && state.memory?.initialized === true,
@@ -64,6 +66,7 @@ export function deriveOperationEligibility(state) {
 /** @type {Record<Operation, (state: DashboardState, eligibility: ReturnType<typeof deriveOperationEligibility>,
  *   capabilities: number) => string | null>} */
 const RULES = {
+  led: (state, e) => e.ledReady ? null : BLOCKED,
   reboot: (state, e, caps) => !e.storageReady ? REASON.REBOOT_STORAGE
     : !(caps & CAP.REBOOT) ? NO_CAPABILITY : e.blocked ? BLOCKED : null,
   settings: (state, e, caps) => !e.storageReady ? REASON.SETTINGS_STORAGE

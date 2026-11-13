@@ -130,7 +130,7 @@ INVALID_REQUESTS = [
 
 DROPPED_ROUTES = [
     ("GET", "/console"), ("GET", "/api/console"), ("POST", "/api/console"), ("PUT", "/api/console"),
-    ("POST", "/api/led"), ("POST", "/api/msc/force-return"), ("POST", "/api/self-test"),
+    ("POST", "/api/msc/force-return"), ("POST", "/api/self-test"),
 ]
 
 
@@ -192,6 +192,17 @@ class WebTests(unittest.TestCase):
         response = create_app(boards).test_client().post("/api/reboot", json={"confirm": True})
         self.assertEqual(response.status_code, 409)
         self.assertEqual(response.json, {"error": "device monitor is shutting down"})
+
+    def test_led_route_accepts_only_a_colour_bitmask(self):
+        boards = Mock()
+        boards.monitor.return_value.set_led_colour.return_value = {"control_result": {"opcode": 1}}
+        client = create_app(boards).test_client()
+        self.assertEqual(client.post("/api/led", json={"colour": 4}).status_code, 200)
+        boards.monitor.return_value.set_led_colour.assert_called_once_with(4)
+        for payload in ({}, {"colour": True}, {"colour": "4"}, {"colour": 4.0}, {"colour": 8},
+                        {"colour": -1}, {"colour": None}, {"colour": 4, "extra": 1}):
+            with self.subTest(payload=payload):
+                self.assertEqual(client.post("/api/led", json=payload).status_code, 400)
 
     def test_write_body_limits_are_json_errors_before_any_board_operation(self):
         boards = FakeBoards()
@@ -267,7 +278,7 @@ class WebTests(unittest.TestCase):
                                        base_url="http://127.0.0.1")
                 self.assertEqual(response.status_code, 404)
         page = client.get("/").get_data(as_text=True)
-        for marker in ('id="led-control"', 'id="msc-control"', 'id="self-test', "/console"):
+        for marker in ('id="msc-control"', 'id="self-test', "/console"):
             self.assertNotIn(marker, page)
 
     def test_msc_route_requires_boolean_intent_and_explicit_eject_confirmation(self):
