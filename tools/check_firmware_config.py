@@ -54,6 +54,17 @@ def sdmmc_failures(build: Path) -> list[str]:
     return failures
 
 
+def phy_sensor_hook_failures(build: Path, config: dict[str, str]) -> list[str]:
+    """Wi-Fi modem sleep must release the die-temperature sensor by reference count instead of powering it off."""
+    if config.get("CONFIG_ESP32_TEMP") != "y":
+        return []
+    owner = re.search(r"\(([^()\s]+)\)\n(?:\s+0x[0-9a-f]+ \(size before relaxing\)\n)?\s+0x[0-9a-f]+\s+"
+                      r"phy_set_tsens_power\n", (build / "zephyr.map").read_text())
+    if not owner or owner.group(1) != "phy_override.c.obj":
+        return ["phy_set_tsens_power must come from the HAL phy_override.c, not the PHY library's weak default"]
+    return []
+
+
 def main() -> int:
     root = Path(__file__).resolve().parents[1]
     config_path = root / "build/firmware/zephyr/.config"
@@ -76,6 +87,7 @@ def main() -> int:
                     if config.get(f"CONFIG_{name}") != value)
     failures.extend(settings_partition_failures(root / "build/firmware/zephyr", config))
     failures.extend(sdmmc_failures(root / "build/firmware/zephyr"))
+    failures.extend(phy_sensor_hook_failures(root / "build/firmware/zephyr", config))
     if failures:
         print("\n".join(failures), file=sys.stderr)
         return 1
