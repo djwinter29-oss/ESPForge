@@ -41,6 +41,17 @@ python3 server.py --port 8000
 For either local option, open **<http://127.0.0.1:8000/>**. The local server requires Python, but does not require the
 ESPForge Python host package. Keep the default loopback binding for local use.
 
+Local checkout launches serve a temporary, versioned copy without editing the source assets. Like the other hosts,
+versions use `vMAJOR.MINOR.PATCH` Git tags: the next commit after `v1.2.3` displays `1.2.4-dev.1`.
+Direct also appends the short commit ID and `.dirty` when there are uncommitted changes. With no release tag,
+it uses `0.0.0-dev.COUNT`; unavailable Git identity produces an explicit warning and `0.0.0-debug`.
+Restart the server after commits or edits to refresh the snapshot.
+
+Release ZIPs and Pages retain the exact release version, independently of any surrounding Git checkout.
+The version label's tooltip shows the source commit; `build.json` records the version, commit and dirty state.
+An inconsistent page or build identity is rejected rather than silently restamped. A custom `--directory`
+without build metadata is still served unchanged.
+
 Opening `index.html` as a `file://` URL is not supported. WebHID and Web Bluetooth require a supported browser and
 OS in a secure context, such as HTTPS or localhost. Bluetooth support on Linux varies by browser and adapter.
 

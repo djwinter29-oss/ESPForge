@@ -56,6 +56,20 @@ def check_history(browser: Browser, origin: str) -> None:
         print("PASS index history-cache restoration reloads without replay")
 
 
+def check_version_label(browser: Browser, origin: str) -> None:
+    """Long development versions must remain readable without horizontal page overflow."""
+    with browser.new_context() as context:
+        page = context.new_page()
+        page.goto(f"{origin}/web/index.html")
+        label = page.get_by_label("Host application version")
+        label.evaluate("(element) => element.textContent = '1.2.4-dev.123+g0123456789ab.dirty'")
+        for width in (1440, 720, 320):
+            page.set_viewport_size({"width": width, "height": 900})
+            if not page.evaluate("document.documentElement.scrollWidth <= innerWidth"):
+                raise AssertionError(f"Development version overflows the page at {width}px")
+        print("PASS long Direct development versions fit desktop, tablet and mobile widths")
+
+
 def main() -> None:
     """Fail on browser errors, incomplete checks, or any reported assertion failure."""
     root = Path(__file__).resolve().parents[2]
@@ -83,6 +97,7 @@ def main() -> None:
                         raise AssertionError(f"Expected 8 checks, got {len(results)}; "
                                              f"failed assertions: {failures}; page errors: {errors}")
                     check_history(browser, origin)
+                    check_version_label(browser, origin)
                 finally:
                     browser.close()
         finally:

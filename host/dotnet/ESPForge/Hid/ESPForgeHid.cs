@@ -18,6 +18,7 @@ internal sealed class ESPForgeHid : IHidClient
     private bool disposed;
     private byte[] inputReport;
     private byte[] featureReport;
+    private readonly int featureReportOffset = OperatingSystem.IsLinux() ? 1 : 0;
     private readonly TimeProvider time;
     private HardwareInfoResponse identity;
     // ponytail: Feature 2 changes only through opcode 5 or a reboot (a new handle), so it is read once per handle
@@ -61,7 +62,7 @@ internal sealed class ESPForgeHid : IHidClient
             stream.WriteTimeout = 1000;
             inputReport = new byte[Math.Max(HidProtocol.StoragePayloadSize + 1, device.GetMaxInputReportLength())];
             featureReport = new byte[Math.Max(
-                HidProtocol.ControlFeatureSize, device.GetMaxFeatureReportLength())];
+                HidProtocol.ControlFeatureSize, device.GetMaxFeatureReportLength()) + featureReportOffset];
             readFeature = GetFeatureReport;
             writeFeature = report => { RequireOpen(); stream.SetFeature(report); };
             time = TimeProvider.System;
@@ -381,12 +382,15 @@ internal sealed class ESPForgeHid : IHidClient
     private byte[] GetFeatureReport(byte reportId, int requiredSize)
     {
         RequireOpen();
-        if (featureReport.Length != requiredSize)
-            featureReport = new byte[requiredSize];
+        if (featureReport.Length < requiredSize + featureReportOffset)
+            featureReport = new byte[requiredSize + featureReportOffset];
         Array.Clear(featureReport);
         featureReport[0] = reportId;
         stream.GetFeature(featureReport);
-        return featureReport;
+        // HidSharp retains a transport ID before the complete Linux hidraw report.
+        if (featureReport[0] != reportId || featureReport[featureReportOffset] != reportId)
+            throw new InvalidDataException("Unexpected HID feature report ID");
+        return featureReport.AsSpan(featureReportOffset, requiredSize).ToArray();
     }
 
     private ControlResult SendCommand(Opcode opcode, byte flags = 0, byte[]? arguments = null)

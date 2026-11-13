@@ -23,7 +23,7 @@ public sealed record BootSettingsResponse(int SystemClockMhz,
 public sealed record BoardConfigurationResponse(
     [property: JsonPropertyName("stored_sysclk_profile")] ushort StoredSystemClockMhz,
     [property: JsonPropertyName("stored_sdcard_profile")] byte StoredSdCardProfile,
-    byte MonitorUartIndex, byte MonitorUartTxGpio, byte MonitorUartRxGpio, byte[] StorageGpios,
+    byte MonitorUartIndex, byte MonitorUartTxGpio, byte MonitorUartRxGpio, IReadOnlyList<byte> StorageGpios,
     byte BoardFlags, byte ResetCause, byte LedGpio, byte CardDetectGpio)
 {
     /// <summary>Next-boot values saved in this session; the stored values apply until a save replaces them.</summary>

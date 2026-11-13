@@ -3,6 +3,7 @@
 
 using System.Net;
 using System.Net.Http.Json;
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
@@ -36,6 +37,10 @@ public sealed class DashboardApplicationTests
                 var page = await response.Content.ReadAsStringAsync();
                 Assert.Contains("| .NET", page);
                 Assert.DoesNotContain("{{", page);
+                var version = typeof(DashboardApplication).Assembly
+                    .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+                Assert.NotNull(version);
+                Assert.Contains($"App v{version}<", page);
             }
         }
         foreach (var route in new[] { "/index.html", "/console.html", "/console", "/src/js/app.mjs" })

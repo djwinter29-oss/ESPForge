@@ -56,7 +56,7 @@ internal static class DashboardApplication
         app.Lifetime.ApplicationStopped.Register(files.Dispose);
         app.UseStaticFiles(new StaticFileOptions { FileProvider = files });
         var version = typeof(DashboardApplication).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()
-            ?.InformationalVersion.Split('+')[0] ?? "0.0.0-debug";
+            ?.InformationalVersion ?? "0.0.0-debug";
         string Page(string html) => html.Replace("{{ dashboard_type }}", ".NET").Replace("{{ app_version }}", version);
         var index = Page(await File.ReadAllTextAsync(Path.Combine(webRoot, "index.html")));
         app.MapGet("/", () => Results.Content(index, "text/html; charset=utf-8"));

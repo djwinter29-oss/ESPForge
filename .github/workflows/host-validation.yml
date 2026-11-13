@@ -46,6 +46,8 @@ jobs:
       - name: Verify installed Python wheel
         if: matrix.os == 'ubuntu-24.04' && matrix.python == '3.12'
         run: |
+          mkdir -p host/python/src/espforge/web
+          cp -R host/web/src/. host/python/src/espforge/web/
           python -m pip wheel --no-deps host/python --wheel-dir build/wheels
           python -m venv build/wheel-check
           build/wheel-check/bin/python -m pip install build/wheels/*.whl

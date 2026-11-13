@@ -43,13 +43,14 @@ root = "../.."
 fallback_root = "."
 git_describe_command = "git describe --dirty --tags --long --match v[0-9]*.[0-9]*.[0-9]*"
 
-[tool.hatch.build.hooks.custom]
+[tool.hatch.build]
+artifacts = ["src/espforge/web/**"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/espforge"]
 
 [tool.hatch.build.targets.sdist]
-include = ["/src", "/hatch_build.py"]
+include = ["/src"]
 
 [tool.pyright]
 include = ["src/espforge/dashboard/boards.py", "src/espforge/dashboard/models.py",

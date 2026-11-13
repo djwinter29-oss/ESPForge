@@ -79,11 +79,13 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Build wheel
+      - name: Stage dashboard assets and build wheel
         env:
           SETUPTOOLS_SCM_PRETEND_VERSION: ${{ needs.validate-tag.outputs.version }}
         run: |
           cp LICENSE host/python/LICENSE
+          mkdir -p host/python/src/espforge/web
+          cp -R host/web/src/. host/python/src/espforge/web/
           python -m pip wheel --disable-pip-version-check --no-deps host/python --wheel-dir dist
 
       - name: Verify installed wheel and bundled dashboard
@@ -111,6 +113,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
@@ -133,6 +136,7 @@ jobs:
           import time
           import urllib.error
           import urllib.request
+          from host.direct.server import build_site, identity
 
           version = os.environ["VERSION"]
           Path("build/packages").mkdir(parents=True, exist_ok=True)
@@ -140,13 +144,11 @@ jobs:
 
           # ESPForge Direct is standalone: its own web/, server.py and LICENSE.
           direct = Path("build/direct-release")
-          shutil.copytree("host/direct/web", direct / "web")
+          _, commit, dirty = identity(Path.cwd())
+          assert commit == os.environ["SOURCE_SHA"], "Direct source commit differs from release"
+          build_site(Path("host/direct/web"), direct / "web", version, commit, dirty)
           shutil.copyfile("host/direct/server.py", direct / "server.py")
           shutil.copyfile("LICENSE", direct / "LICENSE")
-          index = direct / "web/index.html"
-          html = index.read_text(encoding="utf-8")
-          assert html.count("App v0.0.0-debug<") == 1, "Direct version placeholder missing"
-          index.write_text(html.replace("App v0.0.0-debug<", f"App v{version}<"), encoding="utf-8")
           (direct / "RELEASE.txt").write_text(
               f"ESPForge {version}\nSource: {os.environ['SOURCE_SHA']}\n"
               "Run: python3 server.py --port 8000\nOpen: http://127.0.0.1:8000/ in desktop Chrome or Edge\n"
@@ -196,7 +198,7 @@ jobs:
           def check_direct(origin, directory):
               assert sorted(path.name for path in directory.iterdir()) == ["LICENSE", "RELEASE.txt", "server.py", "web"]
               headers, body = fetch(f"{origin}/")
-              assert f"App v{version}<".encode() in body
+              assert f'aria-label="Host application version" title="{commit}">{version}</span>'.encode() in body
               assert "default-src 'self'" in headers["Content-Security-Policy"]
               assert fetch(f"{origin}/favicon.svg")[0]["Content-Type"].startswith("image/svg+xml")
               assert fetch(f"{origin}/js/app.mjs")[0]["Content-Type"].startswith("text/javascript")

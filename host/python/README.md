@@ -49,6 +49,12 @@ espforge web
 ```
 
 Reinstall the editable package after changing commits or tags to refresh its installed version metadata.
+Alternatively, `bash tools/host/run-python.sh web` refreshes the editable installation on every launch, so its
+dashboard version matches the package metadata for the current checkout. The script reuses its virtual environment;
+if installation fails, it does not start the host with stale metadata. Stop an already-running host before relaunching.
+
+Source-checkout launches need no asset copy. Building a wheel or source distribution requires
+[explicit asset staging](../../docs/development/host-tools.md#python-host-design) first; there is no custom build hook.
 
 ## Commands
 
@@ -112,7 +118,7 @@ For host tests, type checks and frontend ownership, see [Host development](../..
 | `espforge.hid` | HIDAPI device access and Report 20 command exchange |
 | `espforge.dashboard` | Board monitor, multi-board selection, and the loopback Flask server |
 | `espforge.cli` | The `espforge` and `python -m espforge` entry point |
-| `espforge.web` | Package data built from `host/web/src`; it is not copied into this directory |
+| `espforge.web` | Dashboard assets explicitly staged from the shared frontend for package builds |
 
 Each public package can be imported independently without opening a device.
 

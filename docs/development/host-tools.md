@@ -47,20 +47,36 @@ Run `espforge`, `python -m espforge`, or the checkout launch script.
 | Dashboard services | Loopback Flask app, board discovery, one serialized monitor per board and the HTTP API |
 | Tests | Report codecs, HID device, monitor, boards, wireless, web API, CLI, version and packaging contracts |
 
-The wheel bundles the shared dashboard assets rather than maintaining a second frontend copy.
+Package builds require an explicit copy of the shared dashboard assets; there is no custom build hook.
+The staged copy is ignored by Git and included in both wheels and source distributions.
+Source-checkout launches and editable installs need no staging and use the shared dashboard directly.
 Python type-checking runs in strict mode. Runtime dependency pins live in `pyproject.toml`; pip handles installation
 without a checked-in lockfile. Hatchling builds the package, and hatch-vcs derives its version from Git tags.
 Editable installs use the same distribution metadata as wheels; reinstall after a commit or tag change to refresh it.
-To check a wheel locally on Linux/macOS:
+To stage the current assets and check a wheel locally on Linux/macOS, from the repository root:
 
 ```sh
+rm -rf host/python/src/espforge/web
+mkdir -p host/python/src/espforge/web
+cp -R host/web/src/. host/python/src/espforge/web/
 python3 -m pip wheel --no-deps host/python --wheel-dir build/wheels
 python3 -m venv build/wheel-check
 build/wheel-check/bin/python -m pip install build/wheels/*.whl
 build/wheel-check/bin/python -I tools/check_python_wheel.py
 ```
 
+Repeat staging before every checkout package build so deleted or changed assets do not leave stale copies.
+After packaging, remove `host/python/src/espforge/web` to resume serving the shared checkout assets directly.
+A source distribution built after staging already contains the assets and needs no external copy when building its wheel.
+
 ## Shared dashboard
+
+The .NET host uses MinVer with `vMAJOR.MINOR.PATCH` Git tags, patch increments and `dev` prerelease identifiers.
+Builds need Git history and tags to calculate development versions. The dashboard displays the assembly's
+informational version without an SDK-appended commit hash. After a commit, tag or version override change, use
+`dotnet build host/dotnet/ESPForge/ESPForge.csproj --no-incremental` to refresh both the assembly version and
+cached dependency metadata.
+For an explicit package version, pass `-p:MinVerVersionOverride=1.2.3` to `dotnet publish`.
 
 Both hosts serve the same static assets: Python uses the checkout or installed package,
 and .NET includes the assets during build and publication.

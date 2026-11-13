@@ -21,11 +21,22 @@ PR checks cancel superseded runs; release/publication runs are not cancelled mid
 No workflow flashes hardware, tests an SD card or runs a dedicated manual-tool test suite.
 
 Python uses Hatchling and hatch-vcs: [pyproject.toml](../../host/python/pyproject.toml) builds the
-`espforge` wheel, which bundles `host/web/src` as `espforge/web`. Git tags determine ordinary package versions;
+`espforge` wheel. CI explicitly copies `host/web/src` into the package before building; the wheel bundles it as
+`espforge/web` without a custom build hook. For local builds, follow the
+[asset-staging procedure](../development/host-tools.md#python-host-design). Git tags determine ordinary package versions;
 release builds explicitly supply the validated version through `SETUPTOOLS_SCM_PRETEND_VERSION`.
 The release installs the wheel in a clean environment and runs
 [the installed-wheel check](../../tools/check_python_wheel.py) outside the checkout. Browser checks
 run in Host Validation; the extracted Direct and installed Python packages are smoke-tested over HTTP.
+
+.NET uses MinVer to derive ordinary build versions from Git tags. Release publication uses the validated version
+through `MinVerVersionOverride`, including manual preflight builds that have no tag yet. The extracted-host check
+verifies both the package metadata and the dashboard display against that version.
+
+Direct packages stamp a static copy with the validated release version and record its source commit and dirty
+state in `web/build.json`. The extracted server preserves that identity without consulting Git. Pages verifies
+the page and build identity against the published tag before deploying the same released files.
+See [Direct startup](../../host/direct/README.md#choose-how-to-run-it) for checkout development versions.
 
 ## Before the first release
 

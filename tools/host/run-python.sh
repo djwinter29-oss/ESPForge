@@ -4,7 +4,7 @@
 set -euo pipefail
 if [[ "${1:-}" == --help || "${1:-}" == -h ]]; then
 	printf 'Usage: bash tools/host/run-python.sh [web|status|reboot] [OPTIONS]\n'
-	printf 'Installs host/python into build/espforge on first use, then runs espforge (default: web).\n'
+	printf 'Refreshes the editable host/python install in build/espforge, then runs espforge (default: web).\n'
 	printf 'Examples: run-python.sh web | run-python.sh web --serial SERIAL | run-python.sh status --device-path HID_PATH\n'
 	printf 'Environment: PYTHON (base interpreter, default python3), VENV_DIR (default build/espforge).\n'
 	exit 0
@@ -33,9 +33,8 @@ if [[ ! -x "$bin/python" && ! -x "$bin/python.exe" ]]; then
 	[[ -d "$venv/Scripts" ]] && bin="$venv/Scripts"
 fi
 python="$bin/python"
-if ! "$python" -c 'import espforge, flask, hid' >/dev/null 2>&1; then
-	"$python" -m pip install --disable-pip-version-check --no-input --editable "$root/host/python"
-fi
+# Editable source stays live, but version metadata is an installation-time snapshot.
+"$python" -m pip install --disable-pip-version-check --no-input --editable "$root/host/python"
 
 command="${1:-web}"
 if [[ $# -gt 0 ]]; then

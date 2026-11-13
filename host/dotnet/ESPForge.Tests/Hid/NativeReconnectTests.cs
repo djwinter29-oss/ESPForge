@@ -9,6 +9,17 @@ namespace ESPForge.Tests;
 
 public sealed class NativeReconnectTests
 {
+    [Fact]
+    public void FeatureReadsNormalizeNativePrefixAndMaximumBufferPadding()
+    {
+        var device = new Device { FeatureReportLength = HidProtocol.ControlFeatureSize + 16 };
+        using var client = new ESPForgeHid(device);
+        Assert.Equal(HidProtocol.ParseIdentityReport(IdentityReport()), client.ReadInfo());
+        Assert.Equal(new byte[] { 12, 11, 13, 14, 15, 10 }, client.ReadConfiguration().StorageGpios);
+        var length = device.FeatureReportLength + (OperatingSystem.IsLinux() ? 1 : 0);
+        Assert.Equal(new[] { length, length }, device.Stream.FeatureReadLengths);
+    }
+
     [Theory]
     [InlineData("read-timeout")]
     [InlineData("write-timeout")]
@@ -88,6 +99,7 @@ public sealed class NativeReconnectTests
         public string? SetupFailure { get; init; }
         public Exception? OpenError { get; set; }
         public int Opens { get; private set; }
+        public int FeatureReportLength { get; init; } = HidProtocol.ControlFeatureSize;
         public Device() => Stream = new(this);
         public override int ProductID => HidProtocol.ProductId;
         public override int VendorID => HidProtocol.VendorId;
@@ -98,7 +110,7 @@ public sealed class NativeReconnectTests
             ? throw new IOException("input size unavailable") : HidProtocol.StoragePayloadSize + 1;
         public override int GetMaxOutputReportLength() => 0;
         public override int GetMaxFeatureReportLength() => SetupFailure == "feature-size"
-            ? throw new IOException("feature size unavailable") : HidProtocol.ControlFeatureSize;
+            ? throw new IOException("feature size unavailable") : FeatureReportLength;
         protected override DeviceStream OpenDeviceDirectly(OpenConfiguration configuration)
         {
             Opens++;
@@ -115,6 +127,7 @@ public sealed class NativeReconnectTests
         public bool DetachOnWrite { get; set; } = true;
         public int Writes { get; private set; }
         public int Closes { get; private set; }
+        public List<int> FeatureReadLengths { get; } = [];
         public override int ReadTimeout
         {
             get;
@@ -135,6 +148,10 @@ public sealed class NativeReconnectTests
         }
         public override void GetFeature(byte[] buffer, int offset, int count)
         {
+            var prefix = OperatingSystem.IsLinux() ? 1 : 0;
+            if (count != device.GetMaxFeatureReportLength() + prefix)
+                throw new IOException("Feature buffer must include native prefix and device maximum report size");
+            FeatureReadLengths.Add(count);
             byte[] report;
             if (buffer[offset] == HidProtocol.IdentityReportId) report = Identity();
             else if (buffer[offset] == HidProtocol.ConfigurationReportId)
@@ -148,7 +165,7 @@ public sealed class NativeReconnectTests
                 report[4] = (byte)ControlStatus.Completed;
                 report[6] = 240;
             }
-            report.CopyTo(buffer, offset);
+            report.CopyTo(buffer, offset + prefix);
         }
         public override void SetFeature(byte[] buffer, int offset, int count)
         {

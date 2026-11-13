@@ -315,7 +315,7 @@ public sealed class WirelessLifecycleTests
             public override int ReadTimeout { get; set; }
             public override int WriteTimeout { get; set; }
             public override void GetFeature(byte[] buffer, int offset, int count) =>
-                owner.Read(buffer[offset]).CopyTo(buffer, offset);
+                owner.Read(buffer[offset]).CopyTo(buffer, offset + (OperatingSystem.IsLinux() ? 1 : 0));
             public override void SetFeature(byte[] buffer, int offset, int count) =>
                 owner.Write(buffer.AsSpan(offset, count).ToArray());
             public override int Read(byte[] buffer, int offset, int count)
