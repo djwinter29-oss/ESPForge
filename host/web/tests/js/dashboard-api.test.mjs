@@ -125,6 +125,36 @@ test("malformed optional diagnostics are explicitly isolated without changing co
   }
 });
 
+test("unavailable telemetry and storage diagnostics accept null without manufacturing readings or warnings", () => {
+  const source = { connected: true, reboot_pending: false, command_outcome_uncertain: false,
+    settings_supported: true, telemetry_stale: false, storage_stale: false, self_test_stale: true,
+    hardware: { capabilities: 2 },
+    runtime: { cpu_usage_core0_basis_points: null, cpu_usage_core1_basis_points: null,
+      temperature_valid: false, temperature_centidegrees: null },
+    memory: { configured: true, sample_valid: true, presence_known: false, present: null,
+      initialized: false, bus_clock_hz: null, capacity_bytes: null,
+      msc: { enabled: false, transition_pending: false } },
+    board_configuration: { system_clock_mhz: 240, sdcard_profile: 0, radios: 0 } };
+  assert.equal(statusResponse(source), source);
+  for (const [section, field, valid] of [
+    ["runtime", "cpu_usage_core0_basis_points", 0], ["runtime", "cpu_usage_core1_basis_points", 0],
+    ["runtime", "temperature_centidegrees", 0], ["memory", "present", false],
+    ["memory", "bus_clock_hz", 25000000], ["memory", "capacity_bytes", 1048576],
+  ]) {
+    const observed = statusResponse({ ...source, [section]: { ...source[section], [field]: valid } });
+    assert.equal(observed[section][field], valid);
+    assert.equal(observed.diagnostic_error, undefined);
+    for (const invalid of ["unknown", {}, []]) {
+      const malformed = statusResponse({ ...source, [section]: { ...source[section], [field]: invalid } });
+      assert.equal(malformed[section][field], undefined);
+      assert.match(malformed.diagnostic_error, new RegExp(`${section}\\.${field}`));
+      assert.equal(malformed.connected, true);
+    }
+  }
+  const malformedClock = statusResponse({ ...source, runtime: { ...source.runtime, system_clock_hz: null } });
+  assert.match(malformedClock.diagnostic_error, /runtime.system_clock_hz/);
+});
+
 test("scan boundary validates each network without changing raw SSID bytes", () => {
   const network = { ssid: "\\xFF\\x00", ssid_hex: "ff00", rssi: -30, secured: false, security: "Open" };
   assert.deepEqual(scannedNetworks({ networks: [network] }), [network]);

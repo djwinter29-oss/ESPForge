@@ -36,7 +36,7 @@ test("identity RAM stays build accounting while stale inputs show no current val
   assert.equal(el("#board-model").textContent, "ESP32-S3-DevKitC-1 (ESP32-S3)");
   assert.equal(el("#product-name").textContent, "ESPForge (SDMMC)");
   assert.equal(el("#identity-clock").textContent, "240 MHz");
-  assert.equal(el("#cpu-usage-core0").textContent, "12.3%");
+  assert.equal(el("#cpu-usage-core0").textContent, "12.3% / --");
   assert.match(el("#uptime").textContent, /104249991d/);
   assert.equal(el("#board-reset-cause").textContent, "Power-on");
   const rows = id => el(id).children.map(row => row.children.map(cell => cell.textContent));
@@ -51,11 +51,22 @@ test("identity RAM stays build accounting while stale inputs show no current val
   state.freshness = { 3: "stale", 10: "stale" };
   renderStatus(state);
   assert.equal(el("#identity-clock").textContent, "--");
-  assert.equal(el("#cpu-usage-core0").textContent, "--");
+  assert.equal(el("#cpu-usage-core0").textContent, "-- / --");
   assert.equal(el("#ram-usage").textContent, "64.0 / 512 KiB (12.5%)");
   assert.equal(el("#telemetry-freshness").textContent, "telemetry: stale");
   assert.equal(el("#storage-freshness").textContent, "storage: stale");
 }));
+
+test("service load shows each core without replacing unavailable values with zero", () => {
+  for (const [core0, core1, expected] of [
+    [310, null, "3.1% / --"], [0, null, "0.0% / --"], [null, 1234, "-- / 12.3%"],
+    [310, 0, "3.1% / 0.0%"], [null, null, "-- / --"], [undefined, undefined, "-- / --"],
+  ]) {
+    const model = deriveDeviceViewModel({ ...snapshot(),
+      runtime: { cpu_usage_core0_basis_points: core0, cpu_usage_core1_basis_points: core1 } });
+    assert.equal(model.text["cpu-usage-core0"], expected);
+  }
+});
 
 test("device rendering reuses the supplied dashboard presentation snapshot", () => {
   const state = { connected: true };

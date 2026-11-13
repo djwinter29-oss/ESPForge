@@ -95,7 +95,8 @@ export function decodeTelemetryReport(report) {
   return { version: 1, sequence: view.getUint8(20), uptime_ms: view.getBigUint64(4, true),
     system_clock_hz: clock, usb_mounted: Boolean(flags & 1),
     temperature_valid: Boolean(flags & 4), temperature_centidegrees: flags & 4 ? temperature : null,
-    cpu_usage_core0_basis_points: loads[0] === 65535 ? null : loads[0] };
+    cpu_usage_core0_basis_points: loads[0] === 65535 ? null : loads[0],
+    cpu_usage_core1_basis_points: loads[1] === 65535 ? null : loads[1] };
 }
 
 function decodeCid(cid) {

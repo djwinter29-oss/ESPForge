@@ -49,8 +49,8 @@ export function deriveDeviceViewModel(state, dashboard = deriveDashboardViewMode
       "firmware-version": hardware?.firmware_version ?? "Unknown",
       "identity-clock": runtime
         ? `${(runtime.system_clock_hz / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: 3 })} MHz` : "--",
-      "cpu-usage-core0": runtime?.cpu_usage_core0_basis_points == null
-        ? "--" : `${(runtime.cpu_usage_core0_basis_points / 100).toFixed(1)}%`,
+      "cpu-usage-core0": [runtime?.cpu_usage_core0_basis_points, runtime?.cpu_usage_core1_basis_points]
+        .map(load => load == null ? "--" : `${(load / 100).toFixed(1)}%`).join(" / "),
       "ram-usage": Number.isSafeInteger(ramTotal) && ramTotal > 0 && Number.isSafeInteger(ramUsed)
         && ramUsed >= 0 && ramUsed <= ramTotal
         ? `${(ramUsed / 1024).toFixed(1)} / ${(ramTotal / 1024).toFixed(0)} KiB`

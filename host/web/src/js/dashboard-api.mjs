@@ -7,13 +7,13 @@
  * @typedef {{product_name?: string, capabilities?: number, board_model?: string | number, mcu?: string,
  * firmware_version?: string, serial_number?: string, ram_reserved_bytes?: number, ram_total_bytes?: number}} Hardware
  * @typedef {{led_available?: boolean, led_on?: boolean, system_clock_hz?: number, uptime_milliseconds?: number,
- * uptime_ms?: number, cpu_usage_core0_basis_points?: number, cpu_usage_core1_basis_points?: number,
- * cdc_open?: boolean, temperature_valid?: boolean, temperature_centidegrees?: number}} Runtime
+ * uptime_ms?: number, cpu_usage_core0_basis_points?: number | null, cpu_usage_core1_basis_points?: number | null,
+ * cdc_open?: boolean, temperature_valid?: boolean, temperature_centidegrees?: number | null}} Runtime
  * @typedef {{enabled?: boolean, transition_pending?: boolean, request_rejected?: boolean}} Msc
  * @typedef {{id?: number, manufacturer_id?: number, product_name?: string, product_revision?: string | number,
  * manufacture_year?: number, manufacture_month?: number, serial_number?: number}} Manufacturer
  * @typedef {{initialized?: boolean, configured?: boolean, sample_valid?: boolean, presence_known?: boolean,
- * present?: boolean, bus_clock_hz?: number, capacity_bytes?: number, manufacturer?: Manufacturer | null,
+ * present?: boolean | null, bus_clock_hz?: number | null, capacity_bytes?: number | null, manufacturer?: Manufacturer | null,
  * msc?: Msc | null, filesystem_format?: string | null}} Memory
  * @typedef {{active?: boolean, state?: string, sequence?: number, progress_percent?: number,
  * write_bytes_per_second?: number, read_bytes_per_second?: number, written_bytes?: number, target_bytes?: number,
@@ -154,13 +154,16 @@ function diagnosticFields(result) {
     ["board_model", value => text(value) || numeric(value)],
   ]);
   const runtime = clean(result.runtime, "runtime", [
-    ...fields("system_clock_hz uptime_milliseconds uptime_ms cpu_usage_core0_basis_points "
-      + "cpu_usage_core1_basis_points temperature_centidegrees", numeric),
+    ...fields("system_clock_hz uptime_milliseconds uptime_ms", numeric),
+    ...fields("cpu_usage_core0_basis_points cpu_usage_core1_basis_points temperature_centidegrees",
+      value => value === null || numeric(value)),
     ...fields("cdc_open temperature_valid", flag),
   ]);
   const memory = clean(result.memory, "memory", [
-    ...fields("configured sample_valid presence_known present", flag),
-    ...fields("bus_clock_hz capacity_bytes", numeric), ["filesystem_format", value => value === null || text(value)],
+    ...fields("configured sample_valid presence_known", flag),
+    ["present", value => value === null || flag(value)],
+    ...fields("bus_clock_hz capacity_bytes", value => value === null || numeric(value)),
+    ["filesystem_format", value => value === null || text(value)],
   ]);
   if (isObject(memory) && memory.manufacturer != null) {
     if (!isObject(memory.manufacturer)) {

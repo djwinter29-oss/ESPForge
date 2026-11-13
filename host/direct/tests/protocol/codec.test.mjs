@@ -91,8 +91,9 @@ test("telemetry preserves 64-bit uptime, the core-0 load sentinel and temperatur
   const decoded = decodeTelemetryReport(report);
   assert.equal(decoded.uptime_ms, 2n ** 63n + 123n);
   assert.equal(decoded.cpu_usage_core0_basis_points, null);
+  assert.equal(decoded.cpu_usage_core1_basis_points, null);
   assert.equal(decoded.temperature_centidegrees, -1234);
-  for (const field of ["led_on", "led_mode", "cdc_open", "cpu_usage_core1_basis_points"]) {
+  for (const field of ["led_on", "led_mode", "cdc_open"]) {
     assert.equal(Object.hasOwn(decoded, field), false, field);
   }
   for (const [offset, value] of [[1, 1], [1, 2], [21, 128], [21, 2 | 5], [21, 8 | 5]]) {

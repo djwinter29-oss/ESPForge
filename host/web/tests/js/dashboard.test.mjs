@@ -193,6 +193,37 @@ test("diagnostic rendering distinguishes missing facts, explicit false and repor
     assert.deepEqual(el("#board-uart").children[1].children.map(cell => cell.textContent), ["GPIO43", "GPIO44"]);
   }));
 
+test("inactive-core and unmounted-card diagnostics do not turn live telemetry into a warning", () => withDocument(el => {
+  const status = statusResponse({ connected: true, command_outcome_uncertain: false, reboot_pending: false,
+    settings_supported: true, telemetry_stale: false, storage_stale: false, self_test_stale: true,
+    hardware: { capabilities: 2 }, runtime: { cpu_usage_core0_basis_points: 0, cpu_usage_core1_basis_points: null,
+      temperature_valid: false, temperature_centidegrees: null },
+    memory: { configured: true, sample_valid: true, initialized: false, presence_known: false, present: null,
+      bus_clock_hz: null, capacity_bytes: null, msc: { enabled: false, transition_pending: false } },
+    board_configuration: { system_clock_mhz: 240, sdcard_profile: 0, radios: 0 } });
+  renderServerStatus(normalizeStatus(status));
+  assert.equal(el(".status-line").dataset.error, "false");
+  assert.equal(el("#status-message").textContent, "HID telemetry is live");
+  assert.equal(el("#cpu-usage-core0").textContent, "0.0% / --");
+  assert.equal(el("#temperature").textContent, "--");
+  assert.equal(el("#memory-size").textContent, "--");
+  assert.match(el("#memory-note").textContent, /not mounted/i);
+}));
+
+test("service load shows both cores and discards readings when telemetry becomes stale", () => withDocument(el => {
+  for (const [core0, core1, expected] of [
+    [310, null, "3.1% / --"], [0, null, "0.0% / --"], [null, 1234, "-- / 12.3%"],
+    [310, 0, "3.1% / 0.0%"], [null, null, "-- / --"], [undefined, undefined, "-- / --"],
+  ]) {
+    renderServerStatus({ ...snapshot(),
+      runtime: { cpu_usage_core0_basis_points: core0, cpu_usage_core1_basis_points: core1 } });
+    assert.equal(el("#cpu-usage-core0").textContent, expected);
+  }
+  renderServerStatus({ ...snapshot(), telemetry_stale: true,
+    runtime: { cpu_usage_core0_basis_points: 310, cpu_usage_core1_basis_points: 0 } });
+  assert.equal(el("#cpu-usage-core0").textContent, "-- / --");
+}));
+
 test("partial manufacturer diagnostics remain renderable and diagnostic warnings do not hide behind settings notes",
   () => withDocument(el => {
     for (const manufacturer of [{}, { id: 3 }, { serial_number: 0 }, { product_name: "Card" }]) {

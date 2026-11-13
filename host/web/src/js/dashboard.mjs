@@ -90,8 +90,9 @@ export function renderStatus(snapshot, operations = operationState(snapshot, {
     : "--";
   element("#identity-clock").textContent = clock;
   renderSettings(snapshot, operations);
-  element("#cpu-usage-core0").textContent = runtime?.cpu_usage_core0_basis_points == null
-    ? "--" : `${(runtime.cpu_usage_core0_basis_points / 100).toFixed(1)}%`;
+  element("#cpu-usage-core0").textContent = [
+    runtime?.cpu_usage_core0_basis_points, runtime?.cpu_usage_core1_basis_points,
+  ].map(load => load == null ? "--" : `${(load / 100).toFixed(1)}%`).join(" / ");
   const ramUsed = hardware?.ram_reserved_bytes;
   const ramTotal = hardware?.ram_total_bytes;
   element("#ram-usage").textContent = typeof ramTotal === "number" && Number.isSafeInteger(ramTotal) && ramTotal > 0
@@ -106,7 +107,7 @@ export function renderStatus(snapshot, operations = operationState(snapshot, {
   const memory = snapshot.storage_stale ? null : snapshot.memory;
   if (memory?.presence_known === true) cardAbsent = memory.present === false;
   element('[aria-labelledby="memory-title"]').hidden = cardAbsent;
-  element("#temperature").textContent = runtime?.temperature_valid && runtime.temperature_centidegrees !== undefined
+  element("#temperature").textContent = runtime?.temperature_valid && runtime.temperature_centidegrees != null
     ? `${(runtime.temperature_centidegrees / 100).toFixed(2)} °C` : "--";
   renderBoardConfiguration(snapshot);
   renderMemory(memory, snapshot.filesystem_format, Boolean(snapshot.storage_stale),
