@@ -1,58 +1,91 @@
-#include "app/espforge.h"
+#include "app/storage/storage.h"
 
-#include <ff.h>
-#include <zephyr/devicetree.h>
-#include <zephyr/fs/fs.h>
-#include <zephyr/kernel.h>
-#include <zephyr/logging/log.h>
-#include <zephyr/storage/disk_access.h>
+#include <string.h>
 
-LOG_MODULE_REGISTER(ef_storage, LOG_LEVEL_INF);
+static ef_storage_t state;
+static bool raw_present;
+static int64_t raw_changed_at;
+static int64_t retry_at;
 
-#define DISK_NAME "SD"
-#define BUS_CLOCK_HZ DT_PROP(DT_NODELABEL(espforge_sd), max_bus_freq)
-
-static FATFS fatfs;
-static struct fs_mount_t mount = {
-	.type = FS_FATFS,
-	.fs_data = &fatfs,
-	.mnt_point = "/" DISK_NAME ":",
-};
-
-/* Written once by ef_storage_init() before the transports start. */
-static bool mounted;
-static uint32_t sector_count;
-static uint8_t filesystem_format;
-
-void ef_storage_init(void)
+/** Publish before blocking media work; readers never wait for SD operations. */
+static void publish(bool busy)
 {
-	int err = fs_mount(&mount);
-
-	if (err != 0) {
-		LOG_WRN("SD card mount failed: %d", err);
-		return;
-	}
-	mounted = true;
-	/* FatFs FS_FAT12..FS_EXFAT are 1..4, the Report 10 filesystem_format values. */
-	filesystem_format = fatfs.fs_type <= 4 ? fatfs.fs_type : 0;
-	err = disk_access_ioctl(DISK_NAME, DISK_IOCTL_GET_SECTOR_COUNT, &sector_count);
-	if (err != 0) {
-		LOG_WRN("SD card capacity query failed: %d", err);
-		sector_count = 0;
-	}
-	LOG_INF("SD card mounted: %u sectors", sector_count);
+	state.busy = busy;
+	state.sample_valid = state.configured && !busy && !state.msc_enabled;
+	ef_storage_publish(&state);
 }
 
-void ef_storage_report(uint8_t sequence, uint8_t out[EF_STORAGE_SIZE])
+static void clear_media(void)
 {
-	ef_storage_t storage = {
-		.sequence = sequence,
-		.initialized = mounted,
-		.capacity_valid = mounted && sector_count != 0,
-		.bus_clock_hz = mounted ? BUS_CLOCK_HZ : 0,
-		.block_count = sector_count,
-		.filesystem_format = filesystem_format,
-	};
+	state.initialized = false;
+	state.capacity_valid = false;
+	state.block_count = 0;
+	state.filesystem_format = 0;
+}
 
-	ef_report_storage(&storage, out);
+void ef_storage_policy_init(bool configured, bool present, int64_t now_ms)
+{
+	memset(&state, 0, sizeof(state));
+	state.configured = configured;
+	state.presence_known = configured;
+	state.present = present && configured;
+	raw_present = state.present;
+	raw_changed_at = now_ms;
+	retry_at = now_ms;
+	publish(false);
+}
+
+void ef_storage_policy_poll(bool present, int64_t now_ms, int request)
+{
+	if (!state.configured) {
+		return;
+	}
+	if (present != raw_present) {
+		raw_present = present;
+		raw_changed_at = now_ms;
+	}
+	if (present != state.present && now_ms - raw_changed_at >= EF_STORAGE_DEBOUNCE_MS) {
+		state.present = present;
+		state.msc_enabled = false;
+		clear_media();
+		publish(true);
+		(void)ef_storage_media_close();
+		retry_at = now_ms;
+	}
+	if (request != EF_STORAGE_NO_REQUEST) {
+		state.msc_transition_pending = true;
+		publish(true);
+		if (request == EF_STORAGE_CANCEL_REQUEST || present != state.present || !state.present) {
+			state.msc_request_rejected = true;
+		} else {
+			state.msc_enabled = false;
+			clear_media();
+			publish(true);
+			int err = ef_storage_media_open(request == 1, &state.block_count, &state.filesystem_format);
+
+			if (err == 0 && request == 1) {
+				err = ef_storage_usb_refresh();
+			}
+			state.msc_request_rejected = err != 0;
+			state.initialized = err == 0;
+			state.capacity_valid = state.initialized && state.block_count != 0;
+			state.msc_enabled = state.initialized && request == 1;
+			if (err != 0) {
+				clear_media();
+			}
+		}
+		state.msc_transition_pending = false;
+		retry_at = now_ms + EF_STORAGE_RETRY_MS;
+	} else if (state.present && present && !state.initialized && now_ms >= retry_at) {
+		publish(true);
+		int err = ef_storage_media_open(false, &state.block_count, &state.filesystem_format);
+
+		state.initialized = err == 0;
+		state.capacity_valid = state.initialized && state.block_count != 0;
+		if (err != 0) {
+			clear_media();
+		}
+		retry_at = now_ms + EF_STORAGE_RETRY_MS;
+	}
+	publish(false);
 }

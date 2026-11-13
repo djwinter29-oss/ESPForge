@@ -43,6 +43,7 @@ void setUp(void)
 	ef_control_init();
 	ef_wifi_test_active_IgnoreAndReturn(false);
 	ef_wifi_scan_active_IgnoreAndReturn(false);
+	ef_platform_storage_busy_IgnoreAndReturn(false);
 }
 
 void tearDown(void)
@@ -124,9 +125,33 @@ void test_unassigned_and_unsupported_opcodes(void)
 	assert_result(usb(0, 0, NULL, 0, 0), EF_STATUS_UNSUPPORTED, EF_ERROR_OPCODE, 0);
 	assert_result(usb(14, 0, NULL, 0, 0), EF_STATUS_UNSUPPORTED, EF_ERROR_OPCODE, 0);
 	assert_result(usb(EF_OP_LED, 0, NULL, 0, 0), EF_STATUS_UNSUPPORTED, EF_ERROR_CAPABILITY, 0);
-	assert_result(usb(EF_OP_MSC, 0, NULL, 0, 0), EF_STATUS_UNSUPPORTED, EF_ERROR_CAPABILITY, 0);
 	assert_result(usb(EF_OP_BENCHMARK, 0, NULL, 0, 0), EF_STATUS_UNSUPPORTED, EF_ERROR_CAPABILITY, 0);
 	assert_result(usb(EF_OP_TCP_PROOF, 0, NULL, 0, 0), EF_STATUS_UNSUPPORTED, EF_ERROR_CAPABILITY, 0);
+}
+
+void test_msc_requires_confirmed_return_and_rejects_malformed_or_unsafe_actions(void)
+{
+	const uint8_t enable[1] = {1};
+	const uint8_t invalid[1] = {2};
+
+	assert_result(usb(EF_OP_MSC, 0, NULL, 0, 0), EF_STATUS_INVALID, EF_ERROR_CONFIRMATION, 0);
+	assert_result(usb(EF_OP_MSC, 1, enable, 1, 0), EF_STATUS_INVALID, EF_ERROR_MALFORMED, 0);
+	assert_result(usb(EF_OP_MSC, 1, invalid, 1, 0), EF_STATUS_INVALID, EF_ERROR_ARGUMENT, 0);
+	ef_platform_storage_request_ExpectAnyArgsAndReturn(0);
+	assert_result(usb(EF_OP_MSC, 0, enable, 1, 0), EF_STATUS_COMPLETED, EF_ERROR_NONE, 0);
+	ef_platform_storage_request_ExpectAnyArgsAndReturn(-EBUSY);
+	assert_result(usb(EF_OP_MSC, 1, NULL, 0, 0), EF_STATUS_BUSY, EF_ERROR_BUSY, 0);
+	assert_result(ble(EF_OP_MSC, 0, enable, 0), EF_STATUS_UNSUPPORTED, EF_ERROR_CAPABILITY, 0);
+}
+
+void test_reboot_and_save_do_not_run_while_storage_is_busy_or_usb_owned(void)
+{
+	const uint8_t settings[4] = {240, 0, 0, 3};
+
+	ef_platform_storage_busy_IgnoreAndReturn(true);
+	assert_result(usb(EF_OP_REBOOT, 1, NULL, 0, 0), EF_STATUS_BUSY, EF_ERROR_BUSY, 1);
+	assert_result(usb(EF_OP_SAVE, 0, settings, sizeof(settings), 0), EF_STATUS_BUSY, EF_ERROR_BUSY, 1);
+	TEST_ASSERT_EQUAL_INT(0, write_calls);
 }
 
 void test_reboot_requires_confirmation_and_clean_args(void)

@@ -42,7 +42,7 @@ USBD_DEVICE_DEFINE(espforge_usbd, DEVICE_DT_GET(DT_NODELABEL(zephyr_udc0)), EF_U
 USBD_DESC_LANG_DEFINE(espforge_lang);
 USBD_DESC_MANUFACTURER_DEFINE(espforge_manufacturer, "djwinter29");
 USBD_DESC_PRODUCT_DEFINE(espforge_product, "ESPForge");
-USBD_DESC_CONFIG_DEFINE(espforge_config_name, "HID");
+USBD_DESC_CONFIG_DEFINE(espforge_config_name, "HID + SD storage");
 USBD_CONFIGURATION_DEFINE(espforge_config, 0, 100, &espforge_config_name);
 
 /* The serial is Report 1's 8-byte UID; Zephyr's hwinfo serial would carry only the 6-byte MAC. */
@@ -110,6 +110,7 @@ static int get_report(const struct device *dev, const uint8_t type, const uint8_
 		ef_lock();
 		ef_control_usb_get(buf + 1);
 		ef_unlock();
+		ef_storage_result_read(buf[2]);
 		break;
 	case EF_REPORT_TELEMETRY:
 		/* GET_REPORT samples carry sequence 0; only published Input reports advance the sequence. */
@@ -192,6 +193,20 @@ void ef_usb_poll(void)
 bool ef_usb_configured(void)
 {
 	return atomic_get(&ready) != 0;
+}
+
+int ef_storage_usb_refresh(void)
+{
+	int err = usbd_disable(&espforge_usbd);
+
+	if (err == 0) {
+		k_sleep(K_MSEC(250));
+		err = usbd_enable(&espforge_usbd);
+	}
+	if (err != 0) {
+		LOG_ERR("USB storage refresh failed: %d", err);
+	}
+	return err;
 }
 
 int ef_usb_init(void)

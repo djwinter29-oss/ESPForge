@@ -69,6 +69,8 @@ export function deriveControlsViewModel(state, ui, environment) {
     settingsDisabled: !eligibility.settingsReady || !state.settings_supported,
     titles: Object.fromEntries(Object.entries(reasons).map(([id, text]) => [id, text ?? ""])),
     disabled: {
+      "msc-enable": !eligibility.mscReady || state.memory?.msc?.enabled === true || !state.memory?.initialized,
+      "msc-return": !eligibility.mscReady || state.memory?.msc?.enabled !== true,
       "usb-open": Boolean(state.busy || eligibility.connectionLocked && bluetooth),
       "bluetooth-open": Boolean(state.busy || eligibility.connectionLocked && !bluetooth),
       "usb-connect": Boolean(state.busy || bluetooth || usbUnsupported),
@@ -102,6 +104,7 @@ export function deriveControlsViewModel(state, ui, environment) {
  *   environment: Parameters<typeof deriveControlsViewModel>[2]) => void} */
 export function renderControls(state, ui, environment) {
   const model = deriveControlsViewModel(state, ui, environment);
+  element("msc-controls").hidden = !((state.settings?.board_flags ?? 0) & 64) || state.link === "ble";
   if (model.settingsValues) {
     queryElement("select#settings-clock").value = String(model.settingsValues.system_clock_mhz);
     ["direct-settings-wifi", "direct-settings-ble"].forEach((id, bit) => {

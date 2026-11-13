@@ -3,6 +3,7 @@
 #include "platform/ef_platform.h"
 #include "app/wireless/wireless_stage.h"
 
+#include <errno.h>
 #include <string.h>
 
 #define FLAG_CONFIRM 0x01u
@@ -68,6 +69,8 @@ static void reboot(const request_t *request, result_t *result)
 		finish(result, EF_STATUS_INVALID, EF_ERROR_MALFORMED, 0);
 	} else if (!(request->flags & FLAG_CONFIRM)) {
 		finish(result, EF_STATUS_INVALID, EF_ERROR_CONFIRMATION, 0);
+	} else if (ef_platform_storage_busy()) {
+		finish(result, EF_STATUS_BUSY, EF_ERROR_BUSY, 1);
 	} else if (request->ble && ef_stage_active(&stage)) {
 		finish(result, EF_STATUS_BUSY, EF_ERROR_BUSY, EF_DETAIL_USB_STAGED);
 	} else if (ef_platform_schedule_reboot() != 0) {
@@ -115,6 +118,10 @@ static void save(const request_t *request, result_t *result)
 	if (profile > EF_SYSCLK_240MHZ || request->args[2] != 0 ||
 	    (radios & (uint8_t)~(EF_WIRELESS_WIFI | EF_WIRELESS_BLE))) {
 		finish(result, EF_STATUS_INVALID, EF_ERROR_ARGUMENT, 0);
+		return;
+	}
+	if (ef_platform_storage_busy()) {
+		finish(result, EF_STATUS_BUSY, EF_ERROR_BUSY, 1);
 		return;
 	}
 	if (request->ble && ef_stage_active(&stage)) {
@@ -278,6 +285,26 @@ static bool args_clear(const request_t *request, size_t from)
 	return request->flags == 0 && zero(request->args + from, ARGS_SIZE - from);
 }
 
+/** Return requires the user's OS-eject confirmation; the native class cannot verify host cache state. */
+static void msc(const request_t *request, result_t *result)
+{
+	uint8_t action = request->args[0];
+	int err;
+
+	if ((request->flags & ~FLAG_CONFIRM) || !zero(request->args + 1, ARGS_SIZE - 1) ||
+	    (action == 1 && request->flags)) {
+		finish(result, EF_STATUS_INVALID, EF_ERROR_MALFORMED, 0);
+	} else if (action > 1) {
+		finish(result, EF_STATUS_INVALID, EF_ERROR_ARGUMENT, 0);
+	} else if (action == 0 && !(request->flags & FLAG_CONFIRM)) {
+		finish(result, EF_STATUS_INVALID, EF_ERROR_CONFIRMATION, 0);
+	} else {
+		err = ef_platform_storage_request(action == 1, request->transaction_id);
+		finish(result, err == 0 ? EF_STATUS_COMPLETED : err == -EBUSY ? EF_STATUS_BUSY : EF_STATUS_FAILED,
+		       err == 0 ? EF_ERROR_NONE : err == -EBUSY ? EF_ERROR_BUSY : EF_ERROR_FAILED, 0);
+	}
+}
+
 static void execute(const request_t *request, result_t *result, int64_t now_ms)
 {
 	memset(result, 0, sizeof(*result));
@@ -294,6 +321,9 @@ static void execute(const request_t *request, result_t *result, int64_t now_ms)
 		return;
 	}
 	switch (request->opcode) {
+	case EF_OP_MSC:
+		msc(request, result);
+		break;
 	case EF_OP_REBOOT:
 		reboot(request, result);
 		break;
@@ -342,7 +372,7 @@ static void execute(const request_t *request, result_t *result, int64_t now_ms)
 		}
 		break;
 	default:
-		/* LED, MSC, benchmark and TCP CLI proof are absent. */
+		/* LED, benchmark and TCP CLI proof are absent. */
 		finish(result, EF_STATUS_UNSUPPORTED, EF_ERROR_CAPABILITY, 0);
 		break;
 	}

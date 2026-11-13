@@ -45,6 +45,10 @@ void ef_telemetry_init(void);
 void ef_telemetry_poll(void);
 
 void ef_storage_init(void);
+/** Let the storage worker change owners after this Feature 20 result has left the control path. */
+void ef_storage_result_read(uint8_t transaction);
+/** Refresh native USB after confirmed handoff; called only by the storage worker. */
+int ef_storage_usb_refresh(void);
 
 void ef_wifi_init(bool enabled);
 /** Advance connects, tests and scans; call from the main loop. */

@@ -5,6 +5,7 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
+#include <zephyr/devicetree.h>
 #include <zephyr/drivers/hwinfo.h>
 #include <zephyr/kernel.h>
 #include <zephyr/linker/linker-defs.h>
@@ -80,7 +81,12 @@ void ef_identity_report(uint8_t out[EF_IDENTITY_SIZE])
 
 void ef_config_report(uint8_t out[EF_CONFIG_SIZE])
 {
-	ef_config_t config = {.reset_cause = reset_cause};
+	ef_config_t config = {
+		.reset_cause = reset_cause,
+		.card_detect_available = true,
+		.card_detect_gpio = DT_GPIO_PIN(DT_PATH(zephyr_user), sd_detect_gpios),
+		.msc_supported = IS_ENABLED(CONFIG_USBD_MSC_CLASS),
+	};
 
 	ef_lock();
 	config.stored_clock_mhz = ef_sysclk_profile_mhz(ef_boot_config_sysclk());

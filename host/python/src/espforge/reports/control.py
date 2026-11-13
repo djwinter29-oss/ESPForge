@@ -18,7 +18,7 @@ from .common import (
     _ALLOWED_STATUS_ERRORS, _OPCODE_STATUSES, _bytes, _feature_payload, _validate_settings,
 )
 
-_UNSUPPORTED_OPCODES = (ControlOpcode.LED, ControlOpcode.MSC, ControlOpcode.SELF_TEST, ControlOpcode.TCP_PROOF)
+_UNSUPPORTED_OPCODES = (ControlOpcode.LED, ControlOpcode.SELF_TEST, ControlOpcode.TCP_PROOF)
 
 
 def build_settings_command_report(
@@ -59,6 +59,9 @@ def build_control_command_report(
     # Keep this final wire check as the guard for every direct builder caller before a HID write.
     if opcode == ControlOpcode.REBOOT and (flags != 1 or any(args)):
         raise ValueError("reboot requires confirmation and zero arguments")
+    if opcode == ControlOpcode.MSC and (
+            args[0] not in (0, 1) or flags != (1 if args[0] == 0 else 0) or any(args[1:])):
+        raise ValueError("MSC requires enable without flags or return with OS-eject confirmation")
     if opcode == ControlOpcode.SAVE_SETTINGS:
         clock, profile, switches = struct.unpack_from("<HBB", args)
         if flags & ~2 or switches & ~3 or clock not in CLOCK_PROFILES_MHZ or profile != 0 or any(args[4:]):
@@ -108,6 +111,8 @@ def _validate_detail(opcode: int, status: int, error: int, detail: int) -> None:
             allowed = {ControlDetail.CONTROL_KEY_NOT_SAVED}
     elif status == ControlStatus.BUSY:
         allowed = set()
+        if opcode == ControlOpcode.MSC:
+            allowed.add(ControlDetail.NONE)
         if opcode in (ControlOpcode.REBOOT, ControlOpcode.MSC, ControlOpcode.SELF_TEST,
                       ControlOpcode.SAVE_SETTINGS):
             allowed |= {ControlDetail.CONFLICTING_WORK, ControlDetail.USB_MSC_OWNS_STORAGE}

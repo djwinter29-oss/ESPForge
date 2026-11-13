@@ -164,6 +164,17 @@ internal sealed class ESPForgeHid : IHidClient
         SendCommand(Opcode.Reboot, 1);
     }
 
+    public void SetMsc(bool enabled, bool confirmEjected)
+    {
+        if ((Configuration().BoardFlags & HidProtocol.BoardFlagMsc) == 0)
+            throw new BoardStateException("USB mass storage is unavailable on this firmware");
+        if (!enabled && !confirmEjected)
+            throw new ArgumentException("Safely eject the USB drive before confirming return to firmware");
+        var arguments = new byte[64];
+        arguments[0] = enabled ? (byte)1 : (byte)0;
+        SendCommand(Opcode.Msc, enabled ? (byte)0 : (byte)1, arguments);
+    }
+
     public WirelessStatusResponse ReadWireless()
     {
         EnsureCapability(HidProtocol.CapabilityWireless, "wireless provisioning");

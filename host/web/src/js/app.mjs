@@ -20,6 +20,10 @@ const rescanBoardsButton = /** @type {HTMLButtonElement} */ (document.querySelec
 const settingsSave = /** @type {HTMLButtonElement} */ (document.querySelector("#settings-save"));
 const configurationDialog = /** @type {HTMLDialogElement} */ (document.querySelector("#configuration-dialog"));
 const rebootDialog = /** @type {HTMLDialogElement} */ (document.querySelector("#reboot-dialog"));
+const mscDialog = /** @type {HTMLDialogElement} */ (document.querySelector("#msc-dialog"));
+let mscTarget = false;
+/** @type {string | null} */
+let mscBoard = null;
 /** @type {string | null} */
 let configurationIdentity = null;
 const clockControl = /** @type {HTMLSelectElement} */ (document.querySelector("#settings-clock"));
@@ -405,6 +409,7 @@ function selectBoard(boardId) {
   if (nextBoard === selectedBoard) return;
   configurationDialog.close();
   rebootDialog.close();
+  mscDialog.close();
   selectedBoard = nextBoard;
   const selected = knownBoards.find(board => board.id === selectedBoard);
   selectedBoardLabel = selected ? boardLabel(selected) : selectedBoardLabel;
@@ -597,6 +602,55 @@ async function rebootDevice() {
   }
 }
 
+/** @param {boolean} enabled */
+function requestMsc(enabled) {
+  const operations = operationState();
+  if (!(enabled ? operations.canEnableMsc : operations.canReturnMsc)) return;
+  mscTarget = enabled;
+  mscBoard = selectedBoard;
+  element("msc-dialog-title").textContent = enabled ? "Enable USB drive?" : "Return card to firmware?";
+  element("msc-warning").textContent = enabled
+    ? "Firmware will unmount the card and give Linux/Windows exclusive access. USB reconnects briefly; unsaved dashboard edits may be lost."
+    : "Safely eject the USB drive in Linux/Windows first. Confirm only after eject completes; firmware cannot verify the host cache is flushed.";
+  element("confirm-msc").textContent = enabled ? "Enable USB drive" : "I have safely ejected";
+  mscDialog.showModal();
+}
+
+async function setMsc() {
+  if (!mscDialog.open || mscBoard !== selectedBoard) return;
+  const enabled = mscTarget;
+  mscDialog.close();
+  const operations = operationState();
+  if (!(enabled ? operations.canEnableMsc : operations.canReturnMsc) || !currentSnapshot) return;
+  commandVersion++;
+  settingsRequestInProgress = true;
+  settingsMessage = "Requesting storage handoff...";
+  renderStatus(currentSnapshot);
+  try {
+    const response = await fetchWithDeadline(boardUrl("/api/msc"), {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled, confirm_ejected: !enabled }),
+    }, 15000);
+    publishCommandResult(acknowledge(await responseJson(response, "Storage handoff failed", true), 3));
+    currentSnapshot.storage_stale = true;
+    settingsMessage = "Storage handoff admitted. Waiting for fresh card ownership status.";
+  } catch (error) {
+    if (!(error instanceof Error)) throw error;
+    if (!markCommandOutcomeUncertain(error, undefined, { kind: "resync" }))
+      settingsMessage = `Storage handoff failed: ${error.message}`;
+  } finally {
+    commandVersion++;
+    settingsRequestInProgress = false;
+    updateBoardSelectionControls();
+    if (currentSnapshot) renderStatus(currentSnapshot);
+    void updateStatus();
+  }
+}
+
+element("msc-enable").addEventListener("click", () => requestMsc(true));
+element("msc-return").addEventListener("click", () => requestMsc(false));
+element("cancel-msc").addEventListener("click", () => mscDialog.close());
+element("confirm-msc").addEventListener("click", setMsc);
 boardSelect.addEventListener("change", () => selectBoard(boardSelect.value));
 rescanBoardsButton.addEventListener("click", rescanBoards);
 clockControl.addEventListener("change", () => {
@@ -631,7 +685,7 @@ element("cancel-reboot").addEventListener("click", () => rebootDialog.close());
 commandResync.addEventListener("click", resyncCommandOutcome);
 element("wifi-resync").addEventListener("click", resyncCommandOutcome);
 configurationDialog.addEventListener("close", () => { configurationIdentity = null; });
-for (const dialog of [configurationDialog, rebootDialog]) {
+for (const dialog of [configurationDialog, rebootDialog, mscDialog]) {
   dialog.addEventListener("keydown", event => {
     if (event.key === "Escape") {
       event.preventDefault();

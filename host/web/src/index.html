@@ -137,6 +137,10 @@ Copyright (c) 2026 Ji Dong
         <div>
           <h2 id="memory-title">Storage</h2>
         </div>
+        <div class="settings-actions" id="msc-controls" hidden>
+          <button class="button" id="msc-enable" type="button" disabled>Enable USB drive</button>
+          <button class="button button-secondary" id="msc-return" type="button" disabled>Return to firmware</button>
+        </div>
       </div>
       <p class="sample-time" id="memory-note">Waiting for card status</p>
       <dl class="runtime-grid">
@@ -148,6 +152,16 @@ Copyright (c) 2026 Ji Dong
         <div><dt>Serial</dt><dd id="memory-serial">--</dd></div>
       </dl>
     </section>
+
+    <dialog class="confirmation-dialog" id="msc-dialog" aria-labelledby="msc-dialog-title"
+      aria-describedby="msc-warning">
+      <h2 id="msc-dialog-title">USB storage ownership</h2>
+      <p id="msc-warning"></p>
+      <div class="dialog-actions">
+        <button class="button button-cancel" id="cancel-msc" type="button" autofocus>Cancel</button>
+        <button class="button" id="confirm-msc" type="button">Confirm</button>
+      </div>
+    </dialog>
 
     <dialog class="confirmation-dialog" id="configuration-dialog" aria-labelledby="configuration-dialog-title"
       aria-describedby="configuration-dialog-profile configuration-warning configuration-wireless-warning">

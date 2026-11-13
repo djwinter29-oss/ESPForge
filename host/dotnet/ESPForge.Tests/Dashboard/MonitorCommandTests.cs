@@ -387,6 +387,7 @@ public sealed class MonitorCommandTests
             LastCommandResult = new(1, Opcode.Reboot, ControlStatus.Completed, ControlError.None, []);
         }
         public WirelessStatusResponse ReadWireless() => throw new NotSupportedException();
+        public void SetMsc(bool enabled, bool confirmEjected) => throw new NotSupportedException();
         public WirelessStatusResponse SetWireless(WirelessRequest settings) => throw new NotSupportedException();
         public IReadOnlyList<WirelessNetworkResponse> ScanWireless(Action? onPoll = null) =>
             throw new NotSupportedException();

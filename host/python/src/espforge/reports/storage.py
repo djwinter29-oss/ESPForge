@@ -38,7 +38,7 @@ def parse_memory_report(
         raise ValueError("unknown HID storage type, bus mode, or speed mode")
     if filesystem_id not in range(5) or any(value not in (0, 1) for value in (msc_enabled, msc_pending, msc_rejected)):
         raise ValueError("invalid HID storage filesystem or MSC state")
-    if msc_enabled or msc_pending or msc_rejected or flags & 0x10 or speed_mode == 2:
+    if flags & 0x10 or speed_mode == 2:
         raise ValueError("HID storage report does not match the ESPForge profile")
     configured, presence_known, present, initialized, cid_valid, capacity_valid, sample_valid = (
         bool(flags & (1 << bit)) for bit in range(7)

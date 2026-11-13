@@ -261,8 +261,33 @@ class DeviceMonitor:
 
     def reboot(self) -> ControlResponse:
         with self._device():
+            self._require_firmware_storage()
             result = self._send_control(self._client().reboot)
             ESPForgeHid.require_completed(result, "reboot")
+            return {"control_result": result}
+
+    def _require_firmware_storage(self) -> None:
+        snapshot = self.snapshot()
+        memory = snapshot.get("memory")
+        msc = _msc(snapshot)
+        if (snapshot.get("storage_stale") or msc is None or msc.get("enabled")
+                or msc.get("transition_pending") or memory is not None and memory.get("sample_valid") is False):
+            raise BoardConflict("Wait for idle firmware-owned storage; safely eject and return the USB drive first")
+
+    def set_msc(self, enabled: bool, confirm_ejected: bool = False) -> ControlResponse:
+        with self._device():
+            snapshot = self.snapshot()
+            msc = _msc(snapshot)
+            if snapshot.get("storage_stale") or msc is None or msc.get("transition_pending"):
+                raise BoardConflict("Waiting for fresh, settled storage ownership status")
+            if enabled and not msc.get("enabled"):
+                self._require_firmware_storage()
+                if snapshot["memory"] is None or not snapshot["memory"]["initialized"]:
+                    raise BoardConflict("Mount an SD card before enabling USB mass storage")
+            result = self._send_control(self._client().set_msc, enabled, confirm_ejected)
+            ESPForgeHid.require_completed(result, "MSC ownership request")
+            with self._lock:
+                self._input_received_at.pop("memory", None)
             return {"control_result": result}
 
     def set_settings(self, settings: dict[str, object]) -> SettingsResponse:
@@ -276,8 +301,7 @@ class DeviceMonitor:
             msc = _msc(snapshot)
             if not isinstance(msc, dict):
                 raise BoardConflict("Waiting for storage ownership status")
-            if msc.get("transition_pending") or msc.get("enabled"):
-                raise BoardConflict("Storage ownership is in transition; wait before saving boot settings")
+            self._require_firmware_storage()
             saved = self._send_control(client.set_settings, settings)
             self._publish_saved_settings(saved)
             return {"settings": saved, "control_result": client.last_command_result}

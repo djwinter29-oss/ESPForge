@@ -532,6 +532,7 @@ public sealed class MonitorLifecycleTests
             LastCommandResult = new(1, Opcode.Reboot, ControlStatus.Completed, ControlError.None, []);
         }
         public WirelessStatusResponse ReadWireless() => Wireless?.Invoke() ?? new();
+        public void SetMsc(bool enabled, bool confirmEjected) => throw new NotSupportedException();
         public CommandResyncResult? ReconcileOutcome(ControlCommandReference? command,
             WirelessOperationReference? operation) => Reconciled ?? throw new NotSupportedException();
         public WirelessStatusResponse SetWireless(WirelessRequest settings) => throw new NotSupportedException();

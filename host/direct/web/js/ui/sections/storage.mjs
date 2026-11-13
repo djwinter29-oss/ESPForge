@@ -39,10 +39,14 @@ export function deriveStorageViewModel(state, previous = {}) {
   const filesystemLabels = { unknown: "Unknown", fat12: "FAT12", fat16: "FAT16", fat32: "FAT32", exfat: "exFAT" };
   return {
     retained: { detected, details },
-    hidden: !detected,
+    hidden: !(detected || state.memory?.msc?.enabled || state.memory?.msc?.transition_pending),
     text: {
-      "memory-state": label,
-      "memory-note": note,
+      "memory-state": state.memory?.msc?.transition_pending ? "Changing ownership"
+        : state.memory?.msc?.enabled ? "USB drive" : label,
+      "memory-note": state.memory?.msc?.transition_pending ? "Waiting for storage handoff."
+        : state.memory?.msc?.enabled ? "Safely eject in Linux/Windows before returning the card to firmware."
+          : state.memory?.msc?.request_rejected ? "Storage handoff failed or the card changed. Check UART logs and retry explicitly."
+            : note,
       "memory-speed": memory?.sample_valid !== false && memory?.initialized && memory?.bus_clock_hz
         ? `${(memory.bus_clock_hz / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: 3 })} MHz` : "--",
       "memory-size": memory?.capacity_bytes ? formatBytes(memory.capacity_bytes) : "--",

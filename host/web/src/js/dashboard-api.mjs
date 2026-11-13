@@ -20,7 +20,8 @@
  * read_bytes?: number, write_elapsed_ms?: number, read_elapsed_ms?: number, request_error?: number, error?: number,
  * filesystem_result?: number, file_remains?: boolean, mismatch_count?: number}} SelfTest
  * @typedef {BootSettings & {tcp_cli_enabled?: boolean, monitor_uart_index?: number, monitor_uart_tx_gpio?: number,
- * monitor_uart_rx_gpio?: number, storage_gpios?: number[], card_detect_gpio?: number, reset_cause?: number}} BoardConfiguration
+ * monitor_uart_rx_gpio?: number, storage_gpios?: number[], card_detect_gpio?: number, reset_cause?: number,
+ * board_flags?: number}} BoardConfiguration
  * @typedef {Omit<import("./operation-state.mjs").OperationSnapshot, "hardware" | "msc" | "wireless"> & {
  * hardware?: Hardware | null, runtime?: Runtime | null, memory?: Memory | null, msc?: Msc | null,
  * self_test?: SelfTest | null, wireless?: import("./wireless-form.mjs").WirelessStatus | null,

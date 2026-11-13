@@ -10,7 +10,7 @@ import { REASON } from "./errors.mjs";
 
 const { COMMAND_BLOCKED: BLOCKED, CAPABILITY_UNAVAILABLE: NO_CAPABILITY } = REASON;
 /** @typedef {import("./reducer.mjs").DashboardState} DashboardState */
-/** @typedef {"reboot" | "settings" | "wireless"} Operation */
+/** @typedef {"reboot" | "settings" | "wireless" | "msc"} Operation */
 
 /** @brief True while a control request or an accepted wireless lifecycle has no known outcome.
  * @param {DashboardState} state */
@@ -34,13 +34,17 @@ export function commandBlocked(state) {
 export function deriveOperationEligibility(state) {
   const bluetooth = state.link === "ble";
   const caps = state.hardware?.capabilities ?? 0;
-  const storageReady = state.freshness?.[10] === "fresh" && Boolean(state.memory);
+  const storageFresh = state.freshness?.[10] === "fresh" && Boolean(state.memory);
+  const storageReady = storageFresh && state.memory?.sample_valid !== false
+    && !state.memory?.msc?.enabled && !state.memory?.msc?.transition_pending;
   const blocked = commandBlocked(state) || Boolean(state.wireless_busy);
   return {
     blocked,
     storageReady,
     settingsReady: !blocked && storageReady,
     wirelessReady: !blocked && !bluetooth && storageReady && Boolean(caps & CAP.WIRELESS),
+    mscReady: !blocked && !bluetooth && storageFresh && Boolean((state.settings?.board_flags ?? 0) & 64)
+      && !state.memory?.msc?.transition_pending && (state.memory?.msc?.enabled || state.memory?.sample_valid !== false),
     connectionLocked: Boolean(state.connected || state.reconnecting || commandPending(state)
       || state.outcome_uncertain),
   };
@@ -57,6 +61,7 @@ const RULES = {
   settings: (state, e, caps) => !e.storageReady ? REASON.SETTINGS_STORAGE
     : !(caps & CAP.SETTINGS) ? NO_CAPABILITY : e.blocked ? BLOCKED : null,
   wireless: (state, e) => e.wirelessReady ? null : REASON.WIRELESS_STORAGE,
+  msc: (state, e) => e.mscReady ? null : BLOCKED,
 };
 
 /**

@@ -60,6 +60,10 @@ export const OPCODES = Object.freeze({
   ...Object.fromEntries(UNSUPPORTED_OPCODES.map(opcode => [opcode, UNSUPPORTED])),
   [OP.REBOOT]: { capability: CAP.REBOOT, ble: { proof: true, flags: true }, reboots: true, excluded: [4],
     rejections: [1, 2], details: { 1: 5, 2: 5, 28: 5 }, request: (r, unused) => r[3] === 1 && unused(4) },
+  [OP.MSC]: { capability: CAP.SDMMC, ble: null, rejections: [1, 2, 3], details: { 1: 5, 2: 5 },
+    request: (r, unused) => [0, 1].includes(r[4]) && r[3] === (r[4] === 0 ? 1 : 0) && unused(5),
+    facts: { keys: ["msc_enabled"], read: r => ({ msc_enabled: r[4] === 1 }),
+      valid: facts => typeof facts.msc_enabled === "boolean" } },
   [OP.SAVE_SETTINGS]: { capability: CAP.SETTINGS, ble: { proof: true, flags: false }, reboots: true,
     details: { 1: 5, 2: 5, 19: 3, 20: 3, 21: 3, 25: 5, 26: 5, 27: 3, 28: 5 }, returnsSettings: true,
     request: (r, unused) => (r[3] & ~SAVE_SETTINGS_COMMIT) === 0 && CLOCKS_MHZ.includes(r[4] | r[5] << 8)

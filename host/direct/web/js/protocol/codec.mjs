@@ -75,12 +75,13 @@ export function decodeConfigReport(report, identity) {
   requireValid(validSettings(settings) && !(flags & ~CONFIG_FLAGS.VALID_MASK)
     && Boolean(flags & CONFIG_FLAGS.MONITOR_UART)
     && (identity.capabilities & CAP.WIRELESS || !(flags & CONFIG_FLAGS.RADIO_MASK))
-    && [0, 1].includes(uart) && tx !== 255 && rx !== 255 && led === 255 && detect === 255
-    && [tx, rx, ...gpios].every(pin => pin === 255 || pin <= MAX_GPIO)
+    && [0, 1].includes(uart) && tx !== 255 && rx !== 255 && led === 255
+    && Boolean(flags & CONFIG_FLAGS.CARD_DETECT) === (detect !== 255)
+    && [tx, rx, detect, ...gpios].every(pin => pin === 255 || pin <= MAX_GPIO)
     && gpios.every(pin => pin !== 255),
   "board-configuration");
   return { ...settings, monitor_uart_index: uart, monitor_uart_tx_gpio: tx, monitor_uart_rx_gpio: rx,
-    storage_gpios: gpios, board_flags: flags, reset_cause: view.getUint8(14) };
+    storage_gpios: gpios, board_flags: flags, reset_cause: view.getUint8(14), card_detect_gpio: detect };
 }
 
 export function decodeTelemetryReport(report) {
@@ -120,8 +121,10 @@ export function decodeStorageReport(report) {
   const configured = Boolean(flags & 1);
   const sampleValid = Boolean(flags & 64);
   const initialized = Boolean(flags & 8);
-  // ESPForge has no MSC: bytes 31-33 (enabled, transition pending, request rejected) are always zero.
-  requireValid(!(flags & 128) && format <= 4 && zero(bytesAt(view, 31, 3))
+  const msc = { enabled: view.getUint8(31) === 1, transition_pending: view.getUint8(32) === 1,
+    request_rejected: view.getUint8(33) === 1 };
+  requireValid(!(flags & 128) && format <= 4 && [...bytesAt(view, 31, 3)].every(value => value <= 1)
+    && (!(msc.enabled || msc.transition_pending) || configured && !sampleValid)
     && (!sampleValid || configured) && (configured || !(flags & 126))
     && (sampleValid || (!(flags & 62) && zero(bytesAt(view, 3, 27))))
     && (!sampleValid || (initialized ? component === 1 && mode === 3 : component === 0 && mode === 0))
@@ -136,7 +139,7 @@ export function decodeStorageReport(report) {
       presence_known: sampleValid && Boolean(flags & 2), present: sampleValid && Boolean(flags & 4),
       initialized, mode: initialized ? "sdmmc" : null, speed_mode: speed,
       bus_clock_hz: clock, capacity_bytes: flags & 32 ? blocks * 512 : null,
-      cid: [...cid], manufacturer: flags & 16 ? decodeCid(cid) : null },
+      cid: [...cid], manufacturer: flags & 16 ? decodeCid(cid) : null, msc },
     filesystem_format: ["unknown", "fat12", "fat16", "fat32", "exfat"][format],
   };
 }

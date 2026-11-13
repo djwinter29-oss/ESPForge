@@ -1,6 +1,12 @@
 #include <zephyr/dt-bindings/gpio/gpio.h>
 #include <zephyr/dt-bindings/pinctrl/esp32s3-pinctrl.h>
 
+/ {
+	zephyr,user {
+		sd-detect-gpios = <&gpio0 8 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>;
+	};
+};
+
 /*
  * ESP32-S3-DevKitC-1 N16R8 (ESP32-S3-WROOM-1-N16R8): 16 MB quad flash and 8 MB octal PSRAM.
  * The upstream board DTS describes the N8 module with the 4 MB partition table, so replace both.

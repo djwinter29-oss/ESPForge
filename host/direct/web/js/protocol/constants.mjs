@@ -13,14 +13,14 @@ export const CAP = Object.freeze({
 /** Capability bits an ESPForge board may report; LED, SPI, benchmark and forced save are never present. */
 export const ESPFORGE_CAPABILITIES = CAP.REBOOT | CAP.SETTINGS | CAP.SDMMC | CAP.WIRELESS;
 export const OP = Object.freeze({
-  REBOOT: 2, SAVE_SETTINGS: 5, STAGE_SSID: 6, STAGE_PASSWORD: 7, STAGE_KEY: 8, TEST_WIFI: 9, CANCEL_TEST: 10,
+  REBOOT: 2, MSC: 3, SAVE_SETTINGS: 5, STAGE_SSID: 6, STAGE_PASSWORD: 7, STAGE_KEY: 8, TEST_WIFI: 9, CANCEL_TEST: 10,
   SCAN: 11, SCAN_ENTRY: 12,
 });
-/** LED (1), MSC (3), benchmark (4) and TCP CLI proof (13): ESPForge answers only Unsupported/error 4. */
-export const UNSUPPORTED_OPCODES = Object.freeze([1, 3, 4, 13]);
+/** LED (1), benchmark (4) and TCP CLI proof (13): ESPForge answers only Unsupported/error 4. */
+export const UNSUPPORTED_OPCODES = Object.freeze([1, 4, 13]);
 export const CONFIG_FLAGS = Object.freeze({
   CARD_DETECT: 0x01, LED: 0x02, MONITOR_UART: 0x04, WIFI: 0x08, BLE: 0x10, TCP_CLI: 0x20,
-  VALID_MASK: 0x1c, RADIO_MASK: 0x18,
+  MSC: 0x40, VALID_MASK: 0x5d, RADIO_MASK: 0x18,
 });
 export const CLOCKS_MHZ = Object.freeze([0, 80, 160, 240]);
 /** ESPForge report IDs; no Report 11 is published. */

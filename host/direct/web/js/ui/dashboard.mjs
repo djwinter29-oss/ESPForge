@@ -46,6 +46,8 @@ export function mountDashboard({ session, selectTransport, timers, environment }
     ? Number(settingsRadios[0].value) | Number(settingsRadios[1].value) << 1 : 0;
   const configurationDialog = queryElement("dialog#configuration-dialog");
   const rebootDialog = queryElement("dialog#reboot-dialog");
+  const mscDialog = queryElement("dialog#msc-dialog");
+  let mscTarget = false;
   let wasConnected = client.state.connected;
   let refreshQueued = false;
   /** Coalesce bursts of client state changes into one render and side-effect pass per microtask. */
@@ -88,7 +90,7 @@ export function mountDashboard({ session, selectTransport, timers, environment }
     if (wasConnected && !board.connected) {
       wirelessForm.reset();
       ui.dispatch({ type: "replace", state: { ...UI_INITIAL, action_error: ui.getState().action_error } });
-      for (const dialog of [configurationDialog, rebootDialog]) dialog.close();
+      for (const dialog of [configurationDialog, rebootDialog, mscDialog]) dialog.close();
     }
     wasConnected = board.connected;
     render(board, ui.getState());
@@ -117,6 +119,26 @@ export function mountDashboard({ session, selectTransport, timers, environment }
     setUi({ action_error: null });
     try { await operation(); } catch (error) { setUi({ action_error: describe(error) }); }
   }
+
+  for (const [id, enabled] of [["msc-enable", true], ["msc-return", false]]) {
+    button(id).addEventListener("click", () => {
+      if (button(id).disabled) return;
+      mscTarget = enabled;
+      element("msc-dialog-title").textContent = enabled ? "Enable USB drive?" : "Return card to firmware?";
+      element("msc-warning").textContent = enabled
+        ? "Firmware will unmount the card and give Linux/Windows exclusive access. USB reconnects briefly; unsaved dashboard edits may be lost."
+        : "Safely eject the USB drive in Linux/Windows first. Confirm only after eject completes; firmware cannot verify the host cache is flushed.";
+      element("confirm-msc").textContent = enabled ? "Enable USB drive" : "I have safely ejected";
+      mscDialog.showModal();
+    });
+  }
+  element("cancel-msc").addEventListener("click", () => mscDialog.close());
+  element("confirm-msc").addEventListener("click", () => run(async () => {
+    if (!mscDialog.open) return;
+    const enabled = mscTarget;
+    mscDialog.close();
+    await client.setMsc(enabled, !enabled);
+  }));
 
   for (const [id, dialog, bluetooth] of /** @type {[string, HTMLDialogElement, boolean][]} */ (
     [["usb-open", usbDialog, false], ["bluetooth-open", bluetoothDialog, true]])) {

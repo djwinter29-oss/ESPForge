@@ -284,6 +284,22 @@ class ESPForgeHid:
         return self._execute_control(command, ControlOpcode.REBOOT)
 
     @_serialized
+    def set_msc(self, enabled: bool, confirm_ejected: bool = False) -> ControlResult:
+        self._require_open()
+        if type(enabled) is not bool or type(confirm_ejected) is not bool:
+            raise ValueError("MSC ownership and confirmation must be boolean")
+        configuration = self.configuration or self.read_configuration()
+        if not configuration["board_flags"] & 0x40:
+            raise BoardConflict("USB mass storage is unavailable on this firmware")
+        if not enabled and not confirm_ejected:
+            raise ValueError("Safely eject the USB drive before confirming return to firmware")
+        command = build_control_command_report(
+            self._next_transaction_id(), ControlOpcode.MSC,
+            flags=0 if enabled else 1, arguments=bytes((int(enabled),)),
+        )
+        return self._execute_control(command, ControlOpcode.MSC)
+
+    @_serialized
     def read_wireless(self) -> WirelessStatus:
         self._require_open()
         self._require(CAP_WIRELESS, "Wireless provisioning is unavailable on this firmware")

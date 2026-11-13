@@ -69,7 +69,7 @@ void test_telemetry_layout(void)
 
 void test_storage_layout(void)
 {
-	ef_storage_t storage = {.sequence = 4};
+	ef_storage_t storage = {.sequence = 4, .configured = true, .sample_valid = true};
 	uint8_t out[EF_STORAGE_SIZE];
 
 	ef_report_storage(&storage, out);
@@ -79,6 +79,8 @@ void test_storage_layout(void)
 		TEST_ASSERT_EQUAL_UINT8(0, out[i]);
 	}
 	storage.initialized = true;
+	storage.presence_known = true;
+	storage.present = true;
 	storage.capacity_valid = true;
 	storage.bus_clock_hz = 25000000;
 	storage.block_count = 0x00F00000;
@@ -101,6 +103,33 @@ void test_storage_layout(void)
 	TEST_ASSERT_EQUAL_UINT8(3, out[4]);
 	for (size_t i = 10; i < 14; ++i) {
 		TEST_ASSERT_EQUAL_UINT8(0, out[i]);
+	}
+
+	void test_card_detect_allocation_and_msc_availability_are_reported(void)
+	{
+		ef_config_t config = {.card_detect_available = true, .card_detect_gpio = 8, .msc_supported = true};
+		uint8_t out[EF_CONFIG_SIZE];
+
+		ef_report_config(&config, out);
+		TEST_ASSERT_EQUAL_HEX8(0x45, out[13]);
+		TEST_ASSERT_EQUAL_UINT8(8, out[16]);
+	}
+
+	void test_usb_owned_storage_report_never_exposes_stale_card_fields(void)
+	{
+		ef_storage_t storage = {
+			.configured = true, .sample_valid = true, .presence_known = true, .present = true,
+			.initialized = true, .capacity_valid = true, .block_count = 100,
+			.bus_clock_hz = 25000000, .msc_enabled = true,
+		};
+		uint8_t out[EF_STORAGE_SIZE];
+
+		ef_report_storage(&storage, out);
+		TEST_ASSERT_EQUAL_HEX8(1, out[2]);
+		for (size_t i = 3; i < 30; ++i) {
+			TEST_ASSERT_EQUAL_UINT8(0, out[i]);
+		}
+		TEST_ASSERT_EQUAL_UINT8(1, out[31]);
 	}
 }
 

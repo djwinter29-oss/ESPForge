@@ -16,6 +16,10 @@
 
 /** Queue a reset after the result-read grace period. */
 int ef_platform_schedule_reboot(void);
+/** True while the storage worker is busy or USB exclusively owns the card. */
+bool ef_platform_storage_busy(void);
+/** Admit one USB ownership request without doing disk I/O; correlate its result before USB refresh. */
+int ef_platform_storage_request(bool usb, uint8_t transaction);
 
 /** True while a candidate test is joining (Feature 12 wifi_state 4). */
 bool ef_wifi_test_active(void);

@@ -107,12 +107,25 @@ export function renderStatus(snapshot, operations = operationState(snapshot, {
   const memory = snapshot.storage_stale ? null : snapshot.memory;
   if (connected && memory && memory.sample_valid !== false)
     cardDetected = memory.presence_known === true ? memory.present === true : memory.initialized === true;
-  element('[aria-labelledby="memory-title"]').hidden = !cardDetected;
+  element('[aria-labelledby="memory-title"]').hidden = !(cardDetected || memory?.msc?.enabled
+    || memory?.msc?.transition_pending);
   element("#temperature").textContent = runtime?.temperature_valid && runtime.temperature_centidegrees != null
     ? `${(runtime.temperature_centidegrees / 100).toFixed(2)} °C` : "--";
   renderBoardConfiguration(snapshot);
   renderMemory(memory, snapshot.filesystem_format, Boolean(snapshot.storage_stale),
     snapshot.board_configuration?.card_detect_gpio);
+  element("#msc-controls").hidden = !operations.mscSupported;
+  button("#msc-enable").disabled = !operations.canEnableMsc;
+  button("#msc-return").disabled = !operations.canReturnMsc;
+  if (memory?.msc?.enabled || memory?.msc?.transition_pending) {
+    element("#memory-state").textContent = memory.msc.transition_pending ? "Changing ownership" : "USB drive";
+    element("#memory-note").textContent = memory.msc.transition_pending ? "Waiting for storage handoff."
+      : "Safely eject the drive in Linux/Windows before returning it to firmware.";
+    element("#memory-note").hidden = false;
+  } else if (memory?.msc?.request_rejected) {
+    element("#memory-note").textContent = "Storage handoff failed or the card changed. Check UART logs and retry explicitly.";
+    element("#memory-note").hidden = false;
+  }
 
   const message = snapshot.error ?? (snapshot.wireless_cleanup_required
     ? "Temporary Wi-Fi credentials need cleanup. Clear the Wi-Fi test before sending another command."

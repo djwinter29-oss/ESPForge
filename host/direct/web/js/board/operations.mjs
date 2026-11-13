@@ -74,6 +74,15 @@ export class Operations {
     return this.session.command(OP.REBOOT, { flags: 1 });
   }
 
+  async setMsc(enabled, confirmEjected = false) {
+    this.require("msc");
+    requireValid(typeof enabled === "boolean" && typeof confirmEjected === "boolean"
+      && (enabled || confirmEjected), "command-arguments");
+    if (enabled && !this.session.state.memory?.initialized)
+      throw new BoardError(REASON.COMMAND_BLOCKED);
+    return this.session.command(OP.MSC, { flags: enabled ? 0 : 1, args: [Number(enabled)] });
+  }
+
   /** @brief Save next-boot settings; throws on refusal or failure, and marks the board as rebooting on success. */
   async saveSettings(settings) {
     requireValid(validSettings(settings), "boot-settings");

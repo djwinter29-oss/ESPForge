@@ -20,6 +20,7 @@ internal interface IDeviceMonitor : IDisposable, IAsyncDisposable
     CommandResyncResponse ResyncCommand(bool confirm, CancellationToken cancel = default);
     BootSettingsResponse SetSettings(BootSettingsResponse settings, CancellationToken cancel = default);
     void Reboot(CancellationToken cancel = default);
+    void SetMsc(bool enabled, bool confirmEjected, CancellationToken cancel = default);
     WirelessResponse SetWireless(WirelessRequest settings, CancellationToken cancel = default);
     IReadOnlyList<WirelessNetworkResponse> ScanWireless(CancellationToken cancel = default);
     WirelessOperationResponse TestWireless(string ssid, string password, string? ssidHex = null,
@@ -42,6 +43,7 @@ internal interface IHidCommands
     BoardConfigurationResponse ReadConfiguration();
     BootSettingsResponse SetSettings(BootSettingsResponse settings);
     void Reboot();
+    void SetMsc(bool enabled, bool confirmEjected);
     WirelessStatusResponse ReadWireless();
     CommandResyncResult? ReconcileOutcome(ControlCommandReference? command,
         WirelessOperationReference? wirelessOperation);
@@ -280,6 +282,7 @@ internal sealed class DeviceMonitor : BackgroundService, IDeviceMonitor
             var client = Client();
             if (!Snapshot.SettingsSupported)
                 throw new BoardStateException("Boot settings are unavailable on this firmware");
+            RequireFirmwareStorage();
             var saved = ExecuteCommand(client, () => client.SetSettings(settings));
             lock (gate)
                 snapshot = snapshot with
@@ -381,7 +384,37 @@ internal sealed class DeviceMonitor : BackgroundService, IDeviceMonitor
         using (Device(cancel))
         {
             var client = Client();
+            RequireFirmwareStorage();
             ExecuteCommand(client, client.Reboot);
+        }
+    }
+
+    private void RequireFirmwareStorage()
+    {
+        var status = Snapshot;
+        if (status.StorageStale || status.Memory is not { SampleValid: true, Msc: { Enabled: false, TransitionPending: false } })
+            throw new BoardStateException("Wait for idle firmware-owned storage; safely eject and return the USB drive first");
+    }
+
+    public void SetMsc(bool enabled, bool confirmEjected, CancellationToken cancel = default)
+    {
+        using (Device(cancel))
+        {
+            var status = Snapshot;
+            if (status.BoardConfiguration is null
+                || (status.BoardConfiguration.BoardFlags & HidProtocol.BoardFlagMsc) == 0)
+                throw new BoardStateException("USB mass storage is unavailable on this firmware");
+            if (status.StorageStale || status.Memory?.Msc is not { TransitionPending: false })
+                throw new BoardStateException("Waiting for fresh, settled storage ownership status");
+            if (enabled && !status.Memory.Msc.Enabled)
+            {
+                RequireFirmwareStorage();
+                if (!status.Memory.Initialized)
+                    throw new BoardStateException("Mount an SD card before enabling USB mass storage");
+            }
+            var client = Client();
+            ExecuteCommand(client, () => client.SetMsc(enabled, confirmEjected));
+            lock (gate) storageReceipt = 0;
         }
     }
 

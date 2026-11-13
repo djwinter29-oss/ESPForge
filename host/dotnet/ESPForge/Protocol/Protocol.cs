@@ -51,7 +51,7 @@ public sealed record MemoryStatusResponse(byte Sequence, bool Configured, bool P
     uint? BlockCount, ulong? CapacityBytes, SdCardIdentity? Manufacturer,
     bool SampleValid = true, byte SpeedMode = 0)
 {
-    /// <summary>USB-drive ownership fields from the same storage report; always off because ESPForge has no MSC.</summary>
+    /// <summary>USB-drive ownership fields from the same storage report.</summary>
     public MscStatusResponse? Msc { get; init; }
     /// <summary>Mounted filesystem name from the same storage report.</summary>
     public string? FilesystemFormat { get; init; }
@@ -201,6 +201,8 @@ internal static partial class HidProtocol
     public const byte BoardFlagWifi = 1 << 3;
     public const byte BoardFlagBle = 1 << 4;
     public const byte BoardFlagTcpCli = 1 << 5;
+    /// <summary>Native USB MSC with explicit export and confirmed return is available.</summary>
+    public const byte BoardFlagMsc = 1 << 6;
     public const int BoardRadioShift = 3;
     /// <summary>Opcode 5 switches byte: bits 0..1 radios; ESPForge refuses bit 2 (TCP CLI).</summary>
     public const byte SwitchTcpCli = 1 << 2;
@@ -277,7 +279,8 @@ internal static partial class HidProtocol
         const int wirelessFlags = BoardFlagWifi | BoardFlagBle;
         Require(IsValidClock(clock), "unsupported persisted system-clock profile");
         Require(sdProfile == 0, "unsupported persisted SD-card profile");
-        Require((flags & ~(BoardFlagMonitorUart | wirelessFlags)) == 0, "unknown board-configuration flags");
+        Require((flags & ~(BoardFlagMonitorUart | BoardFlagCardDetect | BoardFlagMsc | wirelessFlags)) == 0,
+            "unknown board-configuration flags");
         Require((flags & wirelessFlags) == 0 || identity.WirelessSupported,
             "wireless service switches reported without wireless capability");
         Require((uartIndex <= 1 || uartIndex == byte.MaxValue)
@@ -362,7 +365,8 @@ internal static partial class HidProtocol
         Require(sampleValid || ((flags & 0x3e) == 0 && component == 0 && mode == 0
             && clock == 0 && speed == 0 && blocks == 0 && cid.IndexOfAnyExcept((byte)0) < 0),
             "invalid storage sample contains card data");
-        Require(mscEnabled == 0 && transition == 0 && rejected == 0, "ESPForge reports no MSC state");
+        Require(mscEnabled == 0 && transition == 0 || configured && !sampleValid,
+            "MSC ownership requires configured storage and invalid SD fields");
 
         SdCardIdentity? identityInfo = null;
         if (cidValid) identityInfo = ParseCid(cid);
@@ -397,6 +401,9 @@ internal static partial class HidProtocol
         if (transactionId == 0 || arguments.Length != 64 ||
             (opcode == Opcode.SaveSettings && (flags & ~SaveCommitWireless) != 0))
             throw new ArgumentException("Invalid HID control request fields");
+        if (opcode == Opcode.Msc && (arguments[0] > 1 || flags != (arguments[0] == 0 ? 1 : 0)
+            || arguments[1..].IndexOfAnyExcept((byte)0) >= 0))
+            throw new ArgumentException("MSC return requires OS-eject confirmation; export requires zero flags");
         var report = new byte[ControlFeatureSize];
         report[0] = ControlReportId;
         report[1] = ReportVersion;
@@ -440,7 +447,7 @@ internal static partial class HidProtocol
             "control result has an unsupported opcode/status combination");
         Require(result.Opcode switch
         {
-            // ESPForge answers the LED and MSC opcodes with Unsupported because it has neither.
+            // LED remains unavailable.
             Opcode.Led => result.Status is ControlStatus.Pending or ControlStatus.Completed
                 or ControlStatus.Invalid or ControlStatus.Unsupported or ControlStatus.Failed,
             Opcode.Msc => result.Status is ControlStatus.Pending or ControlStatus.Completed

@@ -49,6 +49,12 @@ void ef_report_config(const ef_config_t *config, uint8_t out[EF_CONFIG_SIZE])
 {
 	uint8_t flags = CONFIG_FLAG_MONITOR_UART;
 
+	if (config->card_detect_available) {
+		flags |= 0x01u;
+	}
+	if (config->msc_supported) {
+		flags |= EF_CONFIG_FLAG_MSC;
+	}
 	if (config->stored_radios & EF_WIRELESS_WIFI) {
 		flags |= CONFIG_FLAG_WIFI;
 	}
@@ -66,7 +72,7 @@ void ef_report_config(const ef_config_t *config, uint8_t out[EF_CONFIG_SIZE])
 	out[13] = flags;
 	out[14] = config->reset_cause;
 	out[15] = EF_GPIO_UNASSIGNED;
-	out[16] = EF_GPIO_UNASSIGNED;
+	out[16] = config->card_detect_available ? config->card_detect_gpio : EF_GPIO_UNASSIGNED;
 }
 
 void ef_report_telemetry(const ef_telemetry_t *telemetry, uint8_t out[EF_TELEMETRY_SIZE])
@@ -88,14 +94,23 @@ void ef_report_telemetry(const ef_telemetry_t *telemetry, uint8_t out[EF_TELEMET
 
 void ef_report_storage(const ef_storage_t *storage, uint8_t out[EF_STORAGE_SIZE])
 {
-	/* Storage is configured and every published sample is valid; no card-detect input exists. */
-	uint8_t sd_flags = 0x01u | 0x40u;
+	uint8_t sd_flags = storage->configured ? 0x01u : 0;
+	bool valid = storage->sample_valid && !storage->msc_enabled && !storage->msc_transition_pending;
 
 	memset(out, 0, EF_STORAGE_SIZE);
 	out[0] = 1;
 	out[1] = storage->sequence;
-	if (storage->initialized) {
-		sd_flags |= 0x02u | 0x04u | 0x08u;
+	if (valid) {
+		sd_flags |= 0x40u;
+		if (storage->presence_known) {
+			sd_flags |= 0x02u;
+		}
+		if (storage->present) {
+			sd_flags |= 0x04u;
+		}
+	}
+	if (valid && storage->initialized) {
+		sd_flags |= 0x08u;
 		if (storage->capacity_valid) {
 			sd_flags |= 0x20u;
 			put32(out + 10, storage->block_count);
@@ -107,6 +122,9 @@ void ef_report_storage(const ef_storage_t *storage, uint8_t out[EF_STORAGE_SIZE]
 	}
 	out[2] = sd_flags;
 	out[30] = storage->filesystem_format <= 4 ? storage->filesystem_format : 0;
+	out[31] = storage->msc_enabled;
+	out[32] = storage->msc_transition_pending;
+	out[33] = storage->msc_request_rejected;
 }
 
 void ef_report_wireless(const ef_wireless_t *wireless, uint8_t out[EF_WIRELESS_SIZE])

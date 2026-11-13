@@ -41,6 +41,8 @@
 #define EF_SSID_MAX 32u
 #define EF_LOAD_UNAVAILABLE 0xFFFFu
 #define EF_GPIO_UNASSIGNED 0xFFu
+/** Report 2 board flag: native USB mass storage with explicit owner handoff is available. */
+#define EF_CONFIG_FLAG_MSC 0x40u
 
 typedef struct {
 	uint8_t uid[EF_UID_SIZE];
@@ -53,6 +55,9 @@ typedef struct {
 	uint16_t stored_clock_mhz;
 	uint8_t stored_radios; /**< EF_WIRELESS_WIFI / EF_WIRELESS_BLE bits. */
 	uint8_t reset_cause;
+	bool card_detect_available; /**< A physical card-present GPIO is allocated. */
+	uint8_t card_detect_gpio; /**< Board card-present input, valid when allocated. */
+	bool msc_supported; /**< Native USB mass-storage class is enabled. */
 } ef_config_t;
 
 typedef struct {
@@ -65,13 +70,22 @@ typedef struct {
 	bool usb_configured;
 } ef_telemetry_t;
 
+/** Coherent storage snapshot; invalid samples carry no live SD fields on the wire. */
 typedef struct {
-	uint8_t sequence;
-	bool initialized;
-	bool capacity_valid;
-	uint32_t bus_clock_hz;
-	uint32_t block_count;
-	uint8_t filesystem_format;
+	uint8_t sequence; /**< Published Input sequence. */
+	bool configured; /**< Card detection and storage service are configured. */
+	bool presence_known; /**< Debounced presence is known. */
+	bool present; /**< Debounced card-present state. */
+	bool sample_valid; /**< Firmware-owned, non-busy SD sample is available. */
+	bool initialized; /**< The current medium was initialized successfully. */
+	bool capacity_valid; /**< Sector count belongs to the current medium. */
+	uint32_t bus_clock_hz; /**< Configured bus ceiling, not a measured clock. */
+	uint32_t block_count; /**< Whole-card capacity in 512-byte sectors. */
+	uint8_t filesystem_format; /**< Mounted FAT format, or zero when unknown. */
+	bool msc_enabled; /**< USB exclusively owns the raw medium. */
+	bool msc_transition_pending; /**< An admitted ownership handoff is pending. */
+	bool msc_request_rejected; /**< Last admitted handoff failed or was cancelled. */
+	bool busy; /**< Storage worker is manipulating the medium; not encoded separately. */
 } ef_storage_t;
 
 typedef struct {

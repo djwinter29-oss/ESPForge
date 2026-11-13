@@ -172,6 +172,17 @@ def _register_api_routes(app: Flask, boards: DashboardBoards) -> None:
             return jsonify({"error": "Explicit confirm: true is required"}), 400
         return jsonify(_board(boards).reboot())
 
+    @app.post("/api/msc")
+    def set_msc() -> Response | tuple[Response, int]:
+        payload = request.get_json(silent=True)
+        if (not isinstance(payload, dict) or set(payload) - {"enabled", "confirm_ejected"}
+                or type(payload.get("enabled")) is not bool
+                or type(payload.get("confirm_ejected", False)) is not bool):
+            return jsonify({"error": "Expected enabled and optional confirm_ejected booleans"}), 400
+        if not payload["enabled"] and payload.get("confirm_ejected") is not True:
+            return jsonify({"error": "Safely eject the USB drive and supply confirm_ejected: true"}), 400
+        return jsonify(_board(boards).set_msc(payload["enabled"], payload.get("confirm_ejected", False)))
+
     @app.post("/api/control/resync")
     def resync_control() -> Response | tuple[Response, int]:
         payload = request.get_json(silent=True)

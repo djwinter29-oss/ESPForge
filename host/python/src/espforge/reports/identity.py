@@ -105,9 +105,9 @@ def parse_configuration_report(
         raise ValueError(f"unsupported HID board configuration report version {version}")
     if clock_profile not in CLOCK_PROFILES_MHZ or sd_profile != 0:
         raise ValueError("invalid stored board configuration profile")
-    if flags & ~0x3F:
+    if flags & ~0x7F:
         raise ValueError("unknown board configuration flags")
-    if flags & 0x23 or not flags & 0x04:
+    if flags & 0x22 or not flags & 0x04:
         raise ValueError("board configuration flags do not match the ESPForge profile")
     radios = flags >> 3 & 3
     if flags & 0x38 and not identity.get("wireless_supported"):

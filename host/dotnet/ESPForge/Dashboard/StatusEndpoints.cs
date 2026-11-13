@@ -21,6 +21,9 @@ internal static class StatusEndpoints
     public sealed record CommandResyncRequest(bool Confirm);
     /// <summary>Explicit acknowledgement that the device will reboot and disconnect.</summary>
     public sealed record RebootRequest(bool Confirm);
+    /// <summary>Export raw SD blocks, or confirm the OS has ejected before returning to firmware.</summary>
+    [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+    public sealed record MscRequest(bool? Enabled, bool ConfirmEjected = false);
     /// <summary>Every <c>/api</c> error body, matching the Python server.</summary>
     public sealed record ApiError(string Error);
     /// <summary>Empty success response.</summary>
@@ -142,6 +145,11 @@ internal static class StatusEndpoints
             .WithSummary("Confirm the result of an uncertain HID command")
             .Produces<CommandResyncResponse>(StatusCodes.Status200OK)
             .Errors(CommandErrors);
+        endpoints.MapPost("/api/msc", SetMsc)
+            .WithName("SetUsbStorageOwnership")
+            .WithSummary("Export the SD card or return it after confirmed OS eject")
+            .Produces<EmptyResponse>(StatusCodes.Status200OK)
+            .Errors(CommandErrors);
         return endpoints;
     }
 
@@ -175,5 +183,16 @@ internal static class StatusEndpoints
     {
         if (!request.Confirm) throw new ApiInputException("Explicit confirm: true is required");
         return Results.Ok(dashboard.Monitor(board).ResyncCommand(true, cancel));
+    }
+
+    private static IResult SetMsc(MscRequest request, string? board, IDashboardBoards dashboard,
+        CancellationToken cancel)
+    {
+        if (request.Enabled is not { } enabled)
+            throw new ApiInputException("enabled must be boolean");
+        if (!enabled && !request.ConfirmEjected)
+            throw new ApiInputException("Safely eject the USB drive and supply confirm_ejected: true");
+        dashboard.Monitor(board).SetMsc(enabled, request.ConfirmEjected, cancel);
+        return Results.Ok(new EmptyResponse());
     }
 }
