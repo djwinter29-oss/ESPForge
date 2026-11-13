@@ -153,6 +153,22 @@ Copyright (c) 2026 Ji Dong
       </dl>
     </section>
 
+    <section class="runtime" id="benchmark-controls" aria-labelledby="benchmark-title" hidden>
+      <h2 id="benchmark-title">Storage benchmark</h2>
+      <div class="settings-actions">
+        <label for="benchmark-size">Size (MiB)</label>
+        <input id="benchmark-size" type="number" min="1" max="1024" step="1" value="32" disabled>
+        <button class="button" id="benchmark-start" type="button" disabled>Start benchmark</button>
+        <button class="button button-secondary" id="benchmark-cancel" type="button" disabled>Cancel benchmark</button>
+      </div>
+      <dl class="runtime-grid">
+        <div><dt>Benchmark state</dt><dd id="benchmark-state">--</dd></div>
+        <div><dt>Write throughput</dt><dd id="benchmark-write">--</dd></div>
+        <div><dt>Read/verify throughput</dt><dd id="benchmark-read">--</dd></div>
+        <div><dt>Result</dt><dd id="benchmark-result" role="status">--</dd></div>
+      </dl>
+    </section>
+
     <dialog class="confirmation-dialog" id="msc-dialog" aria-labelledby="msc-dialog-title"
       aria-describedby="msc-warning">
       <h2 id="msc-dialog-title">USB storage ownership</h2>

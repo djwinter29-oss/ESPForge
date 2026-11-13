@@ -149,6 +149,21 @@ Copyright (c) 2026 Ji Dong
         <div><dt>Serial</dt><dd id="memory-serial">--</dd></div>
       </dl>
       <p class="sample-time" id="storage-freshness" role="status">storage: unavailable</p>
+      <div id="benchmark-controls" hidden>
+        <h3>Storage benchmark</h3>
+        <div class="settings-actions">
+          <label for="benchmark-size">Size (MiB)</label>
+          <input id="benchmark-size" type="number" min="1" max="1024" step="1" value="32" disabled>
+          <button class="button" id="benchmark-start" type="button" disabled>Start benchmark</button>
+          <button class="button button-secondary" id="benchmark-cancel" type="button" disabled>Cancel benchmark</button>
+        </div>
+        <dl class="runtime-grid">
+          <div><dt>Benchmark state</dt><dd id="benchmark-state">--</dd></div>
+          <div><dt>Write throughput</dt><dd id="benchmark-write">--</dd></div>
+          <div><dt>Read/verify throughput</dt><dd id="benchmark-read">--</dd></div>
+          <div><dt>Result</dt><dd id="benchmark-result" role="status">--</dd></div>
+        </dl>
+      </div>
     </section>
 
 

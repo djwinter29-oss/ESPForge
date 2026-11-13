@@ -12,6 +12,25 @@ from espforge.reports import ProtocolError
 
 
 class MonitorCommandTests(unittest.TestCase):
+    def test_benchmark_start_cancel_and_confirmed_admission_invalidate_snapshots(self):
+        client = Mock()
+        monitor = make_monitor(client, {"connected": True, "hardware": {"self_test_supported": True},
+            "memory": {"sample_valid": True, "initialized": True,
+                       "msc": {"enabled": False, "transition_pending": False}},
+            "self_test": {"active": False}})
+        monitor._input_received_at["self_test"] = float("inf")
+        result = {"status": "completed", "opcode": 4, "error": "none"}
+        client.benchmark.return_value = result
+        self.assertEqual(monitor.benchmark(True, 32), {"control_result": result})
+        client.benchmark.assert_called_once_with(True, 32)
+        self.assertTrue(monitor.snapshot()["self_test_stale"])
+        self.assertTrue(monitor.snapshot()["storage_stale"])
+        monitor._snapshot["self_test"] = {"active": True}
+        monitor._snapshot["memory"] = {"sample_valid": False}
+        monitor._input_received_at["self_test"] = float("inf")
+        self.assertEqual(monitor.benchmark(False), {"control_result": result})
+        client.benchmark.assert_called_with(False, 0)
+
     def setUp(self):
         self.client = Mock()
         self.monitor = make_monitor(self.client, {

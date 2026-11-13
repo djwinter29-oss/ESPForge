@@ -90,7 +90,9 @@ the dashboard always saves profile 0 and shows the bus clock actually reported b
 
 USB connections can explicitly export an initialized SD card and return it after confirmed OS eject;
 see [SD ownership](../../docs/reference/sdcard.md#usb-drive-handoff). Bluetooth cannot change ownership.
-ESPForge has no LED control, storage benchmark, forced save or TCP CLI console.
+ESPForge has no LED control, forced save or dashboard TCP CLI console.
+When firmware advertises benchmarking, Storage offers confirmed start/cancel and live write/read verification results.
+See [benchmark safety and timing](../../docs/reference/sdcard.md#optional-storage-benchmark); BLE mirrors progress read-only.
 The dashboard omits those controls rather than inventing values.
 
 ## Controls

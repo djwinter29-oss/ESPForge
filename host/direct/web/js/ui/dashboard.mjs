@@ -121,6 +121,19 @@ export function mountDashboard({ session, selectTransport, timers, environment }
     try { await operation(); } catch (error) { setUi({ action_error: describe(error) }); }
   }
 
+  element("benchmark-start").addEventListener("click", () => run(async () => {
+    if (button("benchmark-start").disabled) return;
+    const size = Number(/** @type {HTMLInputElement} */ (element("benchmark-size")).value);
+    const uid = client.state.hardware?.serial_number;
+    if (!window.confirm(`Write and verify ${size} MiB in EFTEST.BIN, then delete that file? Back up the card first. This causes card wear.`))
+      return;
+    if (uid !== client.state.hardware?.serial_number) throw new Error("Board changed; reopen the benchmark.");
+    await client.benchmark(true, size, true);
+  }));
+  element("benchmark-cancel").addEventListener("click", () => run(async () => {
+    if (!button("benchmark-cancel").disabled) await client.benchmark(false, 0, false);
+  }));
+
   for (const [id, enabled] of /** @type {[string, boolean][]} */ (
     [["msc-enable", true], ["msc-return", false]])) {
     button(id).addEventListener("click", () => {

@@ -144,6 +144,32 @@ export function decodeStorageReport(report) {
   };
 }
 
+export function decodeBenchmarkReport(report) {
+  const view = payload(report, 32);
+  const state = view.getUint8(2);
+  const flags = view.getUint8(3);
+  const values = [4, 8, 12, 16, 20, 24].map(offset => view.getUint32(offset, true));
+  const [target, written, read, writeMs, readMs, mismatches] = values;
+  const error = view.getUint8(28);
+  const filesystem = view.getUint8(29);
+  requireValid(state <= 8 && !(flags & ~3) && error <= 10 && filesystem <= 19
+    && view.getUint16(30, true) === 0 && target <= 1024 ** 3 && target % 1024 ** 2 === 0
+    && written <= target && read <= written && mismatches <= read && (state === 7) === Boolean(error)
+    && (state === 7 || filesystem === 0)
+    && (state !== 0 || values.every(value => value === 0))
+    && (state !== 1 || values.slice(1).every(value => value === 0))
+    && (state !== 6 || target > 0 && written === target && read === target && !mismatches && !(flags & 1)),
+  "benchmark-status");
+  return { sequence: view.getUint8(1),
+    state: ["idle", "queued", "preparing", "writing", "reading", "cleanup", "passed", "failed", "cancelled"][state],
+    state_id: state, active: state >= 1 && state <= 5, target_bytes: target, written_bytes: written, read_bytes: read,
+    write_elapsed_ms: writeMs, read_elapsed_ms: readMs, mismatch_count: mismatches, error, filesystem_result: filesystem,
+    file_remains: Boolean(flags & 1), volume_mounted: Boolean(flags & 2),
+    progress_percent: target ? (written + read) * 50 / target : 0,
+    write_bytes_per_second: writeMs ? written * 1000 / writeMs : null,
+    read_bytes_per_second: readMs ? read * 1000 / readMs : null };
+}
+
 export function buildControlRequest(transaction, opcode, { flags = 0, args = [] } = {}) {
   requireValid(Number.isInteger(transaction) && transaction >= 1 && transaction <= 255, "transaction-id");
   requireValid(Number.isInteger(opcode) && opcode >= 0 && opcode <= 255

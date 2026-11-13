@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Ji Dong
 
 import { queryElement, setText } from "../dom.mjs";
+import { CAP } from "../../protocol/constants.mjs";
 
 function formatBytes(bytes) {
   const gibibytes = bytes / 1024 ** 3;
@@ -68,5 +69,16 @@ export function createStorageSection() {
     setText(model.text);
     queryElement("#memory-note").hidden = !model.text["memory-note"];
     queryElement('[aria-labelledby="memory-title"]').hidden = model.hidden;
+    const status = state.freshness?.[11] === "fresh" ? state.self_test : null;
+    queryElement("#benchmark-controls").hidden = !((state.hardware?.capabilities ?? 0) & CAP.SELF_TEST);
+    const rate = value => value == null ? "--" : `${(value / 1024 ** 2).toFixed(2)} MiB/s`;
+    setText({
+      "benchmark-state": status ? `${status.state} (${status.progress_percent.toFixed(1)}%)` : "Waiting for fresh status",
+      "benchmark-write": rate(status?.write_bytes_per_second),
+      "benchmark-read": rate(status?.read_bytes_per_second),
+      "benchmark-result": status?.error ? `Error ${status.error}; filesystem ${status.filesystem_result}`
+        + (status.file_remains ? "; EFTEST.BIN may remain" : "")
+        : status ? `${status.mismatch_count} mismatched bytes` : "--",
+    });
   };
 }

@@ -14,20 +14,20 @@
  */
 export const DOMAIN_KEYS = Object.freeze([
   "link", "phase", "connected", "reconnecting", "busy", "error", "hardware", "settings", "settings_supported",
-  "runtime", "memory", "filesystem_format", "wireless", "wireless_error", "wireless_poll_error",
+  "runtime", "memory", "self_test", "filesystem_format", "wireless", "wireless_error", "wireless_poll_error",
   "recovery_message", "recovered_opcode", "freshness", "reboot_pending", "outcome_uncertain", "wireless_busy",
   "pending_request", "pending_wireless",
 ]);
 
 /** @brief Per-connection facts reset when a connection opens or closes; pending request facts survive. */
 export const CONNECTION_FACTS = Object.freeze([
-  "hardware", "settings", "settings_supported", "runtime", "memory", "filesystem_format",
+  "hardware", "settings", "settings_supported", "runtime", "memory", "self_test", "filesystem_format",
   "wireless", "wireless_error", "wireless_poll_error", "recovery_message", "recovered_opcode", "freshness",
   "reboot_pending",
 ]);
 
 const PHASE = ["phase", "connected", "reconnecting"];
-const REPORTS = ["runtime", "memory", "filesystem_format", "wireless", "wireless_error", "freshness"];
+const REPORTS = ["runtime", "memory", "self_test", "filesystem_format", "wireless", "wireless_error", "freshness"];
 /**
  * @brief Named domain events and the only keys each may change. Phase keys appear only in `connection/*` events,
  * which board/connection.mjs alone emits (architecture.test.mjs).
@@ -62,7 +62,8 @@ export const UI_KEYS = Object.freeze([
  * @typedef {string | {code: string, detail: unknown} | null} ReasonValue
  * @typedef {{operation: number, generation: number}} WirelessLifecycle
  * @typedef {{transaction_id: number, opcode: number, lifecycle?: WirelessLifecycle, settings?: BoardSettings,
- *   commit_mask?: number, scan_index?: number, scan_generation?: number, msc_enabled?: boolean}} PendingRequest
+ *   commit_mask?: number, scan_index?: number, scan_generation?: number, msc_enabled?: boolean,
+ *   benchmark_start?: boolean, benchmark_size_mib?: number}} PendingRequest
  * @typedef {{version: 2, kind: "control", uid: string, request: PendingRequest}
  *   | {version: 2, kind: "wireless-lifecycle", uid: string, operation: number, generation: number}} PendingOperation
  */
@@ -80,6 +81,7 @@ export const UI_KEYS = Object.freeze([
  * @property {boolean} [settings_supported]
  * @property {ReturnType<typeof import("../protocol/codec.mjs").decodeTelemetryReport> | null} [runtime]
  * @property {ReturnType<typeof import("../protocol/codec.mjs").decodeStorageReport>["memory"] | null} [memory]
+ * @property {ReturnType<typeof import("../protocol/codec.mjs").decodeBenchmarkReport> | null} [self_test]
  * @property {string | null} [filesystem_format]
  * @property {ReturnType<typeof import("../protocol/codec.mjs").decodeWireless> | null} [wireless]
  * @property {ReasonValue} [wireless_error]

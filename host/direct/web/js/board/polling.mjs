@@ -5,7 +5,7 @@
  * @file Report polling and freshness: input reports, the status-report poll, the one Feature 12 poll owner and
  * scan/test lifecycle observation. Writes only `report/*` domain events.
  */
-import { decodeStorageReport, decodeTelemetryReport, decodeWireless } from "../protocol/codec.mjs";
+import { decodeStorageReport, decodeTelemetryReport, decodeBenchmarkReport, decodeWireless } from "../protocol/codec.mjs";
 import {
   CAP, OP, REPORT, REPORT_LIFETIME_MS, SCAN_STATE, STAGED_EXPIRED, WIFI_STATE,
 } from "../protocol/constants.mjs";
@@ -14,12 +14,13 @@ import { BoardError, errorValue, REASON } from "../state/errors.mjs";
 import { withTimeout } from "../timers.mjs";
 
 /** @brief Report IDs whose snapshot expires; Feature 12 lifetime follows its poll interval. */
-export const TRACKED_REPORTS = [REPORT.TELEMETRY, REPORT.STORAGE];
+export const TRACKED_REPORTS = [REPORT.TELEMETRY, REPORT.STORAGE, REPORT.BENCHMARK];
 
 /** @brief State cleared when a report expires. */
 const STALE = {
   [REPORT.TELEMETRY]: { runtime: null },
   [REPORT.STORAGE]: { memory: null, filesystem_format: null },
+  [REPORT.BENCHMARK]: { self_test: null },
   [REPORT.WIRELESS]: { wireless: null, wireless_error: REASON.WIRELESS_STALE },
 };
 
@@ -150,9 +151,13 @@ export class Polling {
     if (!state.connected || s.connectionSignal.aborted) return;
     const id = event.reportId;
     if (!TRACKED_REPORTS.includes(id)) return;
+    if (id === REPORT.BENCHMARK && !((state.hardware?.capabilities ?? 0) & CAP.SELF_TEST)) {
+      s.emit("report/failed", { error: { code: REASON.INVALID_REPORT, detail: "benchmark-capability" } });
+      return;
+    }
     try {
       const changes = id === REPORT.TELEMETRY ? { runtime: decodeTelemetryReport(event.data) }
-        : decodeStorageReport(event.data);
+        : id === REPORT.BENCHMARK ? { self_test: decodeBenchmarkReport(event.data) } : decodeStorageReport(event.data);
       this.receipts.record(id);
       this.scheduleExpiry();
       s.emit("report/received", { ...changes, freshness: { ...state.freshness, [id]: "fresh" } });
@@ -171,6 +176,14 @@ export class Polling {
     this.session.emit("report/expired", { ...STALE[REPORT.STORAGE],
       freshness: { ...this.session.state.freshness, [REPORT.STORAGE]: "stale" } });
     this.scheduleExpiry();
+  }
+
+  /** Require fresh progress after a benchmark command or explicit reconciliation. */
+  invalidateBenchmark() {
+    this.receipts.received.delete(REPORT.BENCHMARK);
+    this.session.emit("report/expired", { ...STALE[REPORT.BENCHMARK],
+      freshness: { ...this.session.state.freshness, [REPORT.BENCHMARK]: "stale" } });
+    this.invalidateStorage();
   }
 
   scheduleExpiry() {
@@ -197,6 +210,7 @@ export class Polling {
     if (idle()) {
       try {
         for (const id of TRACKED_REPORTS) {
+          if (id === REPORT.BENCHMARK && !((s.state.hardware?.capabilities ?? 0) & CAP.SELF_TEST)) continue;
           if (!idle()) break;
           const data = await this.readReport(id, signal);
           this.onInputReport({ reportId: id, data });

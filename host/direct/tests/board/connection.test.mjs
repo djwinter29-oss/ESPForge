@@ -12,8 +12,8 @@ test("mandatory connection reads reject malformed identity/config failures and i
   assert.deepEqual(reads, [1, 2]);
   assert.equal(client.state.connected, true);
   const before = client.state;
-  emit(device, 11, new Uint8Array(32));
-  assert.equal(client.state, before, "ESPForge has no report 11");
+  emit(device, 14, new Uint8Array(32));
+  assert.equal(client.state, before, "unknown reports do not mutate state");
   emit(device, 10, storage());
   assert.ok(client.state.memory);
   await client.disconnect();

@@ -117,6 +117,21 @@ export function renderStatus(snapshot, operations = operationState(snapshot, {
   element("#msc-controls").hidden = !operations.mscSupported;
   button("#msc-enable").disabled = !operations.canEnableMsc;
   button("#msc-return").disabled = !operations.canReturnMsc;
+  element("#benchmark-controls").hidden = !operations.benchmarkSupported || !cardDetected;
+  button("#benchmark-start").disabled = !operations.canStartBenchmark;
+  button("#benchmark-cancel").disabled = !operations.canCancelBenchmark;
+  /** @type {HTMLInputElement} */ (element("#benchmark-size")).disabled = !operations.canStartBenchmark;
+  const benchmark = snapshot.self_test_stale ? null : snapshot.self_test;
+  const rate = (/** @type {number | null | undefined} */ value) =>
+    value == null ? "--" : `${(value / 1024 ** 2).toFixed(2)} MiB/s`;
+  element("#benchmark-state").textContent = benchmark
+    ? `${benchmark.state ?? "--"} (${benchmark.progress_percent?.toFixed(1) ?? "--"}%)` : "Waiting for fresh status";
+  element("#benchmark-write").textContent = rate(benchmark?.write_bytes_per_second);
+  element("#benchmark-read").textContent = rate(benchmark?.read_bytes_per_second);
+  element("#benchmark-result").textContent = !benchmark ? "--" : benchmark.error
+    ? `Error ${benchmark.error}; filesystem ${benchmark.filesystem_result ?? "--"}`
+      + (benchmark.file_remains ? "; EFTEST.BIN may remain" : "")
+    : `${benchmark.mismatch_count ?? "--"} mismatched bytes`;
   if (memory?.msc?.enabled || memory?.msc?.transition_pending) {
     element("#memory-state").textContent = memory.msc.transition_pending ? "Changing ownership" : "USB drive";
     element("#memory-note").textContent = memory.msc.transition_pending ? "Waiting for storage handoff."

@@ -9,6 +9,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "app/storage/benchmark.h"
 
 #define EF_REPORT_IDENTITY 1u
 #define EF_REPORT_CONFIG 2u
@@ -22,6 +23,8 @@
 #define EF_CONFIG_SIZE 17u
 #define EF_TELEMETRY_SIZE 22u
 #define EF_STORAGE_SIZE 34u
+/** Benchmark Input payload size, excluding report ID. */
+#define EF_BENCHMARK_SIZE 32u
 #define EF_WIRELESS_SIZE 48u
 #define EF_CONTROL_SIZE 68u
 #define EF_BLE_CONTROL_SIZE 9u
@@ -34,8 +37,11 @@
 #define EF_CAP_REBOOT 0x02u
 #define EF_CAP_SETTINGS 0x04u
 #define EF_CAP_SDMMC 0x10u
+/** Optional temporary-file benchmark capability. */
+#define EF_CAP_BENCHMARK 0x20u
 #define EF_CAP_WIRELESS 0x80u
-#define EF_CAPABILITIES (EF_CAP_REBOOT | EF_CAP_SETTINGS | EF_CAP_SDMMC | EF_CAP_WIRELESS)
+#define EF_CAPABILITIES (EF_CAP_REBOOT | EF_CAP_SETTINGS | EF_CAP_SDMMC | EF_CAP_WIRELESS | \
+			(EF_ENABLE_STORAGE_BENCHMARK ? EF_CAP_BENCHMARK : 0))
 
 #define EF_UID_SIZE 8u
 #define EF_SSID_MAX 32u
@@ -107,6 +113,8 @@ void ef_report_identity(const ef_identity_t *identity, uint8_t out[EF_IDENTITY_S
 void ef_report_config(const ef_config_t *config, uint8_t out[EF_CONFIG_SIZE]);
 void ef_report_telemetry(const ef_telemetry_t *telemetry, uint8_t out[EF_TELEMETRY_SIZE]);
 void ef_report_storage(const ef_storage_t *storage, uint8_t out[EF_STORAGE_SIZE]);
+/** Encode a coherent benchmark snapshot. */
+void ef_report_benchmark(const ef_benchmark_t *status, uint8_t out[EF_BENCHMARK_SIZE]);
 void ef_report_wireless(const ef_wireless_t *wireless, uint8_t out[EF_WIRELESS_SIZE]);
 
 /** Format the UID as the 16-character uppercase hex USB serial string, NUL-terminated. */

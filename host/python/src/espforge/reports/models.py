@@ -209,9 +209,34 @@ class RuntimeInputReport(TypedDict):
     data: RuntimeStatus
 
 
+class BenchmarkStatus(TypedDict):
+    sequence: int
+    state: str
+    state_id: int
+    active: bool
+    target_bytes: int
+    written_bytes: int
+    read_bytes: int
+    write_elapsed_ms: int
+    read_elapsed_ms: int
+    mismatch_count: int
+    error: int
+    filesystem_result: int
+    file_remains: bool
+    volume_mounted: bool
+    progress_percent: float
+    write_bytes_per_second: float | None
+    read_bytes_per_second: float | None
+
+
+class BenchmarkInputReport(TypedDict):
+    kind: Literal["self_test"]
+    data: BenchmarkStatus
+
+
 class MemoryInputReport(TypedDict):
     kind: Literal["memory"]
     data: MemoryStatus
 
 
-InputReport = RuntimeInputReport | MemoryInputReport
+InputReport = RuntimeInputReport | MemoryInputReport | BenchmarkInputReport

@@ -23,7 +23,8 @@ const readyState = (changes = {}) => ({
 
 test("operation eligibility is one rule table for storage, settings and wireless gates", () => {
   assert.deepEqual(deriveOperationEligibility(readyState()), { blocked: false, storageReady: true,
-    settingsReady: true, wirelessReady: true, mscReady: false, connectionLocked: true });
+    settingsReady: true, wirelessReady: true, mscReady: false, connectionLocked: true,
+    benchmarkSupported: false, benchmarkReady: false, benchmarkCancelReady: false });
 
   const flags = ["blocked", "storageReady", "settingsReady", "wirelessReady"];
   const cases = [
@@ -46,6 +47,20 @@ test("operation eligibility is one rule table for storage, settings and wireless
   assert.equal(deriveOperationEligibility(readyState({ connected: false })).connectionLocked, false);
   assert.equal(deriveOperationEligibility(readyState({ connected: false, pending_request: {} })).connectionLocked,
     true);
+});
+
+test("benchmark starts need fresh firmware storage; cancellation works with a busy SD sample", () => {
+  const state = readyState({ hardware: { capabilities: 0xb6 },
+    freshness: { 10: "fresh", 11: "fresh" }, memory: { sample_valid: true, initialized: true },
+    self_test: { active: false } });
+  assert.equal(canRun(state, "benchmark").allowed, true);
+  assert.equal(canRun({ ...state, link: "ble" }, "benchmark").allowed, false);
+  assert.equal(canRun({ ...state, freshness: { 10: "fresh", 11: "stale" } }, "benchmark").allowed, false);
+  const active = { ...state, self_test: { active: true }, memory: { sample_valid: false } };
+  assert.equal(canRun(active, "benchmark").allowed, false);
+  assert.equal(canRun(active, "settings").allowed, false);
+  assert.equal(canRun(active, "benchmark-cancel").allowed, true);
+  assert.equal(canRun({ ...active, outcome_uncertain: true }, "benchmark-cancel").allowed, false);
 });
 
 test("canRun is the one gate and names the first failing precondition per operation", () => {

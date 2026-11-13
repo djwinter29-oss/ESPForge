@@ -56,6 +56,8 @@ from ..reports import (
     parse_status_report,
 )
 from ..reports.common import SELF_TEST_REPORT_ID, BoardConflict, _validate_settings
+from ..reports.common import CAP_SELF_TEST
+from ..reports.storage import parse_benchmark_report
 from ..reports.wireless import display_ssid, request_ssid
 
 VENDOR_ID = 0xCAFE
@@ -241,7 +243,9 @@ class ESPForgeHid:
             data = _parse_report(parse_memory_report, report, identity)
             return {"kind": "memory", "data": data}
         if report[0] == SELF_TEST_REPORT_ID:
-            raise ProtocolError("ESPForge must not publish benchmark Input report 11")
+            if not self.identity or not self.identity["capabilities"] & CAP_SELF_TEST:
+                raise ProtocolError("Unexpected benchmark report 11 without its capability")
+            return {"kind": "self_test", "data": _parse_report(parse_benchmark_report, report)}
         if report[0] == TELEMETRY_REPORT_ID:
             return {"kind": "runtime", "data": _parse_report(parse_status_report, report, identity)}
         raise ProtocolError(f"unexpected HID Input report ID {report[0]}")
@@ -298,6 +302,20 @@ class ESPForgeHid:
             flags=0 if enabled else 1, arguments=bytes((int(enabled),)),
         )
         return self._execute_control(command, ControlOpcode.MSC)
+
+    @_serialized
+    def benchmark(self, start: bool, size_mib: int = 0) -> ControlResult:
+        self._require_open()
+        self._require(CAP_SELF_TEST, "Storage benchmark is unavailable on this firmware")
+        if type(start) is not bool or type(size_mib) is not int:
+            raise ValueError("Benchmark action and size must be boolean and integer")
+        if (start and not 1 <= size_mib <= 1024) or (not start and size_mib != 0):
+            raise ValueError("Benchmark size must be 1..1024 MiB for start, zero for cancel")
+        command = build_control_command_report(
+            self._next_transaction_id(), ControlOpcode.SELF_TEST,
+            arguments=bytes((int(start),)) + size_mib.to_bytes(4, "little"),
+        )
+        return self._execute_control(command, ControlOpcode.SELF_TEST)
 
     @_serialized
     def read_wireless(self) -> WirelessStatus:

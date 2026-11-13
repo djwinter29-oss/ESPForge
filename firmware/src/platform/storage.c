@@ -41,6 +41,188 @@ static uint32_t media_generation;
 static uint32_t request_generation;
 static bool last_presence;
 
+#if EF_ENABLE_STORAGE_BENCHMARK
+/** Queue action reserved for the optional file benchmark. */
+#define BENCHMARK_REQUEST 2
+/** Reserved path is created exclusively and never overwrites an existing entry. */
+#define BENCHMARK_PATH DISK_NAME ":/EFTEST.BIN"
+static FIL benchmark_file;
+static ef_benchmark_t benchmark;
+static bool benchmark_active;
+static bool benchmark_cancelled;
+static bool benchmark_media_lost;
+static uint8_t benchmark_filesystem_result;
+
+/** Latch removal before another filesystem call can touch replacement media. */
+static bool benchmark_media_ready(void)
+{
+	int present = gpio_pin_get_dt(&detect);
+
+	if (present <= 0 && !benchmark_media_lost) {
+		LOG_ERR("Benchmark media lost: card detection %d", present);
+		benchmark_media_lost = true;
+		k_mutex_lock(&snapshot_lock, K_FOREVER);
+		++media_generation;
+		last_presence = false;
+		k_mutex_unlock(&snapshot_lock);
+	}
+	return !benchmark_media_lost;
+}
+
+static int benchmark_result(FRESULT result)
+{
+	if (result == FR_OK) {
+		return 0;
+	}
+	LOG_ERR("Benchmark filesystem failure: %d", result);
+	if (benchmark_filesystem_result == 0) {
+		benchmark_filesystem_result = result;
+	}
+	return result == FR_EXIST ? -EEXIST : result == FR_NOT_READY ? -ENOMEDIUM : -EIO;
+}
+
+int ef_platform_benchmark_preflight(uint32_t size_mib)
+{
+	FILINFO info;
+	FATFS *filesystem;
+	DWORD free_clusters;
+	FRESULT result;
+
+	if (!benchmark_media_ready()) {
+		return EF_BENCHMARK_ERROR_CARD;
+	}
+	result = f_stat(BENCHMARK_PATH, &info);
+	if (result == FR_OK) {
+		return EF_BENCHMARK_ERROR_EXISTS;
+	}
+	if (result != FR_NO_FILE) {
+		(void)benchmark_result(result);
+		return EF_BENCHMARK_ERROR_IO;
+	}
+	result = f_getfree(DISK_NAME ":", &free_clusters, &filesystem);
+	if (result != FR_OK) {
+		(void)benchmark_result(result);
+		return EF_BENCHMARK_ERROR_IO;
+	}
+	uint64_t free_bytes = (uint64_t)free_clusters * filesystem->csize * 512u;
+
+	return free_bytes < (uint64_t)size_mib * 1024u * 1024u + EF_BENCHMARK_CHUNK_SIZE
+		? EF_BENCHMARK_ERROR_SPACE : 0;
+}
+
+int ef_platform_benchmark_open(bool writing)
+{
+	return benchmark_media_ready()
+		? benchmark_result(f_open(&benchmark_file, BENCHMARK_PATH,
+					 writing ? FA_WRITE | FA_CREATE_NEW : FA_READ)) : -ENOMEDIUM;
+}
+
+int ef_platform_benchmark_transfer(bool writing, uint8_t *data, uint32_t size, uint32_t *transferred)
+{
+	UINT count = 0;
+	FRESULT result;
+
+	*transferred = 0;
+	if (!benchmark_media_ready()) {
+		return -ENOMEDIUM;
+	}
+	result = writing ? f_write(&benchmark_file, data, size, &count) : f_read(&benchmark_file, data, size, &count);
+	*transferred = count;
+	return benchmark_result(result);
+}
+
+int ef_platform_benchmark_close(void)
+{
+	return benchmark_media_ready() ? benchmark_result(f_close(&benchmark_file)) : -ENOMEDIUM;
+}
+
+int ef_platform_benchmark_remove(void)
+{
+	return benchmark_media_ready() ? benchmark_result(f_unlink(BENCHMARK_PATH)) : -ENOMEDIUM;
+}
+
+uint32_t ef_platform_benchmark_time(void)
+{
+	return (uint32_t)k_uptime_get();
+}
+
+bool ef_platform_benchmark_update(const ef_benchmark_t *status)
+{
+	bool present = benchmark_media_ready();
+	bool proceed;
+
+	k_mutex_lock(&snapshot_lock, K_FOREVER);
+	benchmark = *status;
+	benchmark.flags |= mounted && present ? EF_BENCHMARK_MOUNTED : 0;
+	benchmark.filesystem_result = status->error == EF_BENCHMARK_ERROR_IO ||
+				     status->error == EF_BENCHMARK_ERROR_CLEANUP ? benchmark_filesystem_result : 0;
+	proceed = !benchmark_cancelled;
+	k_mutex_unlock(&snapshot_lock);
+	/* Removal must be an error, not a successful user cancellation. The next I/O records ENOMEDIUM. */
+	return proceed;
+}
+#endif
+
+int ef_platform_benchmark_request(bool start, uint32_t size_mib)
+{
+#if EF_ENABLE_STORAGE_BENCHMARK
+	int action = BENCHMARK_REQUEST;
+	int detail = 0;
+
+	if (start ? size_mib == 0 || size_mib > EF_BENCHMARK_MAX_MIB : size_mib != 0) {
+		return EF_BENCHMARK_ERROR_SIZE;
+	}
+	k_mutex_lock(&snapshot_lock, K_FOREVER);
+	if (!start) {
+		benchmark_cancelled = benchmark_active;
+	} else if (request_pending || snapshot.busy || benchmark_active) {
+		detail = EF_BENCHMARK_ERROR_BUSY;
+	} else if (snapshot.msc_enabled) {
+		detail = EF_BENCHMARK_ERROR_USB;
+	} else if (!snapshot.sample_valid || !snapshot.initialized) {
+		detail = EF_BENCHMARK_ERROR_CARD;
+	} else {
+		ef_storage_t previous = snapshot;
+		ef_benchmark_t previous_benchmark = benchmark;
+
+		benchmark = (ef_benchmark_t){.state = EF_BENCHMARK_QUEUED,
+					    .target_bytes = size_mib * 1024u * 1024u};
+		benchmark_active = true;
+		benchmark_cancelled = false;
+		benchmark_media_lost = false;
+		benchmark_filesystem_result = 0;
+		snapshot.busy = true;
+		snapshot.sample_valid = false;
+		if (k_msgq_put(&requests, &action, K_NO_WAIT) != 0) {
+			LOG_ERR("Benchmark queue failed");
+			benchmark_active = false;
+			benchmark = previous_benchmark;
+			snapshot = previous;
+			detail = EF_BENCHMARK_ERROR_BUSY;
+		}
+	}
+	k_mutex_unlock(&snapshot_lock);
+	return detail;
+#else
+	ARG_UNUSED(start);
+	ARG_UNUSED(size_mib);
+	return -ENOTSUP;
+#endif
+}
+
+void ef_benchmark_report(uint8_t sequence, uint8_t out[EF_BENCHMARK_SIZE])
+{
+	ef_benchmark_t status = {0};
+
+#if EF_ENABLE_STORAGE_BENCHMARK
+	k_mutex_lock(&snapshot_lock, K_FOREVER);
+	status = benchmark;
+	k_mutex_unlock(&snapshot_lock);
+#endif
+	status.sequence = sequence;
+	ef_report_benchmark(&status, out);
+}
+
 void ef_storage_publish(const ef_storage_t *storage)
 {
 	k_mutex_lock(&snapshot_lock, K_FOREVER);
@@ -310,6 +492,9 @@ static void storage_worker(void *a, void *b, void *c)
 		int present = gpio_pin_get_dt(&detect);
 		int action = EF_STORAGE_NO_REQUEST;
 		int64_t now = k_uptime_get();
+#if EF_ENABLE_STORAGE_BENCHMARK
+		uint32_t benchmark_mib = 0;
+#endif
 
 		if (present < 0) {
 			LOG_ERR("SD card-detect read failed: %d", present);
@@ -326,8 +511,27 @@ static void storage_worker(void *a, void *b, void *c)
 			}
 			request_pending = false;
 		}
+#if EF_ENABLE_STORAGE_BENCHMARK
+		if (benchmark_active && k_msgq_get(&requests, &action, K_NO_WAIT) == 0) {
+			benchmark_mib = benchmark.target_bytes / (1024u * 1024u);
+		}
+#endif
 		k_mutex_unlock(&snapshot_lock);
 		k_mutex_lock(&media_lock, K_FOREVER);
+#if EF_ENABLE_STORAGE_BENCHMARK
+		if (benchmark_mib != 0) {
+			ef_benchmark_run(benchmark_mib);
+			k_mutex_lock(&snapshot_lock, K_FOREVER);
+			benchmark_active = false;
+			k_mutex_unlock(&snapshot_lock);
+			if (benchmark_media_lost) {
+				ef_storage_policy_poll(0, k_uptime_get(), EF_STORAGE_NO_REQUEST);
+			}
+			present = gpio_pin_get_dt(&detect);
+			now = k_uptime_get();
+			action = EF_STORAGE_NO_REQUEST;
+		}
+#endif
 		ef_storage_policy_poll(present, now, action);
 		k_mutex_unlock(&media_lock);
 		k_sleep(K_MSEC(present < 0 ? EF_STORAGE_RETRY_MS : STORAGE_POLL_MS));

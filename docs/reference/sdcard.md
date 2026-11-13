@@ -121,6 +121,33 @@ diagnosis, and do not label every uninitialized sample "no card".
 Update firmware and hosts together when migrating from SPI: current hosts require native SDMMC, and there is
 no automatic SPI fallback. Power-cycle the card as described in the wiring instructions.
 
+## Optional storage benchmark
+
+The dashboards offer a USB-controlled benchmark when capability bit 5 is advertised. It is disabled by default in
+CMake; the firmware build wrapper currently enables it. See [build configuration](../development/firmware.md#zephyr-target-build).
+It never runs at boot or on insertion. Authenticated BLE can read its progress but cannot start or cancel it.
+
+Back up the card before confirming a run. Choose 1–1024 MiB (dashboard default 32 MiB). The worker writes a deterministic
+pattern to `SD:/EFTEST.BIN`, closes it, reads and verifies it, then removes the file. An existing file of that name is
+never overwritten or removed. The volume must already be mounted for firmware; no formatting or repair occurs.
+Free-space checks reserve the requested size plus one 32 KiB chunk. The benchmark uses a 32 KiB internal-RAM buffer.
+
+The command acknowledges **queued admission**, not successful filesystem preflight or a passing benchmark.
+File-existence and free-space checks run asynchronously on the storage worker. Read Report `11` for phases,
+progress, measured throughput and terminal result; the [USB contract](usb-hid.md#report-id-11-storage-benchmark-status)
+defines its wire layout. Firmware storage samples are invalid during the run; settings, reboot and MSC handoff are
+blocked. Management remains responsive while the worker performs storage I/O.
+
+Write timing includes pattern generation, file allocation, writes and final close/sync. Read timing includes reads,
+verification and final close. Throughput is completed bytes divided by elapsed time, not a bus-frequency estimate.
+A zero elapsed time produces unavailable throughput (`--`), not a fabricated rate.
+
+Cancel requests stop at the next cooperative checkpoint and attempt cleanup. Short/failed I/O is never replayed.
+Observed removal stops further access to that media, including close/unlink; replacement media is not used for cleanup.
+A failed close or cleanup can leave `EFTEST.BIN` behind. Inspect it on a computer after safely releasing ownership;
+remove it manually before starting another run. Unplugging or power loss during writes can still corrupt the volume.
+The benchmark causes real card writes and wear; it provides neither power-loss atomicity nor sustained-workload qualification.
+
 ## Safety and ownership
 
 - Firmware and USB have exclusive ownership; they never mount/access the same medium concurrently.
@@ -129,9 +156,7 @@ no automatic SPI fallback. Power-cycle the card as described in the wiring instr
 - Physical removal during reads/writes can interrupt I/O and corrupt data. Detection does not prevent unplugging,
   make writes atomic, or provide power-loss recovery. Back up data and safely eject before returning USB ownership.
 - A failed mount returns an error rather than creating a new volume.
-- The starter does not create files, run write/verify benchmarks, or attempt repair.
-- FAT support includes filesystem read/write APIs for downstream product code; no write workload
-  is performed by this application.
+- Only an explicitly confirmed optional benchmark creates a temporary file; no automatic write workload or repair runs.
 - Downstream filesystem users must participate in ownership serialization, check every return value and close/sync
   files before handoff. Keep blocking storage work out of the management loop and application lock.
 - There is no implemented power-loss recovery or sustained-recording guarantee.

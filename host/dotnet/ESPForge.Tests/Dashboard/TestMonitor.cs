@@ -24,6 +24,8 @@ internal class TestMonitor : IDeviceMonitor
     public virtual void Reboot(CancellationToken cancel = default) => throw new NotSupportedException();
     public virtual void SetMsc(bool enabled, bool confirmEjected, CancellationToken cancel = default) =>
         throw new NotSupportedException();
+    public virtual void Benchmark(bool start, int sizeMib, CancellationToken cancel = default) =>
+        throw new NotSupportedException();
     public virtual WirelessResponse SetWireless(WirelessRequest settings, CancellationToken cancel = default) =>
         throw new NotSupportedException();
     public virtual IReadOnlyList<WirelessNetworkResponse> ScanWireless(CancellationToken cancel = default) =>

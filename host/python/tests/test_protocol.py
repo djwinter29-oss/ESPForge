@@ -16,6 +16,7 @@ from espforge.reports import (
     parse_control_result_report,
     parse_identity_report,
     parse_memory_report,
+    parse_benchmark_report,
     parse_status_report,
     IDENTITY_PAYLOAD_SIZE,
     CONFIGURATION_PAYLOAD_SIZE,
@@ -69,6 +70,34 @@ def control_result(opcode, status, error=0, transaction=11, data=b""):
 
 
 class ProtocolTests(unittest.TestCase):
+    def test_benchmark_progress_rates_and_terminal_validation(self):
+        report = bytearray(33)
+        report[:5] = bytes((11, 1, 9, 3, 3))
+        struct.pack_into("<IIIIII", report, 5, 1048576, 524288, 0, 500, 0, 0)
+        status = parse_benchmark_report(report)
+        self.assertTrue(status["active"])
+        self.assertEqual(status["progress_percent"], 25)
+        self.assertEqual(status["write_bytes_per_second"], 1048576)
+        self.assertIsNone(status["read_bytes_per_second"])
+        for offset, value in ((3, 9), (4, 4), (29, 7), (30, 1), (31, 1)):
+            bad = report.copy()
+            bad[offset] = value
+            with self.subTest(offset=offset), self.assertRaises(ValueError):
+                parse_benchmark_report(bad)
+        report[3:5] = bytes((6, 2))
+        struct.pack_into("<IIIIII", report, 5, 1048576, 1048576, 1048576, 1000, 500, 0)
+        self.assertEqual(parse_benchmark_report(report)["progress_percent"], 100)
+        report[4] |= 1
+        with self.assertRaises(ValueError):
+            parse_benchmark_report(report)
+
+    def test_benchmark_command_encodes_size_and_requires_valid_action(self):
+        request = build_control_command_report(7, 4, arguments=struct.pack("<BI", 1, 1024))
+        self.assertEqual(request[:10], bytes((20, 1, 7, 4, 0, 1, 0, 4, 0, 0)))
+        for action, size in ((1, 0), (1, 1025), (0, 1), (2, 32)):
+            with self.subTest(action=action, size=size), self.assertRaises(ValueError):
+                build_control_command_report(7, 4, arguments=struct.pack("<BI", action, size))
+
     def setUp(self):
         self.identity = parse_identity_report(identity_report())
 
@@ -245,7 +274,7 @@ class ProtocolTests(unittest.TestCase):
                 build_settings_command_report(invalid)
         with self.assertRaises(TypeError):
             build_settings_command_report(settings, force=True)
-        for opcode in (ControlOpcode.LED, ControlOpcode.SELF_TEST, ControlOpcode.TCP_PROOF):
+        for opcode in (ControlOpcode.LED, ControlOpcode.TCP_PROOF):
             with self.subTest(opcode=opcode), self.assertRaisesRegex(ValueError, "not available"):
                 build_control_command_report(1, opcode)
         for flags, arguments in ((1, struct.pack("<HBB", 240, 0, 0)), (0, struct.pack("<HBB", 240, 0, 4)),

@@ -52,6 +52,7 @@ Zephyr stack integration, hardware sampling, SD mounting, flash access and clock
 | --- | --- |
 | Control | Shared opcode dispatcher: status/error replies, Wi-Fi base/key staging, test/cancel/scan, settings, reboot, resync and unsupported opcodes |
 | Reports | Exact USB HID/BLE report byte layouts, little-endian fields and flags |
+| Benchmark | Temporary-file write/read verification and cancellation/cleanup safety over an in-memory backend |
 | Authentication | HMAC-SHA-256 command authentication, nonces, replay rejection and key-change handling |
 | Wireless staging | Staged Wi-Fi credentials, password rules, expiry, tested flag and key-only commits |
 | Cryptography | SHA-256/HMAC vectors |
@@ -71,6 +72,12 @@ runs the same command independently of the reusable [ESP32-S3 build](../../.gith
 Both must pass for firmware changes; a native test pass is not target-build or hardware evidence.
 
 ## Zephyr target build
+
+`EF_ENABLE_STORAGE_BENCHMARK` is a CMake option defaulting to `OFF`. The build wrapper currently supplies
+`-DEF_ENABLE_STORAGE_BENCHMARK=ON`; it enables dashboard-controlled runs, not automatic writes.
+For a manual build, choose `west build ... -- -DEF_ENABLE_STORAGE_BENCHMARK=OFF` to omit it.
+An existing CMake cache retains its chosen value, so use a fresh build directory to verify the default.
+See the [benchmark contract](../reference/sdcard.md#optional-storage-benchmark) before authorizing card writes.
 
 Zephyr 4.3.2 and imported module commits are selected by `west.yml`; SDK 0.17.4 is the toolchain.
 The wrappers bootstrap missing prerequisites on Debian/Ubuntu-compatible Linux, including Raspberry Pi OS.

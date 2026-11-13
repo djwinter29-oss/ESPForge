@@ -44,7 +44,9 @@ test("standalone dashboard labels profiles, active measurements, controls and ac
     assert.match(footer, /role="status" aria-live="polite"/);
     assert.match(footer, /id="status-message"[\s\S]*id="settings-note"/);
     assert.equal([...dashboard.matchAll(/id="settings-note"/g)].length, 1);
-    assert.doesNotMatch(dashboard, /self-test|benchmark|Benchmark|led-control|console/);
+    assert.doesNotMatch(dashboard, /self-test|led-control|console/);
+    assert.match(dashboard, /id="benchmark-start"/);
+    assert.match(dashboard, /id="benchmark-cancel"/);
     assert.match(dashboard, /id="msc-controls"/);
   }
   assert.doesNotMatch(html, /25 MHz|50 MHz|Core 1 \/ Core 2|PicoForge|RP2350/);
@@ -63,7 +65,8 @@ test("standalone dashboard labels profiles, active measurements, controls and ac
       "Wi-Fi", "Bluetooth"]);
   const storage = html.split('aria-labelledby="memory-title"')[1].split("</section>")[0];
   assert.deepEqual([...storage.matchAll(/<dt>([^<]+)<\/dt>/g)].map(match => match[1]),
-    ["Memory state", "Capacity", "Filesystem", "Manufacturer", "Product", "Serial"]);
+    ["Memory state", "Capacity", "Filesystem", "Manufacturer", "Product", "Serial",
+      "Benchmark state", "Write throughput", "Read/verify throughput", "Result"]);
   assert.doesNotMatch(html, /id="memory-mode"/);
   assert.match(html, /<details class="pin-map-disclosure">/);
   assert.match(html, /id="board-uart"[\s\S]*id="board-storage-pins"/);

@@ -16,7 +16,7 @@
  * present?: boolean | null, bus_clock_hz?: number | null, capacity_bytes?: number | null, manufacturer?: Manufacturer | null,
  * msc?: Msc | null, filesystem_format?: string | null}} Memory
  * @typedef {{active?: boolean, state?: string, sequence?: number, progress_percent?: number,
- * write_bytes_per_second?: number, read_bytes_per_second?: number, written_bytes?: number, target_bytes?: number,
+ * write_bytes_per_second?: number | null, read_bytes_per_second?: number | null, written_bytes?: number, target_bytes?: number,
  * read_bytes?: number, write_elapsed_ms?: number, read_elapsed_ms?: number, request_error?: number, error?: number,
  * filesystem_result?: number, file_remains?: boolean, mismatch_count?: number}} SelfTest
  * @typedef {BootSettings & {tcp_cli_enabled?: boolean, monitor_uart_index?: number, monitor_uart_tx_gpio?: number,
@@ -188,7 +188,8 @@ function diagnosticFields(result) {
   }
   const selfTest = clean(result.self_test, "self_test", [
     ["state", text], ["file_remains", flag],
-    ...fields("progress_percent write_bytes_per_second read_bytes_per_second written_bytes target_bytes read_bytes "
+    ...fields("write_bytes_per_second read_bytes_per_second", value => value === null || numeric(value)),
+    ...fields("progress_percent written_bytes target_bytes read_bytes "
       + "write_elapsed_ms read_elapsed_ms request_error error filesystem_result mismatch_count", numeric),
   ]);
   const configuration = clean(result.board_configuration, "board_configuration", [

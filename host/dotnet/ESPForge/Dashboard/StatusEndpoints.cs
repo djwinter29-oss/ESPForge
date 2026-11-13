@@ -24,6 +24,9 @@ internal static class StatusEndpoints
     /// <summary>Export raw SD blocks, or confirm the OS has ejected before returning to firmware.</summary>
     [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
     public sealed record MscRequest(bool? Enabled, bool ConfirmEjected = false);
+    /// <summary>Start authorized temporary-file writes or cancel the admitted run.</summary>
+    [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+    public sealed record BenchmarkRequest(bool? Start, int SizeMib = 0, bool Confirm = false);
     /// <summary>Every <c>/api</c> error body, matching the Python server.</summary>
     public sealed record ApiError(string Error);
     /// <summary>Empty success response.</summary>
@@ -150,6 +153,11 @@ internal static class StatusEndpoints
             .WithSummary("Export the SD card or return it after confirmed OS eject")
             .Produces<EmptyResponse>(StatusCodes.Status200OK)
             .Errors(CommandErrors);
+        endpoints.MapPost("/api/benchmark", Benchmark)
+            .WithName("StorageBenchmark")
+            .WithSummary("Start or cancel the optional temporary-file benchmark")
+            .Produces<EmptyResponse>(StatusCodes.Status200OK)
+            .Errors(CommandErrors);
         return endpoints;
     }
 
@@ -183,6 +191,16 @@ internal static class StatusEndpoints
     {
         if (!request.Confirm) throw new ApiInputException("Explicit confirm: true is required");
         return Results.Ok(dashboard.Monitor(board).ResyncCommand(true, cancel));
+    }
+
+    private static IResult Benchmark(BenchmarkRequest request, string? board, IDashboardBoards dashboard,
+        CancellationToken cancel)
+    {
+        if (request.Start is not { } start || (start
+                ? !request.Confirm || request.SizeMib is < 1 or > 1024 : request.SizeMib != 0))
+            throw new ApiInputException("Confirm file writes with 1..1024 MiB, or cancel with zero size");
+        dashboard.Monitor(board).Benchmark(start, request.SizeMib, cancel);
+        return Results.Ok(new EmptyResponse());
     }
 
     private static IResult SetMsc(MscRequest request, string? board, IDashboardBoards dashboard,

@@ -16,6 +16,33 @@ namespace ESPForge.Tests;
 public sealed class ProtocolTests
 {
     [Fact]
+    public void BenchmarkCountersRatesAndTerminalFactsAreValidated()
+    {
+        var report = new byte[33];
+        report[0] = 11; report[1] = 1; report[2] = 9; report[3] = 3; report[4] = 3;
+        BinaryPrimitives.WriteUInt32LittleEndian(report.AsSpan(5), 1048576);
+        BinaryPrimitives.WriteUInt32LittleEndian(report.AsSpan(9), 524288);
+        BinaryPrimitives.WriteUInt32LittleEndian(report.AsSpan(17), 500);
+        var status = HidProtocol.ParseBenchmarkReport(report);
+        Assert.True(status.Active);
+        Assert.Equal(25, status.ProgressPercent);
+        Assert.Equal(1048576, status.WriteBytesPerSecond);
+        Assert.Null(status.ReadBytesPerSecond);
+        foreach (var (offset, value) in new[] { (3, 9), (4, 4), (29, 7), (30, 1), (31, 1) })
+        {
+            var bad = (byte[])report.Clone();
+            bad[offset] = (byte)value;
+            Assert.Throws<InvalidDataException>(() => HidProtocol.ParseBenchmarkReport(bad));
+        }
+        report[3] = 6; report[4] = 2;
+        BinaryPrimitives.WriteUInt32LittleEndian(report.AsSpan(9), 1048576);
+        BinaryPrimitives.WriteUInt32LittleEndian(report.AsSpan(13), 1048576);
+        Assert.Equal(100, HidProtocol.ParseBenchmarkReport(report).ProgressPercent);
+        report[4] |= 1;
+        Assert.Throws<InvalidDataException>(() => HidProtocol.ParseBenchmarkReport(report));
+    }
+
+    [Fact]
     public void ParsesIdentityAndBoardConfigurationReports()
     {
         var identity = HidProtocol.ParseIdentityReport(IdentityReport());

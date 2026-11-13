@@ -13,6 +13,7 @@ This starter is intended to be ready for later hardware connection, not qualifie
 | SD card | Drivers, proposed wiring and safe mount code ready; **all SD hardware tests intentionally deferred** |
 | USB MSC | Native class builds and synthetic ownership controls are tested; GPIO8 detection, real media I/O, OS eject and reconnect remain unqualified; see [SD ownership](../reference/sdcard.md#usb-drive-handoff) |
 | Diagnostic shells | Native UART and raw TCP backends configured; real serial input, TCP admission/reconnect and concurrent HID/BLE responsiveness remain unqualified |
+| Storage benchmark | Portable temporary-file safety and host codecs tested; no physical benchmark, throughput, removal-during-write or cleanup qualification |
 | Dashboards | Explicit synthetic preview and protocol tests; no live-board screenshot or measurements |
 | Security | BLE Control key authentication without link encryption; unencrypted flash; physical USB/UART control; unauthenticated plaintext diagnostic TCP; loopback hosts |
 | Variants | Only N16R8 is configured; N4/N8/octal-flash modules and other S3 boards are not targets |

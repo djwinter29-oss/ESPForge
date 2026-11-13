@@ -140,7 +140,8 @@ see the [release guide](docs/deployment/release.md).
 
 - Physical USB, Wi-Fi, BLE and SD behavior still need [hardware qualification](docs/validation/qualification-gaps.md).
 - SD storage supports detected insertion/replacement and explicit [USB ownership handoff](docs/reference/sdcard.md).
-  There is **no automatic formatting** or write benchmark.
+  There is **no automatic formatting**. An optional [confirmed storage benchmark](docs/reference/sdcard.md#optional-storage-benchmark)
+  measures temporary-file write/read verification.
 - BLE commands are Control-key authenticated, but the link is **not encrypted**; flash credentials are also unencrypted.
 - Settings use a single flash record and are **not power-loss atomic**.
 - The TCP diagnostic shell is unauthenticated plaintext: use only on trusted networks, without port forwarding.

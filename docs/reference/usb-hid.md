@@ -48,7 +48,7 @@ Report ID `0` is unused. Unassigned IDs have no payload and require no padding.
 | IDs | Role | Assignments |
 | --- | --- | --- |
 | `1`-`9` | Device information and telemetry | `1` Identity; `2` Board Configuration; `3` Telemetry |
-| `10`-`19` | Application status | `10` Storage; `11` reserved benchmark report, not exposed; `12` Wireless |
+| `10`-`19` | Application status | `10` Storage; `11` optional benchmark; `12` Wireless |
 | `20`-`29` | Device and application control | `20` Control Command & Result |
 | `30`-`255` | Expansion | Unassigned |
 
@@ -68,7 +68,7 @@ The descriptor defines each exposed report's type and length.
 
 Read-only status MUST NOT perform an action. GET MUST NOT repeat an operation, consume a result or clear it.
 A control result acknowledges validation, completion or admission; Feature `12` owns subsequent Wi-Fi test
-and scan state. No storage ownership handoff or benchmark workflow exists.
+and scan state. MSC handoff and optional benchmarking use USB-only commands.
 
 ## Report IDs
 
@@ -152,18 +152,20 @@ Board model `1` requires MCU `3`; model `0` makes no board claim.
 | 2 | Persistent boot-settings save | Set |
 | 3 | Legacy SPI storage transport | Clear |
 | 4 | Native SDMMC storage transport | Set |
-| 5 | Storage benchmark | Clear |
+| 5 | Storage benchmark | Set only when built with the optional feature |
 | 6 | Forced settings save | Clear |
 | 7 | Wireless capability | Set |
 
-The current capability byte is `0x96`. Extension bits are unassigned: devices MUST transmit zero, and hosts
+The capability byte is `0x96`, or `0xB6` with benchmarking enabled.
+Extension bits are unassigned: devices MUST transmit zero, and hosts
 MUST NOT assign meaning to unknown extension bits. Firmware version is diagnostic information, not a substitute
 for capabilities.
 
 Bits 1 and 2 identify reboot and settings-save support. Bit 4 selects the six-signal native SDMMC layout of Report `2`;
 it does **not** imply USB mass-storage support. Report `2` board flag bit 6 advertises MSC ownership control.
-LED, benchmark and forced-save support are absent: opcodes `1` and `4` and opcode `5` flag bit 0 return
-Unsupported/error `4`. Report `11` is unavailable. Wireless capability does not imply that Wi-Fi is connected
+LED and forced-save support are absent: opcode `1` and opcode `5` flag bit 0 return
+Unsupported/error `4`. When bit 5 is clear, opcode `4` is also unsupported and Report `11` is unavailable.
+Wireless capability does not imply that Wi-Fi is connected
 or that BLE has started.
 
 ### Board Models
@@ -323,11 +325,39 @@ See [SD storage](sdcard.md) for mount lifecycle and data-safety rules.
 
 ## Report ID 11: Storage Benchmark Status
 
-ID `11` is reserved but absent from the USB descriptor. There is no benchmark payload or publication in this
-project. Capability bit 5 is clear and opcode `4` returns Unsupported/error `4`.
-The BLE `000b` characteristic is an empty reserved mirror; see [GATT layout](bluetooth.md#gatt-layout).
-A future benchmark requires an explicitly specified, versioned contract, not activation of an undocumented
-upstream workflow.
+When capability bit 5 is set, Input `11` publishes the retained benchmark snapshot nominally every 500 ms.
+Its payload is 32 bytes (33 including USB report ID). When disabled it is absent from the USB descriptor;
+the BLE `000b` mirror reads empty. When enabled, authenticated BLE reads the same payload without the ID.
+
+| Offset | Size | Field |
+| ---: | ---: | --- |
+| 0 | 1 | Layout version `1` |
+| 1 | 1 | Sequence |
+| 2 | 1 | State |
+| 3 | 1 | Flags: bit 0 temporary file may remain, bit 1 volume mounted; others zero |
+| 4 | 4 | Target bytes |
+| 8 | 4 | Written bytes |
+| 12 | 4 | Read/verified bytes |
+| 16 | 4 | Write elapsed milliseconds |
+| 20 | 4 | Read elapsed milliseconds |
+| 24 | 4 | Mismatched bytes |
+| 28 | 1 | Execution error |
+| 29 | 1 | FatFs result |
+| 30 | 2 | Zero padding |
+
+Multibyte fields are little-endian. States: `0` Idle, `1` Queued, `2` Preparing, `3` Writing, `4` Reading,
+`5` Cleanup, `6` Passed, `7` Failed, `8` Cancelled. States 1–5 are active.
+Errors: `0` none, `1` busy, `2` USB owner, `3` size, `4` card unavailable, `5` insufficient space,
+`6` existing temporary file, `7` I/O, `8` verification, `9` cleanup, `10` mount.
+Error and FatFs result are zero outside Failed; Failed requires a nonzero error.
+FatFs result is 0–19, retained for I/O/cleanup failures when available.
+
+Target is zero or an integral MiB, at most 1 GiB; read ≤ written ≤ target and mismatches ≤ read.
+Idle counters are zero; Queued has zero counters except target. Passed requires a nonzero target, complete
+write/read, zero mismatches and no remaining-file flag. Hosts must reject contradictory snapshots.
+Progress is `(written + read) * 50 / target` (zero for zero target).
+Rates are bytes multiplied by 1000 divided by the corresponding elapsed milliseconds; zero elapsed means unavailable.
+See [benchmark safety and timing](sdcard.md#optional-storage-benchmark) for cleanup and measurement boundaries.
 
 ## Report ID 20: Control Command & Result
 
@@ -353,7 +383,7 @@ Argument offsets in the following table are relative to the 64-byte `arguments` 
 | `1` | Reserved LED control | - | Unsupported/error `4` |
 | `2` | Reboot | Bit 0 confirmation required; other bits zero | All zero |
 | `3` | USB MSC ownership | Enable: `0`; return: bit 0 eject confirmation required | Byte 0: `1` USB, `0` firmware; bytes 1-63 zero |
-| `4` | Reserved storage benchmark | - | Unsupported/error `4` |
+| `4` | Optional storage benchmark | `0` | Byte 0 action: `1` start, `0` cancel; bytes 1-4 LE32 size MiB; bytes 5-63 zero |
 | `5` | Save settings and reboot | Bit 1 commits staged wireless values; bit 0 forced save is unsupported | Bytes 0-1 clock MHz; byte 2 SD profile `0`; byte 3 switches, bit 0 Wi-Fi / bit 1 BLE; bytes 4-63 zero |
 | `6` | Stage Wi-Fi SSID | `0` | Byte 0 length; bytes 1-32 raw SSID, length 1-32; remaining bytes zero. Length `0` clears network/password |
 | `7` | Stage Wi-Fi password | `0` | Byte 0 length; bytes 1-63 printable ASCII; remaining bytes zero. Length `0` selects open network, otherwise 8-63 |
@@ -390,6 +420,19 @@ An uncertain request MUST NOT be replayed; reconcile its result explicitly and o
 
 Busy/error `5`, detail `0`, means storage is already busy. Invalid/error `3` means no usable card is available.
 Other backend admission failures return Failed/error `6`. See [SD ownership](sdcard.md#usb-drive-handoff).
+
+### Benchmark Command Rules
+
+Opcode `4` is USB-only and requires capability bit 5; otherwise it returns Unsupported/error `4`.
+Start action `1` requires 1–1024 MiB. Cancel action `0` requires zero size; idle cancellation is a no-op.
+Flags and unused arguments must be zero. Bad layout returns Invalid/malformed; invalid size returns
+Invalid/argument, detail `3`.
+
+Completed with zero data means start/cancel admission, not a passing run. Busy details `1` and `2` identify
+worker conflict and USB ownership; Failed/detail `4` identifies an unavailable card. File-existence and
+free-space preflight happen on the worker after admission and can produce Failed Report `11`.
+Never replay uncertain requests; explicitly reconcile Feature `20`, then obtain fresh Reports `10` and `11`.
+See [benchmark safety](sdcard.md#optional-storage-benchmark) before confirming writes.
 
 ### Wireless Command Rules
 
@@ -470,7 +513,7 @@ Other successful result data is zero.
 | --- | --- | --- |
 | `0` Idle | `0` | No request; ID, opcode and data zero |
 | `1` Pending | `0` | Reserved processing state; not emitted by the current synchronous dispatcher |
-| `2` Completed | `0` | Operation finished or MSC/Wi-Fi test/scan admitted |
+| `2` Completed | `0` | Operation finished or MSC/benchmark/Wi-Fi test/scan admitted |
 | `3` Invalid | `1`, `2`, `3` | Malformed request, missing confirmation or invalid argument/state |
 | `4` Unsupported | `4`, `7` | Assigned but unavailable operation, or unassigned opcode |
 | `5` Busy | `5` | Conflicting operation |
@@ -483,7 +526,12 @@ Error enum: `0` none; `1` malformed flags/unused arguments; `2` missing confirma
 | ---: | --- | --- |
 | `0` | No additional detail | Default |
 | `1` | Storage worker busy or USB-owned medium | Busy/error `5`, opcodes `2`, `5` |
-| `2`-`15` | Reserved storage/benchmark details | - |
+| `2` | USB-owned medium | Busy/error `5`, opcode `4` |
+| `3` | Benchmark size invalid | Invalid/error `3`, opcode `4` |
+| `4` | Card unavailable | Failed/error `6`, opcode `4` |
+| `5`-`9` | Reserved command details; Report `11` execution errors are separate | - |
+| `10` | Mount unavailable | Failed/error `6`, opcode `4` |
+| `11`-`15` | Reserved | - |
 | `16` | Invalid SSID length | Invalid/error `3`, opcode `6` |
 | `17` | Invalid password length/characters | Invalid/error `3`, opcode `7` |
 | `18` | Invalid Control-key length | Invalid/error `3`, opcode `8` |
@@ -610,7 +658,7 @@ These conflicts are rejected, not silently queued for later.
 
 MSC block I/O and media lifecycle work run outside the application mutex and management loop.
 Reboot and settings-save return Busy/detail `1` while storage is busy or USB-owned.
-There is no CDC filesystem interface, benchmark worker or forced-save transaction.
+The optional benchmark runs on the serialized storage worker. There is no CDC filesystem interface or forced-save transaction.
 Downstream filesystem users must participate in storage ownership/locking. See
 [architecture](architecture.md#lifecycle-and-failure-handling) and
 [SD storage](sdcard.md#safety-and-ownership).
@@ -622,7 +670,8 @@ constraints. Feature `1` validates identity and memory accounting; Feature `2` v
 facts; Input `3` validates sensor/load availability; Input `10` validates initialization/capacity and zeroed
 unsupported fields. Unsupported layouts and failed mandatory reads are explicit errors, not zero-filled fallbacks.
 
-Only Feature `20` is writable. Hosts MUST hide or disable LED, benchmark, forced-save and TCP CLI controls.
+Only Feature `20` is writable. Hosts MUST hide or disable LED, forced-save and TCP CLI controls.
+Benchmark writes require capability bit 5, USB transport and fresh benchmark/storage state.
 MSC requires Report `2` flag bit 6, USB transport and fresh, settled ownership status.
 For settings-only save, leave flag bit 1 clear; for credential commit, set it explicitly.
 Verify the saved settings and commit mask in the completion result, reconnect to the same UID, and reread

@@ -125,8 +125,32 @@ void test_unassigned_and_unsupported_opcodes(void)
 	assert_result(usb(0, 0, NULL, 0, 0), EF_STATUS_UNSUPPORTED, EF_ERROR_OPCODE, 0);
 	assert_result(usb(14, 0, NULL, 0, 0), EF_STATUS_UNSUPPORTED, EF_ERROR_OPCODE, 0);
 	assert_result(usb(EF_OP_LED, 0, NULL, 0, 0), EF_STATUS_UNSUPPORTED, EF_ERROR_CAPABILITY, 0);
+#if !EF_ENABLE_STORAGE_BENCHMARK
 	assert_result(usb(EF_OP_BENCHMARK, 0, NULL, 0, 0), EF_STATUS_UNSUPPORTED, EF_ERROR_CAPABILITY, 0);
+#endif
 	assert_result(usb(EF_OP_TCP_PROOF, 0, NULL, 0, 0), EF_STATUS_UNSUPPORTED, EF_ERROR_CAPABILITY, 0);
+}
+
+void test_benchmark_admission_size_and_transport_rules(void)
+{
+#if EF_ENABLE_STORAGE_BENCHMARK
+	const uint8_t start[5] = {1, 32, 0, 0, 0};
+	const uint8_t invalid[5] = {1, 1, 4, 0, 0};
+
+	ef_platform_benchmark_request_ExpectAndReturn(true, 32, 0);
+	assert_result(usb(EF_OP_BENCHMARK, 0, start, sizeof(start), 0), EF_STATUS_COMPLETED, EF_ERROR_NONE, 0);
+	ef_platform_benchmark_request_ExpectAndReturn(false, 0, 0);
+	assert_result(usb(EF_OP_BENCHMARK, 0, NULL, 0, 0), EF_STATUS_COMPLETED, EF_ERROR_NONE, 0);
+	assert_result(usb(EF_OP_BENCHMARK, 0, invalid, sizeof(invalid), 0),
+		      EF_STATUS_INVALID, EF_ERROR_ARGUMENT, 3);
+	assert_result(usb(EF_OP_BENCHMARK, 1, start, sizeof(start), 0),
+		      EF_STATUS_INVALID, EF_ERROR_MALFORMED, 0);
+	ef_platform_benchmark_request_ExpectAndReturn(true, 32, 2);
+	assert_result(usb(EF_OP_BENCHMARK, 0, start, sizeof(start), 0), EF_STATUS_BUSY, EF_ERROR_BUSY, 2);
+	ef_platform_benchmark_request_ExpectAndReturn(true, 32, 4);
+	assert_result(usb(EF_OP_BENCHMARK, 0, start, sizeof(start), 0), EF_STATUS_FAILED, EF_ERROR_FAILED, 4);
+#endif
+	assert_result(ble(EF_OP_BENCHMARK, 0, NULL, 0), EF_STATUS_UNSUPPORTED, EF_ERROR_CAPABILITY, 0);
 }
 
 void test_msc_requires_confirmed_return_and_rejects_malformed_or_unsafe_actions(void)

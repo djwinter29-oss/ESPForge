@@ -105,6 +105,13 @@ class FalseyBoards(FakeBoards):
 
 # Malformed requests every ESPForge host must reject with 400 before any board lookup.
 INVALID_REQUESTS = [
+    {"route": "/api/benchmark", "body": {"start": True, "size_mib": 32}},
+    {"route": "/api/benchmark", "body": {"start": True, "size_mib": 0, "confirm": True}},
+    {"route": "/api/benchmark", "body": {"start": True, "size_mib": 1025, "confirm": True}},
+    {"route": "/api/benchmark", "body": {"start": False, "size_mib": 1}},
+    {"route": "/api/benchmark", "body": {"start": False, "confirm": "false"}},
+    {"route": "/api/benchmark", "body": {"start": True, "size_mib": True, "confirm": True}},
+    {"route": "/api/benchmark", "body": {"start": False, "force": True}},
     {"route": "/api/wireless/test", "body": {"ssid": "ESP32", "password": None}},
     {"route": "/api/wireless/test", "body": {"ssid": "ESP32", "passwrod": "password"}},
     {"route": "/api/wireless/test", "body": {"ssid": "ESP32", "password": "password", "unknown": True}},

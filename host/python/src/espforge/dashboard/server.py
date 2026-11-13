@@ -183,6 +183,19 @@ def _register_api_routes(app: Flask, boards: DashboardBoards) -> None:
             return jsonify({"error": "Safely eject the USB drive and supply confirm_ejected: true"}), 400
         return jsonify(_board(boards).set_msc(payload["enabled"], payload.get("confirm_ejected", False)))
 
+    @app.post("/api/benchmark")
+    def benchmark() -> Response | tuple[Response, int]:
+        payload = request.get_json(silent=True)
+        if (not isinstance(payload, dict) or set(payload) - {"start", "size_mib", "confirm"}
+                or type(payload.get("start")) is not bool or type(payload.get("size_mib", 0)) is not int
+                or type(payload.get("confirm", False)) is not bool):
+            return jsonify({"error": "Expected benchmark start boolean and integer size_mib"}), 400
+        start, size = payload["start"], payload.get("size_mib", 0)
+        if (start and (payload.get("confirm") is not True or not 1 <= size <= 1024)
+                or not start and size != 0):
+            return jsonify({"error": "Confirm file writes with 1..1024 MiB, or cancel with zero size"}), 400
+        return jsonify(_board(boards).benchmark(start, size))
+
     @app.post("/api/control/resync")
     def resync_control() -> Response | tuple[Response, int]:
         payload = request.get_json(silent=True)

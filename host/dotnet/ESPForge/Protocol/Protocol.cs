@@ -60,7 +60,21 @@ public sealed record MemoryStatusResponse(byte Sequence, bool Configured, bool P
 public sealed record MscStatusResponse(bool Enabled, bool TransitionPending, bool RequestRejected);
 
 /// <summary>One parsed HID input report; exactly one section is set.</summary>
-internal sealed record InputReport(RuntimeStatusResponse? Runtime, MemoryStatusResponse? Memory);
+internal sealed record InputReport(RuntimeStatusResponse? Runtime, MemoryStatusResponse? Memory,
+    BenchmarkStatusResponse? SelfTest = null);
+
+/// <summary>Retained temporary-file benchmark progress from Input report 11.</summary>
+public sealed record BenchmarkStatusResponse(byte Sequence, byte StateId, uint TargetBytes, uint WrittenBytes,
+    uint ReadBytes, uint WriteElapsedMs, uint ReadElapsedMs, uint MismatchCount, byte Error, byte FilesystemResult,
+    bool FileRemains, bool VolumeMounted)
+{
+    public string State => new[] { "idle", "queued", "preparing", "writing", "reading", "cleanup",
+        "passed", "failed", "cancelled" }[StateId];
+    public bool Active => StateId is >= 1 and <= 5;
+    public double ProgressPercent => TargetBytes == 0 ? 0 : ((double)WrittenBytes + ReadBytes) * 50 / TargetBytes;
+    public double? WriteBytesPerSecond => WriteElapsedMs == 0 ? null : (double)WrittenBytes * 1000 / WriteElapsedMs;
+    public double? ReadBytesPerSecond => ReadElapsedMs == 0 ? null : (double)ReadBytes * 1000 / ReadElapsedMs;
+}
 
 /// <summary>
 /// Current HID connection and the most recent hardware/runtime reports, stored in the JSON shape the Python server
@@ -72,12 +86,10 @@ public sealed record StatusResponse(bool Connected, string? Error, HardwareInfoR
     bool TelemetryStale = true, bool StorageStale = true,
     bool CommandOutcomeUncertain = false, bool RebootPending = false, bool Reconnecting = false,
     string? WirelessPhase = null, WirelessStatusResponse? Wireless = null, string? WirelessError = null,
-    bool CommandResyncSupported = true, string? SettingsMessage = null, bool WirelessCleanupRequired = false)
+    bool CommandResyncSupported = true, string? SettingsMessage = null, bool WirelessCleanupRequired = false,
+    BenchmarkStatusResponse? SelfTest = null, bool SelfTestStale = true)
 {
     public bool SettingsSupported => BoardConfiguration is not null;
-    /// <summary>Kept for the shared dashboard JSON shape; ESPForge publishes no Report 11 benchmark.</summary>
-    public object? SelfTest => null;
-    public bool SelfTestStale => true;
 }
 
 internal readonly record struct ControlCommandReference(byte TransactionId, Opcode Opcode);
@@ -176,6 +188,8 @@ internal static partial class HidProtocol
     public const byte ConfigurationReportId = 2;
     public const byte TelemetryReportId = 3;
     public const byte StorageReportId = 10;
+    public const byte BenchmarkReportId = 11;
+    public const int BenchmarkPayloadSize = 32;
     public const byte ControlReportId = 20;
     public const byte ReportVersion = 1;
     public const int IdentityPayloadSize = 26;
@@ -246,7 +260,7 @@ internal static partial class HidProtocol
         Require(productId == FamilyId, $"unsupported ESPForge product ID 0x{productId:X4}");
         var capabilities = payload[17];
         var sdmmc = (capabilities & CapabilitySdmmc) != 0;
-        const byte supported = CapabilityReboot | CapabilitySettings | CapabilitySdmmc | CapabilityWireless;
+        const byte supported = CapabilityReboot | CapabilitySettings | CapabilitySdmmc | CapabilitySelfTest | CapabilityWireless;
         Require(sdmmc && (capabilities & ~supported) == 0, "invalid HID capability flags");
         var mcuId = payload[14];
         var boardModel = payload[15];
@@ -296,6 +310,29 @@ internal static partial class HidProtocol
             Require(pin == byte.MaxValue || pin < gpioLimit, "GPIO is invalid for the reported MCU");
         Require(gpios.All(pin => pin != byte.MaxValue), "4-bit SDMMC requires six configured storage GPIOs");
         return new(clock, sdProfile, uartIndex, tx, rx, gpios, flags, payload[14], ledGpio, detectGpio);
+    }
+
+    public static BenchmarkStatusResponse ParseBenchmarkReport(ReadOnlySpan<byte> report)
+    {
+        var p = InputPayload(report, BenchmarkReportId, BenchmarkPayloadSize);
+        var target = BinaryPrimitives.ReadUInt32LittleEndian(p[4..]);
+        var written = BinaryPrimitives.ReadUInt32LittleEndian(p[8..]);
+        var read = BinaryPrimitives.ReadUInt32LittleEndian(p[12..]);
+        var writeMs = BinaryPrimitives.ReadUInt32LittleEndian(p[16..]);
+        var readMs = BinaryPrimitives.ReadUInt32LittleEndian(p[20..]);
+        var mismatches = BinaryPrimitives.ReadUInt32LittleEndian(p[24..]);
+        var state = p[2];
+        var flags = p[3];
+        Require(p[0] == 1 && state <= 8 && (flags & ~3) == 0 && p[28] <= 10 && p[29] <= 19
+            && p[30] == 0 && p[31] == 0 && target <= 1024u * 1024 * 1024 && target % (1024 * 1024) == 0
+            && written <= target && read <= written && mismatches <= read && (state == 7) == (p[28] != 0)
+            && (state == 7 || p[29] == 0)
+            && (state != 0 || target + (ulong)written + read + writeMs + readMs + mismatches == 0)
+            && (state != 1 || written + (ulong)read + writeMs + readMs + mismatches == 0)
+            && (state != 6 || target > 0 && written == target && read == target && mismatches == 0 && (flags & 1) == 0),
+            "invalid HID benchmark lifecycle or counters");
+        return new(p[1], state, target, written, read, writeMs, readMs, mismatches, p[28], p[29],
+            (flags & 1) != 0, (flags & 2) != 0);
     }
 
     public static RuntimeStatusResponse ParseTelemetryReport(ReadOnlySpan<byte> report)

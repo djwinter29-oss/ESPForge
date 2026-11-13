@@ -33,6 +33,9 @@ static const uint8_t report_descriptor[] = {
 	FEATURE(EF_REPORT_CONFIG, EF_CONFIG_SIZE),
 	INPUT(EF_REPORT_TELEMETRY, EF_TELEMETRY_SIZE),
 	INPUT(EF_REPORT_STORAGE, EF_STORAGE_SIZE),
+#if EF_ENABLE_STORAGE_BENCHMARK
+	INPUT(EF_REPORT_BENCHMARK, EF_BENCHMARK_SIZE),
+#endif
 	FEATURE(EF_REPORT_CONTROL, EF_CONTROL_SIZE),
 	FEATURE(EF_REPORT_WIRELESS, EF_WIRELESS_SIZE),
 	0xC0,
@@ -64,8 +67,10 @@ static atomic_t in_flight;
 static uint8_t input[1 + EF_STORAGE_SIZE] __aligned(4);
 static uint8_t telemetry_sequence;
 static uint8_t storage_sequence;
+static uint8_t benchmark_sequence;
 static int64_t telemetry_at;
 static int64_t storage_at;
+static int64_t benchmark_at;
 
 static void iface_ready(const struct device *dev, const bool is_ready)
 {
@@ -88,6 +93,11 @@ static int get_report(const struct device *dev, const uint8_t type, const uint8_
 		       id == EF_REPORT_CONTROL	? EF_CONTROL_SIZE : 0;
 	} else if (type == HID_REPORT_TYPE_INPUT) {
 		size = id == EF_REPORT_TELEMETRY ? EF_TELEMETRY_SIZE : id == EF_REPORT_STORAGE ? EF_STORAGE_SIZE : 0;
+#if EF_ENABLE_STORAGE_BENCHMARK
+		if (id == EF_REPORT_BENCHMARK) {
+			size = EF_BENCHMARK_SIZE;
+		}
+#endif
 	} else {
 		size = 0;
 	}
@@ -115,6 +125,9 @@ static int get_report(const struct device *dev, const uint8_t type, const uint8_
 	case EF_REPORT_TELEMETRY:
 		/* GET_REPORT samples carry sequence 0; only published Input reports advance the sequence. */
 		ef_telemetry_report(0, buf + 1);
+		break;
+	case EF_REPORT_BENCHMARK:
+		ef_benchmark_report(0, buf + 1);
 		break;
 	default:
 		ef_storage_report(0, buf + 1);
@@ -165,6 +178,9 @@ static bool submit(uint8_t id)
 	if (id == EF_REPORT_TELEMETRY) {
 		ef_telemetry_report(++telemetry_sequence, input + 1);
 		size = 1 + EF_TELEMETRY_SIZE;
+	} else if (id == EF_REPORT_BENCHMARK) {
+		ef_benchmark_report(++benchmark_sequence, input + 1);
+		size = 1 + EF_BENCHMARK_SIZE;
 	} else {
 		ef_storage_report(++storage_sequence, input + 1);
 		size = 1 + EF_STORAGE_SIZE;
@@ -187,6 +203,8 @@ void ef_usb_poll(void)
 		telemetry_at = now;
 	} else if (now - storage_at >= STORAGE_PERIOD_MS && submit(EF_REPORT_STORAGE)) {
 		storage_at = now;
+	} else if (EF_ENABLE_STORAGE_BENCHMARK && now - benchmark_at >= STORAGE_PERIOD_MS && submit(EF_REPORT_BENCHMARK)) {
+		benchmark_at = now;
 	}
 }
 

@@ -10,7 +10,7 @@ import { REASON } from "./errors.mjs";
 
 const { COMMAND_BLOCKED: BLOCKED, CAPABILITY_UNAVAILABLE: NO_CAPABILITY } = REASON;
 /** @typedef {import("./reducer.mjs").DashboardState} DashboardState */
-/** @typedef {"reboot" | "settings" | "wireless" | "msc"} Operation */
+/** @typedef {"reboot" | "settings" | "wireless" | "msc" | "benchmark" | "benchmark-cancel"} Operation */
 
 /** @brief True while a control request or an accepted wireless lifecycle has no known outcome.
  * @param {DashboardState} state */
@@ -35,15 +35,23 @@ export function deriveOperationEligibility(state) {
   const bluetooth = state.link === "ble";
   const caps = state.hardware?.capabilities ?? 0;
   const storageFresh = state.freshness?.[10] === "fresh" && Boolean(state.memory);
+  const benchmarkSupported = Boolean(caps & CAP.SELF_TEST);
+  const benchmarkFresh = state.freshness?.[11] === "fresh" && Boolean(state.self_test);
+  const benchmarkPending = benchmarkSupported && (!benchmarkFresh || state.self_test?.active);
   const storageReady = storageFresh && state.memory?.sample_valid !== false
-    && !state.memory?.msc?.enabled && !state.memory?.msc?.transition_pending;
+    && !state.memory?.msc?.enabled && !state.memory?.msc?.transition_pending && !benchmarkPending;
   const blocked = commandBlocked(state) || Boolean(state.wireless_busy);
   return {
     blocked,
     storageReady,
+    benchmarkSupported,
+    benchmarkReady: !blocked && !bluetooth && benchmarkSupported && benchmarkFresh && storageReady
+      && state.memory?.initialized === true,
+    benchmarkCancelReady: !blocked && !bluetooth && benchmarkSupported && benchmarkFresh
+      && state.self_test?.active === true,
     settingsReady: !blocked && storageReady,
     wirelessReady: !blocked && !bluetooth && storageReady && Boolean(caps & CAP.WIRELESS),
-    mscReady: !blocked && !bluetooth && storageFresh && Boolean((state.settings?.board_flags ?? 0) & 64)
+    mscReady: !blocked && !bluetooth && !benchmarkPending && storageFresh && Boolean((state.settings?.board_flags ?? 0) & 64)
       && !state.memory?.msc?.transition_pending && (state.memory?.msc?.enabled || state.memory?.sample_valid !== false),
     connectionLocked: Boolean(state.connected || state.reconnecting || commandPending(state)
       || state.outcome_uncertain),
@@ -62,6 +70,8 @@ const RULES = {
     : !(caps & CAP.SETTINGS) ? NO_CAPABILITY : e.blocked ? BLOCKED : null,
   wireless: (state, e) => e.wirelessReady ? null : REASON.WIRELESS_STORAGE,
   msc: (state, e) => e.mscReady ? null : BLOCKED,
+  benchmark: (state, e) => e.benchmarkReady ? null : BLOCKED,
+  "benchmark-cancel": (state, e) => e.benchmarkCancelReady ? null : BLOCKED,
 };
 
 /**

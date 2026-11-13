@@ -42,8 +42,17 @@ Python includes `control_result`, while .NET returns `{}`. Poll `/api/status` fo
 
 Unsupported routes are not served: `/console`, `/api/console`, `/api/led`,
 `/api/msc/force-return` and `/api/self-test`. The UI never requests them.
-Reserved status values remain `self_test: null` and
-`wireless.tcp_cli_enabled: false`; their presence does not enable unsupported features.
+
+`POST /api/benchmark` accepts `{"start":true,"size_mib":32,"confirm":true}` or
+`{"start":false,"size_mib":0}`. Start requires 1–1024 MiB and explicit write confirmation.
+Fields are strictly typed, extras are rejected (HTTP 400), and cancel requires zero size.
+Unavailable/stale/busy admission is HTTP 409; transport errors are HTTP 503 and may require explicit resync.
+HTTP 200 acknowledges admission (Python `control_result`, .NET `{}`), not a passing run.
+Poll `self_test` and `self_test_stale` for [Report 11](../../docs/reference/usb-hid.md#report-id-11-storage-benchmark-status)
+progress/result. `self_test` is null when absent or stale; zero-duration throughput is null.
+Controls remain hidden without capability bit 5 or detected storage; BLE is read-only.
+Never automatically replay a start/cancel request.
+`wireless.tcp_cli_enabled` remains false; the independent diagnostic shell has no dashboard bridge.
 
 Unavailable per-core load, temperature, card presence, bus clock and capacity diagnostics use JSON `null`.
 The dashboard displays unavailable measurements as `--` without a footer warning; malformed diagnostic values

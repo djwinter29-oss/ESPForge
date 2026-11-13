@@ -16,6 +16,35 @@ from .common import (
     STORAGE_REPORT_ID,
 )
 from .common import _input_payload
+from .common import SELF_TEST_PAYLOAD_SIZE, SELF_TEST_REPORT_ID
+from .models import BenchmarkStatus
+
+
+def parse_benchmark_report(report: bytes | bytearray | list[int]) -> BenchmarkStatus:
+    """Decode bounded counters and trustworthy lifecycle facts from Input report 11."""
+    payload = _input_payload(report, SELF_TEST_REPORT_ID, SELF_TEST_PAYLOAD_SIZE)
+    version, sequence, state, flags = payload[:4]
+    values = [int.from_bytes(payload[offset:offset + 4], "little") for offset in range(4, 28, 4)]
+    target, written, read, write_ms, read_ms, mismatches = values
+    error, filesystem_result, *reserved = payload[28:]
+    if (version != 1 or state > 8 or flags & ~3 or error > 10 or filesystem_result > 19 or any(reserved)
+            or target > 1024 ** 3 or target % 1024 ** 2 or written > target or read > written
+            or mismatches > read or (state == 7) != bool(error) or state != 7 and filesystem_result != 0
+            or state == 0 and any(values)
+            or state == 1 and any(values[1:])
+            or state == 6 and (not target or written != target or read != target or mismatches or flags & 1)):
+        raise ValueError("invalid HID benchmark lifecycle or counters")
+    states = ("idle", "queued", "preparing", "writing", "reading", "cleanup", "passed", "failed", "cancelled")
+    return {
+        "sequence": sequence, "state": states[state], "state_id": state, "active": 1 <= state <= 5,
+        "target_bytes": target, "written_bytes": written, "read_bytes": read,
+        "write_elapsed_ms": write_ms, "read_elapsed_ms": read_ms, "mismatch_count": mismatches,
+        "error": error, "filesystem_result": filesystem_result, "file_remains": bool(flags & 1),
+        "volume_mounted": bool(flags & 2),
+        "progress_percent": (written + read) * 50 / target if target else 0,
+        "write_bytes_per_second": written * 1000 / write_ms if write_ms else None,
+        "read_bytes_per_second": read * 1000 / read_ms if read_ms else None,
+    }
 
 
 def parse_memory_report(

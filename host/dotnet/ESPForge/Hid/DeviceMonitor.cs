@@ -21,6 +21,7 @@ internal interface IDeviceMonitor : IDisposable, IAsyncDisposable
     BootSettingsResponse SetSettings(BootSettingsResponse settings, CancellationToken cancel = default);
     void Reboot(CancellationToken cancel = default);
     void SetMsc(bool enabled, bool confirmEjected, CancellationToken cancel = default);
+    void Benchmark(bool start, int sizeMib, CancellationToken cancel = default);
     WirelessResponse SetWireless(WirelessRequest settings, CancellationToken cancel = default);
     IReadOnlyList<WirelessNetworkResponse> ScanWireless(CancellationToken cancel = default);
     WirelessOperationResponse TestWireless(string ssid, string password, string? ssidHex = null,
@@ -44,6 +45,7 @@ internal interface IHidCommands
     BootSettingsResponse SetSettings(BootSettingsResponse settings);
     void Reboot();
     void SetMsc(bool enabled, bool confirmEjected);
+    void Benchmark(bool start, int sizeMib);
     WirelessStatusResponse ReadWireless();
     CommandResyncResult? ReconcileOutcome(ControlCommandReference? command,
         WirelessOperationReference? wirelessOperation);
@@ -87,6 +89,7 @@ internal sealed class DeviceMonitor : BackgroundService, IDeviceMonitor
     // TimeProvider timestamps of the last report per section, guarded by gate; 0 means none since connecting.
     private long telemetryReceipt;
     private long storageReceipt;
+    private long benchmarkReceipt;
     private long wirelessReceipt;
     private ControlCommandReference? uncertainCommand;
     private WirelessOperationReference? uncertainWirelessOperation;
@@ -395,8 +398,29 @@ internal sealed class DeviceMonitor : BackgroundService, IDeviceMonitor
     private void RequireFirmwareStorage()
     {
         var status = Snapshot;
-        if (status.StorageStale || status.Memory is not { SampleValid: true, Msc: { Enabled: false, TransitionPending: false } })
+        if (status.StorageStale || status.SelfTest?.Active == true
+            || status.Memory is not { SampleValid: true, Msc: { Enabled: false, TransitionPending: false } })
             throw new BoardStateException("Wait for idle firmware-owned storage; safely eject and return the USB drive first");
+    }
+
+    public void Benchmark(bool start, int sizeMib, CancellationToken cancel = default)
+    {
+        using (Device(cancel))
+        {
+            var status = Snapshot;
+            if (status.Hardware is null || (status.Hardware.Capabilities & HidProtocol.CapabilitySelfTest) == 0)
+                throw new BoardStateException("Storage benchmark is unavailable on this firmware");
+            if (status.SelfTestStale || status.SelfTest is null)
+                throw new BoardStateException("Waiting for fresh benchmark status");
+            if (start)
+            {
+                RequireFirmwareStorage();
+                if (status.Memory?.Initialized != true || status.SelfTest.Active)
+                    throw new BoardStateException("Mount a card and wait for the current benchmark to finish");
+            }
+            var client = Client();
+            ExecuteCommand(client, () => client.Benchmark(start, sizeMib));
+        }
     }
 
     public void SetMsc(bool enabled, bool confirmEjected, CancellationToken cancel = default)
@@ -465,7 +489,7 @@ internal sealed class DeviceMonitor : BackgroundService, IDeviceMonitor
                 lock (gate)
                 {
                     activeClient = client;
-                    telemetryReceipt = storageReceipt = wirelessReceipt = 0;
+                    telemetryReceipt = storageReceipt = benchmarkReceipt = wirelessReceipt = 0;
                     var uncertain = snapshot.CommandOutcomeUncertain;
                     snapshot = new(true, uncertain ? UncertainMessage : null, hardware,
                         BoardConfiguration: configuration, CommandOutcomeUncertain: uncertain,
@@ -576,10 +600,12 @@ internal sealed class DeviceMonitor : BackgroundService, IDeviceMonitor
         {
             if (report.Runtime is not null) telemetryReceipt = receivedAt;
             if (report.Memory is not null) storageReceipt = receivedAt;
+            if (report.SelfTest is not null) benchmarkReceipt = receivedAt;
             snapshot = snapshot with
             {
                 Runtime = report.Runtime ?? snapshot.Runtime,
                 Memory = report.Memory ?? snapshot.Memory,
+                SelfTest = report.SelfTest ?? snapshot.SelfTest,
                 UpdatedAt = time.GetUtcNow()
             };
         }
@@ -591,12 +617,15 @@ internal sealed class DeviceMonitor : BackgroundService, IDeviceMonitor
         if (!snapshot.Connected) return snapshot;
         var telemetryStale = IsStale(telemetryReceipt, TelemetryMaximumAgeMs);
         var storageStale = IsStale(storageReceipt, StorageMaximumAgeMs);
+        var benchmarkStale = IsStale(benchmarkReceipt, StorageMaximumAgeMs);
         return snapshot with
         {
             Runtime = telemetryStale ? null : snapshot.Runtime,
             Memory = storageStale ? null : snapshot.Memory,
             TelemetryStale = telemetryStale,
             StorageStale = storageStale,
+            SelfTest = benchmarkStale ? null : snapshot.SelfTest,
+            SelfTestStale = benchmarkStale,
             WirelessError = snapshot.WirelessError ??
                 (snapshot.Wireless is not null && IsStale(wirelessReceipt, WirelessMaximumAgeMs)
                     ? "Wireless status is stale; wait for a fresh report" : null)
@@ -610,7 +639,7 @@ internal sealed class DeviceMonitor : BackgroundService, IDeviceMonitor
         {
             var uncertain = snapshot.CommandOutcomeUncertain;
             activeClient = null;
-            telemetryReceipt = storageReceipt = 0;
+            telemetryReceipt = storageReceipt = benchmarkReceipt = 0;
             snapshot = new(false, uncertain ? UncertainMessage
                     : IsDeviceError(error) ? error.Message : $"Internal monitor error: {error.Message}",
                 CommandOutcomeUncertain: uncertain, WirelessCleanupRequired: snapshot.WirelessCleanupRequired);
@@ -664,6 +693,7 @@ internal sealed class DeviceMonitor : BackgroundService, IDeviceMonitor
         lock (gate)
         {
             if (result.Opcode == Opcode.Msc) storageReceipt = 0;
+            if (result.Opcode == Opcode.SelfTest) storageReceipt = benchmarkReceipt = 0;
             snapshot = snapshot with
             {
                 RebootPending = snapshot.RebootPending || result.Opcode is Opcode.Reboot or Opcode.SaveSettings,

@@ -45,6 +45,8 @@ void ef_telemetry_init(void);
 void ef_telemetry_poll(void);
 
 void ef_storage_init(void);
+/** Read retained benchmark progress without acquiring the media lock. */
+void ef_benchmark_report(uint8_t sequence, uint8_t out[EF_BENCHMARK_SIZE]);
 /** Let the storage worker change owners after this Feature 20 result has left the control path. */
 void ef_storage_result_read(uint8_t transaction);
 /** Refresh native USB after confirmed handoff; called only by the storage worker. */

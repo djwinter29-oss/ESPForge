@@ -84,6 +84,20 @@ public sealed class DashboardApplicationTests
         using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
         using var shared = JsonDocument.Parse(File.ReadAllText(
             Path.Combine(AppContext.BaseDirectory, "host-invalid-requests.json")));
+        foreach (var body in new[]
+        {
+            "{\"start\":true,\"size_mib\":32}",
+            "{\"start\":true,\"size_mib\":0,\"confirm\":true}",
+            "{\"start\":true,\"size_mib\":1025,\"confirm\":true}",
+            "{\"start\":false,\"size_mib\":1}",
+            "{\"start\":false,\"confirm\":\"false\"}",
+            "{\"start\":true,\"size_mib\":true,\"confirm\":true}",
+            "{\"start\":false,\"force\":true}"
+        })
+        {
+            using var request = new StringContent(body, Encoding.UTF8, "application/json");
+            Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsync("/api/benchmark", request)).StatusCode);
+        }
         foreach (var state in new Exception?[]
         {
             new BoardNotFoundException("unknown"), new IOException("disconnected"),

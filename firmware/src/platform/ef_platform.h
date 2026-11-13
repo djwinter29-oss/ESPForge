@@ -20,6 +20,8 @@ int ef_platform_schedule_reboot(void);
 bool ef_platform_storage_busy(void);
 /** Admit one USB ownership request without doing disk I/O; correlate its result before USB refresh. */
 int ef_platform_storage_request(bool usb, uint8_t transaction);
+/** Admit or cancel a serialized benchmark; returns a benchmark detail code without disk I/O. */
+int ef_platform_benchmark_request(bool start, uint32_t size_mib);
 
 /** True while a candidate test is joining (Feature 12 wifi_state 4). */
 bool ef_wifi_test_active(void);

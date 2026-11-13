@@ -73,7 +73,7 @@ from .control import (
     parse_control_result_report,
 )
 from .telemetry import parse_status_report
-from .storage import parse_memory_report
+from .storage import parse_benchmark_report, parse_memory_report
 
 __all__ = [
     "InvalidRequest",
@@ -141,4 +141,5 @@ __all__ = [
     "parse_control_result_report",
     "parse_status_report",
     "parse_memory_report",
+    "parse_benchmark_report",
 ]

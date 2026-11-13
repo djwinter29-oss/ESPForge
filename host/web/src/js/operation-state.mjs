@@ -12,6 +12,8 @@
  * @property {boolean} [reboot_pending]
  * @property {boolean} [telemetry_stale]
  * @property {boolean} [storage_stale]
+ * @property {boolean} [self_test_stale]
+ * @property {{active?: boolean} | null} [self_test]
  * @property {{capabilities?: number} | null} [hardware]
  * @property {{transition_pending?: boolean, enabled?: boolean} | null} [msc]
  * @property {{board_flags?: number} | null} [board_configuration]
@@ -47,6 +49,7 @@ export const CAPABILITY_REBOOT = 2;
 export const CAPABILITY_SETTINGS = 4;
 export const CAPABILITY_SPI = 8;
 export const CAPABILITY_SDMMC = 16;
+export const CAPABILITY_BENCHMARK = 32;
 export const CAPABILITY_WIRELESS = 128;
 
 /** Fresh report evidence may settle readback-based uncertainty, but never a resync-only obligation.
@@ -123,11 +126,17 @@ export function operationState(snapshot, activity = {}) {
     && !wirelessStatusReady ? "Waiting for fresh wireless configuration before editing radios." : null;
   const storageStatusReady = Boolean(snapshot?.msc && !snapshot.storage_stale
     && (snapshot.memory?.sample_valid !== false || snapshot.msc.enabled));
-  const storageCommandPending = !storageStatusReady || Boolean(snapshot?.msc?.enabled || snapshot?.msc?.transition_pending);
+  const benchmarkSupported = Boolean(capabilities & CAPABILITY_BENCHMARK);
+  const benchmarkFresh = Boolean(snapshot?.self_test && snapshot.self_test_stale === false);
+  const benchmarkPending = benchmarkSupported && (!benchmarkFresh || snapshot?.self_test?.active);
+  const storageCommandPending = !storageStatusReady || Boolean(snapshot?.msc?.enabled
+    || snapshot?.msc?.transition_pending || benchmarkPending);
   const storageBlockReason = !snapshot?.connected ? null
     : !snapshot.msc || snapshot.storage_stale ? "Waiting for fresh storage status."
       : snapshot.msc.enabled ? "Safely eject the USB drive, then return the card to firmware."
         : snapshot.msc.transition_pending || !storageStatusReady ? "Waiting for storage to become idle."
+          : benchmarkPending ? benchmarkFresh ? "Waiting for the storage benchmark to finish."
+            : "Waiting for fresh benchmark status."
         : null;
   const mscSupported = Boolean((snapshot?.board_configuration?.board_flags ?? 0) & 64);
   const busy = Boolean(activity.resyncing || activity.saving || activity.wirelessBusy || rebootPending
@@ -150,7 +159,7 @@ export function operationState(snapshot, activity = {}) {
   const settingsBusy = Boolean(activity.resyncing || activity.saving || activity.wirelessInFlight || rebootPending
     || outcomeUncertain || cleanupRequired || activity.statusFailed);
   const canManageMsc = Boolean(snapshot?.connected && mscSupported && storageStatusReady
-    && !snapshot.msc?.transition_pending && !busy && !settingsBusy);
+    && !snapshot.msc?.transition_pending && !benchmarkPending && !busy && !settingsBusy);
   return {
     outcomeUncertain, rebootPending, storageCommandPending, storageStatusReady,
     storageBlockReason, wirelessStatusReady, wirelessBlockReason, busy,
@@ -161,6 +170,11 @@ export function operationState(snapshot, activity = {}) {
       && !activity.saving && !activity.wirelessInFlight),
     settingsBusy,
     mscSupported,
+    benchmarkSupported,
+    canStartBenchmark: Boolean(snapshot?.connected && benchmarkSupported && benchmarkFresh && !settingsBusy
+      && !busy && !storageCommandPending && snapshot?.memory?.initialized),
+    canCancelBenchmark: Boolean(snapshot?.connected && benchmarkSupported && benchmarkFresh && !settingsBusy
+      && !busy && snapshot?.self_test?.active),
     canEnableMsc: canManageMsc && !snapshot?.msc?.enabled && snapshot?.memory?.initialized === true,
     canReturnMsc: canManageMsc && snapshot?.msc?.enabled === true,
     boardSelectionBusy: Boolean(activity.resyncing || activity.scanning || activity.saving || activity.wirelessBusy),

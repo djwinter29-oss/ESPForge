@@ -127,6 +127,23 @@ void ef_report_storage(const ef_storage_t *storage, uint8_t out[EF_STORAGE_SIZE]
 	out[33] = storage->msc_request_rejected;
 }
 
+void ef_report_benchmark(const ef_benchmark_t *status, uint8_t out[EF_BENCHMARK_SIZE])
+{
+	memset(out, 0, EF_BENCHMARK_SIZE);
+	out[0] = 1;
+	out[1] = status->sequence;
+	out[2] = status->state;
+	out[3] = status->flags;
+	put32(out + 4, status->target_bytes);
+	put32(out + 8, status->written_bytes);
+	put32(out + 12, status->read_bytes);
+	put32(out + 16, status->write_elapsed_ms);
+	put32(out + 20, status->read_elapsed_ms);
+	put32(out + 24, status->mismatch_count);
+	out[28] = status->state == EF_BENCHMARK_FAILED ? status->error : 0;
+	out[29] = status->state == EF_BENCHMARK_FAILED ? status->filesystem_result : 0;
+}
+
 void ef_report_wireless(const ef_wireless_t *wireless, uint8_t out[EF_WIRELESS_SIZE])
 {
 	uint8_t length = wireless->ssid_length <= EF_SSID_MAX ? wireless->ssid_length : EF_SSID_MAX;

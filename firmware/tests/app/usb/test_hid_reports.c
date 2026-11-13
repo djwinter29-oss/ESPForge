@@ -3,6 +3,23 @@
 
 #include <string.h>
 
+void test_benchmark_layout_and_nonterminal_error_suppression(void)
+{
+	ef_benchmark_t status = {.sequence = 9, .state = EF_BENCHMARK_FAILED, .flags = EF_BENCHMARK_FILE_REMAINS,
+				.target_bytes = 0x00100000, .written_bytes = 0x01020304,
+				.error = EF_BENCHMARK_ERROR_IO, .filesystem_result = 1};
+	const uint8_t expected[EF_BENCHMARK_SIZE] = {1, 9, 7, 1, 0, 0, 0x10, 0, 4, 3, 2, 1,
+						 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7, 1, 0, 0};
+	uint8_t out[EF_BENCHMARK_SIZE];
+
+	ef_report_benchmark(&status, out);
+	TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, out, sizeof(out));
+	status.state = EF_BENCHMARK_CLEANUP;
+	ef_report_benchmark(&status, out);
+	TEST_ASSERT_EQUAL_UINT8(0, out[28]);
+	TEST_ASSERT_EQUAL_UINT8(0, out[29]);
+}
+
 void test_identity_layout(void)
 {
 	ef_identity_t identity = {
@@ -11,10 +28,13 @@ void test_identity_layout(void)
 		.ram_total_bytes = 524288,
 		.ram_reserved_bytes = 0x01020304,
 	};
-	const uint8_t expected[EF_IDENTITY_SIZE] = {1, 0x03, 0x00, 0xA0, 0xB1, 0xC2, 0xD3, 0xE4, 0xF5, 0, 0, 0, 2, 1,
+	uint8_t expected[EF_IDENTITY_SIZE] = {1, 0x03, 0x00, 0xA0, 0xB1, 0xC2, 0xD3, 0xE4, 0xF5, 0, 0, 0, 2, 1,
 						    3, 1, 0, 0x96, 0x00, 0x00, 0x08, 0x00, 0x04, 0x03, 0x02, 0x01};
 	uint8_t out[EF_IDENTITY_SIZE];
 
+#if EF_ENABLE_STORAGE_BENCHMARK
+	expected[17] = 0xB6;
+#endif
 	ef_report_identity(&identity, out);
 	TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, out, sizeof(out));
 }

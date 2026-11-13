@@ -123,6 +123,8 @@ internal sealed class ESPForgeHid : IHidClient
             {
                 HidProtocol.TelemetryReportId => new(HidProtocol.ParseTelemetryReport(data), null),
                 HidProtocol.StorageReportId => HidProtocol.ParseStorageReport(data, identity),
+                HidProtocol.BenchmarkReportId when (identity.Capabilities & HidProtocol.CapabilitySelfTest) != 0 =>
+                    new(null, null, HidProtocol.ParseBenchmarkReport(data)),
                 _ => throw new InvalidDataException($"unexpected HID input report ID {data[0]}")
             };
         }
@@ -173,6 +175,17 @@ internal sealed class ESPForgeHid : IHidClient
         var arguments = new byte[64];
         arguments[0] = enabled ? (byte)1 : (byte)0;
         SendCommand(Opcode.Msc, enabled ? (byte)0 : (byte)1, arguments);
+    }
+
+    public void Benchmark(bool start, int sizeMib)
+    {
+        EnsureCapability(HidProtocol.CapabilitySelfTest, "storage benchmark");
+        if (start ? sizeMib is < 1 or > 1024 : sizeMib != 0)
+            throw new ArgumentOutOfRangeException(nameof(sizeMib), "Use 1..1024 MiB for start, zero for cancel");
+        var arguments = new byte[64];
+        arguments[0] = start ? (byte)1 : (byte)0;
+        BinaryPrimitives.WriteUInt32LittleEndian(arguments.AsSpan(1), (uint)sizeMib);
+        SendCommand(Opcode.SelfTest, 0, arguments);
     }
 
     public WirelessStatusResponse ReadWireless()

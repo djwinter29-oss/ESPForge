@@ -101,6 +101,7 @@ class WrapperTests(unittest.TestCase):
         self.assertIn("-m west blobs fetch hal_espressif", commands)
         self.assertIn("-b esp32s3_devkitc/esp32s3/procpu", commands)
         self.assertIn("-DDTC_OVERLAY_FILE=boards/esp32s3_devkitc.overlay", commands)
+        self.assertIn("-DEF_ENABLE_STORAGE_BENCHMARK=ON", commands)
 
     def test_flash_builds_missing_artifacts_then_flashes_once(self):
         result = self.run_script("flash.sh", "--port", "/dev/mock", "--baud", "115200")

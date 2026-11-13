@@ -69,6 +69,9 @@ export function deriveControlsViewModel(state, ui, environment) {
     settingsDisabled: !eligibility.settingsReady || !state.settings_supported,
     titles: Object.fromEntries(Object.entries(reasons).map(([id, text]) => [id, text ?? ""])),
     disabled: {
+      "benchmark-start": ui.formBusy || !eligibility.benchmarkReady,
+      "benchmark-cancel": ui.formBusy || !eligibility.benchmarkCancelReady,
+      "benchmark-size": ui.formBusy || !eligibility.benchmarkReady,
       "msc-enable": ui.formBusy || !eligibility.mscReady || state.memory?.msc?.enabled === true
         || !state.memory?.initialized,
       "msc-return": ui.formBusy || !eligibility.mscReady || state.memory?.msc?.enabled !== true,

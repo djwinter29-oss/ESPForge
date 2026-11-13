@@ -12,13 +12,13 @@ if TYPE_CHECKING:
     from .models import BootSettings, ControlResult, SupportedHardwareIdentity, WirelessNetwork
 
 from .common import (
-    CAP_REBOOT, CAP_WIRELESS, CLOCK_PROFILES_MHZ,
+    CAP_REBOOT, CAP_SELF_TEST, CAP_WIRELESS, CLOCK_PROFILES_MHZ,
     CONTROL_ERROR_NAMES, CONTROL_PAYLOAD_SIZE, CONTROL_REPORT_ID, CONTROL_STATUS_NAMES, REPORT_VERSION,
     ControlDetail, ControlError, ControlOpcode, ControlStatus, InvalidRequest, ProtocolError,
     _ALLOWED_STATUS_ERRORS, _OPCODE_STATUSES, _bytes, _feature_payload, _validate_settings,
 )
 
-_UNSUPPORTED_OPCODES = (ControlOpcode.LED, ControlOpcode.SELF_TEST, ControlOpcode.TCP_PROOF)
+_UNSUPPORTED_OPCODES = (ControlOpcode.LED, ControlOpcode.TCP_PROOF)
 
 
 def build_settings_command_report(
@@ -62,6 +62,11 @@ def build_control_command_report(
     if opcode == ControlOpcode.MSC and (
             args[0] not in (0, 1) or flags != (1 if args[0] == 0 else 0) or any(args[1:])):
         raise ValueError("MSC requires enable without flags or return with OS-eject confirmation")
+    if opcode == ControlOpcode.SELF_TEST:
+        size = int.from_bytes(args[1:5], "little")
+        if flags or args[0] not in (0, 1) or any(args[5:]) or (
+                not 1 <= size <= 1024 if args[0] else size != 0):
+            raise ValueError("Benchmark requires start with 1..1024 MiB or cancel with zero size")
     if opcode == ControlOpcode.SAVE_SETTINGS:
         clock, profile, switches = struct.unpack_from("<HBB", args)
         if flags & ~2 or switches & ~3 or clock not in CLOCK_PROFILES_MHZ or profile != 0 or any(args[4:]):
@@ -178,12 +183,16 @@ def parse_control_result_report(
         raise ValueError("HID control result reports an operation ESPForge does not provide")
     # Opcode 5 may be Unsupported for a forced save even though settings save is advertised.
     if status == ControlStatus.UNSUPPORTED and error == ControlError.CAPABILITY and identity is not None:
-        required = CAP_REBOOT if opcode_enum == ControlOpcode.REBOOT else None
+        required = CAP_REBOOT if opcode_enum == ControlOpcode.REBOOT else (
+            CAP_SELF_TEST if opcode_enum == ControlOpcode.SELF_TEST else None)
         if opcode_enum is not None and ControlOpcode.STAGE_SSID <= opcode_enum <= ControlOpcode.WIFI_ENTRY:
             required = CAP_WIRELESS
         capabilities = identity.get("capabilities")
         if required is not None and capabilities is not None and capabilities & required:
             raise ValueError("HID control result contradicts advertised capabilities")
+    if (opcode_enum == ControlOpcode.SELF_TEST and status not in (ControlStatus.IDLE, ControlStatus.UNSUPPORTED)
+            and identity is not None and not identity["capabilities"] & CAP_SELF_TEST):
+        raise ValueError("HID benchmark result contradicts advertised capabilities")
     saved: BootSettings | None = None
     scan_entry: WirelessNetwork | None = None
     commit_mask = 0

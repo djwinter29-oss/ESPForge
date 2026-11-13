@@ -47,6 +47,7 @@ _T = TypeVar("_T")
 _REPORTS = {
     "runtime": (0.750, "telemetry_stale"),
     "memory": (1.500, "storage_stale"),
+    "self_test": (1.500, "self_test_stale"),
 }
 
 
@@ -258,6 +259,9 @@ class DeviceMonitor:
                 self._wireless_cleanup_required = False
             if result["status"] == "completed" and result.get("opcode") == ControlOpcode.MSC:
                 self._input_received_at.pop("memory", None)
+            if result["status"] == "completed" and result.get("opcode") == ControlOpcode.SELF_TEST:
+                self._input_received_at.pop("memory", None)
+                self._input_received_at.pop("self_test", None)
             if self._snapshot.get("connected"):
                 self._snapshot["control_result"] = result
 
@@ -279,7 +283,8 @@ class DeviceMonitor:
         memory = snapshot.get("memory")
         msc = _msc(snapshot)
         if (snapshot.get("storage_stale") or msc is None or msc.get("enabled")
-                or msc.get("transition_pending") or memory is not None and memory.get("sample_valid") is False):
+                or msc.get("transition_pending") or memory is not None and memory.get("sample_valid") is False
+                or snapshot["self_test"] is not None and snapshot["self_test"]["active"]):
             raise BoardConflict("Wait for idle firmware-owned storage; safely eject and return the USB drive first")
 
     def set_msc(self, enabled: bool, confirm_ejected: bool = False) -> ControlResponse:
@@ -311,6 +316,23 @@ class DeviceMonitor:
             saved = self._send_control(client.set_settings, settings)
             self._publish_saved_settings(saved)
             return {"settings": saved, "control_result": client.last_command_result}
+
+    def benchmark(self, start: bool, size_mib: int = 0) -> ControlResponse:
+        with self._device():
+            snapshot = self.snapshot()
+            if not snapshot["hardware"] or not snapshot["hardware"]["self_test_supported"]:
+                raise BoardConflict("Storage benchmark is unavailable on this firmware")
+            if snapshot["self_test_stale"] or snapshot["self_test"] is None:
+                raise BoardConflict("Waiting for fresh benchmark status")
+            if start:
+                self._require_firmware_storage()
+                if not snapshot["memory"] or not snapshot["memory"]["initialized"]:
+                    raise BoardConflict("Mount a card before starting a benchmark")
+                if snapshot["self_test"]["active"]:
+                    raise BoardConflict("A benchmark is already active")
+            result = self._send_control(self._client().benchmark, start, size_mib)
+            ESPForgeHid.require_completed(result, "Benchmark request")
+            return {"control_result": result}
 
     def _publish_saved_settings(self, saved: BootSettings) -> None:
         with self._lock:
@@ -465,8 +487,10 @@ class DeviceMonitor:
             self._input_received_at[item["kind"]] = time.monotonic()
             if item["kind"] == "runtime":
                 self._snapshot["runtime"] = item["data"]
-            else:
+            elif item["kind"] == "memory":
                 self._snapshot["memory"] = item["data"]
+            else:
+                self._snapshot["self_test"] = item["data"]
             self._snapshot["connected"] = True
             self._snapshot["error"] = None
             self._snapshot["updated_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")

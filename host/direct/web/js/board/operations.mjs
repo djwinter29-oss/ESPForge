@@ -83,6 +83,16 @@ export class Operations {
     return this.session.command(OP.MSC, { flags: enabled ? 0 : 1, args: [Number(enabled)] });
   }
 
+  async benchmark(start, sizeMib = 0, confirmed = false) {
+    requireValid(typeof start === "boolean" && Number.isInteger(sizeMib)
+      && (start ? sizeMib >= 1 && sizeMib <= 1024 && confirmed === true : sizeMib === 0), "command-arguments");
+    this.require(start ? "benchmark" : "benchmark-cancel");
+    const args = new Uint8Array(5);
+    args[0] = Number(start);
+    new DataView(args.buffer).setUint32(1, sizeMib, true);
+    return this.session.command(OP.BENCHMARK, { args: [...args] });
+  }
+
   /** @brief Save next-boot settings; throws on refusal or failure, and marks the board as rebooting on success. */
   async saveSettings(settings) {
     requireValid(validSettings(settings), "boot-settings");

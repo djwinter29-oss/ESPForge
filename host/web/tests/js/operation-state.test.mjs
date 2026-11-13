@@ -27,6 +27,25 @@ test("MSC controls require advertised support, a mounted card, and settled owner
     assert.equal(operationState({ ...owned, ...changes }).canReturnMsc, false);
 });
 
+test("benchmark gates require capability and freshness, but cancel allows busy storage", () => {
+  const state = { ...ready, hardware: { capabilities: 0xb6 },
+    self_test: { active: false }, self_test_stale: false, settings_supported: true,
+    settings: { system_clock_mhz: 160, sdcard_profile: 0, radios: 0 } };
+  assert.equal(operationState(state).canStartBenchmark, true);
+  assert.equal(operationState(state, { settingsDirty: true }).canSaveSettings, true);
+  assert.equal(operationState({ ...state, self_test_stale: true },
+    { settingsDirty: true }).canSaveSettings, false);
+  assert.equal(operationState({ ...state, self_test_stale: true }).canStartBenchmark, false);
+  assert.equal(operationState(ready).canStartBenchmark, false);
+  const active = { ...state, self_test: { active: true }, memory: { sample_valid: false } };
+  assert.equal(operationState(active).canStartBenchmark, false);
+  assert.equal(operationState(active).canReboot, false);
+  assert.equal(operationState({ ...state, self_test: { active: true } },
+    { settingsDirty: true }).canSaveSettings, false);
+  assert.equal(operationState(active).canCancelBenchmark, true);
+  assert.equal(operationState(active, { uncertain: true }).canCancelBenchmark, false);
+});
+
 test("capability bits match the ESPForge profile", () => {
   assert.deepEqual([CAPABILITY_REBOOT, CAPABILITY_SETTINGS, CAPABILITY_SDMMC, CAPABILITY_WIRELESS], [2, 4, 16, 128]);
   assert.equal(CAPABILITY_REBOOT | CAPABILITY_SETTINGS | CAPABILITY_SDMMC | CAPABILITY_WIRELESS, 0x96);

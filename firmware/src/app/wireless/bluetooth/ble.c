@@ -150,9 +150,13 @@ static uint16_t build(uint16_t chr, uint8_t *out)
 		ef_storage_report(++sequence, out);
 		return EF_STORAGE_SIZE;
 	case CHR_BENCHMARK:
-		/* No benchmark: the value is empty, but the read still advances the BLE sequence. */
+#if EF_ENABLE_STORAGE_BENCHMARK
+		ef_benchmark_report(++sequence, out);
+		return EF_BENCHMARK_SIZE;
+#else
 		++sequence;
 		return 0;
+#endif
 	case CHR_WIRELESS:
 		ef_wireless_report(out);
 		return EF_WIRELESS_SIZE;

@@ -321,6 +321,28 @@ static void execute(const request_t *request, result_t *result, int64_t now_ms)
 		return;
 	}
 	switch (request->opcode) {
+	case EF_OP_BENCHMARK:
+#if EF_ENABLE_STORAGE_BENCHMARK
+		if (!args_clear(request, 5) || request->args[0] > 1) {
+			finish(result, EF_STATUS_INVALID, EF_ERROR_MALFORMED, 0);
+		} else {
+			uint32_t size = (uint32_t)request->args[1] | (uint32_t)request->args[2] << 8 |
+					(uint32_t)request->args[3] << 16 | (uint32_t)request->args[4] << 24;
+			bool start = request->args[0] == 1;
+			int detail;
+
+			if ((start && (size == 0 || size > EF_BENCHMARK_MAX_MIB)) || (!start && size != 0)) {
+				finish(result, EF_STATUS_INVALID, EF_ERROR_ARGUMENT, EF_BENCHMARK_ERROR_SIZE);
+				break;
+			}
+			detail = ef_platform_benchmark_request(start, size);
+			finish(result, detail == 0 ? EF_STATUS_COMPLETED : detail <= 2 ? EF_STATUS_BUSY : EF_STATUS_FAILED,
+			       detail == 0 ? EF_ERROR_NONE : detail <= 2 ? EF_ERROR_BUSY : EF_ERROR_FAILED, detail);
+		}
+#else
+		finish(result, EF_STATUS_UNSUPPORTED, EF_ERROR_CAPABILITY, 0);
+#endif
+		break;
 	case EF_OP_MSC:
 		msc(request, result);
 		break;
@@ -372,7 +394,7 @@ static void execute(const request_t *request, result_t *result, int64_t now_ms)
 		}
 		break;
 	default:
-		/* LED, benchmark and TCP CLI proof are absent. */
+		/* LED and TCP CLI proof are absent. */
 		finish(result, EF_STATUS_UNSUPPORTED, EF_ERROR_CAPABILITY, 0);
 		break;
 	}

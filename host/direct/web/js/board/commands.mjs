@@ -122,6 +122,7 @@ export class Commands {
     const wireless = succeeded && request.lifecycle ? request.lifecycle : null;
     this.persist(null, wireless);
     if (succeeded && request.opcode === OP.MSC) this.session.polling.invalidateStorage();
+    if (succeeded && request.opcode === OP.BENCHMARK) this.session.polling.invalidateBenchmark();
     this.session.emit("command/retired", { pending_request: null, pending_wireless: wireless });
   }
 

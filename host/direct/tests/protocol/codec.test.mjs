@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  decodeIdentityReport, decodeConfigReport, decodeTelemetryReport, decodeStorageReport,
+  decodeIdentityReport, decodeConfigReport, decodeTelemetryReport, decodeStorageReport, decodeBenchmarkReport,
   decodeControlResult, buildControlRequest, decodeWireless, displaySsid, matchesEspForge, ssidBytes,
 } from "../../web/js/protocol/codec.mjs";
 import { identity, config, telemetry, storage, result } from "../support/fixtures.mjs";
@@ -12,6 +12,27 @@ import { status } from "../support/wireless.mjs";
 
 /** @brief Report 12 vectors with the ESPForge SSID; byte 4 never carries the TCP CLI bit. */
 const ssid = Buffer.from("ESPForge").toString("hex");
+
+test("benchmark counters, rates and terminal facts are validated", () => {
+  const report = new Uint8Array(32);
+  report.set([1, 9, 3, 3]);
+  const view = new DataView(report.buffer);
+  [1048576, 524288, 0, 500, 0, 0].forEach((value, index) => view.setUint32(4 + index * 4, value, true));
+  const status = decodeBenchmarkReport(report);
+  assert.equal(status.active, true);
+  assert.equal(status.progress_percent, 25);
+  assert.equal(status.write_bytes_per_second, 1048576);
+  assert.equal(status.read_bytes_per_second, null);
+  for (const [offset, value] of [[2, 9], [3, 4], [28, 7], [29, 1], [30, 1]]) {
+    const bad = report.slice(); bad[offset] = value;
+    assert.throws(() => decodeBenchmarkReport(bad));
+  }
+  report.set([6, 2], 2);
+  view.setUint32(8, 1048576, true); view.setUint32(12, 1048576, true);
+  assert.equal(decodeBenchmarkReport(report).progress_percent, 100);
+  report[3] |= 1;
+  assert.throws(() => decodeBenchmarkReport(report));
+});
 const vectors = {
   connected_with_key: `01020002032a2a2a2a08${ssid}${"00".repeat(30)}`,
   tested_candidate: `01050002b32a2a2a2a08${ssid}${"00".repeat(28)}0100`,
@@ -154,7 +175,7 @@ test("control request builders encode exact 68-byte envelopes and reject malform
   for (const [opcode, options] of [[2, {}], [2, { flags: 3 }], [2, { flags: 1, args: [1] }],
     [5, { args: [200, 0, 0, 0] }], [5, { args: [240, 0, 1, 0] }], [5, { args: [240, 0, 0, 4] }],
     [5, { args: [240, 0, 0, 0, 1] }], [5, { flags: 1, args: [240, 0, 0, 0] }], [5, { flags: 4, args: [240, 0, 0, 0] }],
-    [6, { args: [33] }], [0, {}], [1, { args: [1] }], [3, { args: [0] }], [4, { args: [1, 0, 1, 0, 0] }],
+    [6, { args: [33] }], [0, {}], [1, { args: [1] }], [3, { args: [0] }], [4, { args: [1, 0, 0, 0, 0] }],
     [13, { args: Array(16).fill(1) }], [14, {}], [10, { flags: 1 }], [11, { args: [1] }]]) {
     assert.throws(() => buildControlRequest(1, opcode, options), `opcode ${opcode}`);
   }
@@ -164,7 +185,8 @@ test("control request builders encode exact 68-byte envelopes and reject malform
 test("control results enforce every opcode/status/error combination and zero result data", () => {
   const unsupported = [[4, 4]];
   const allowed = {
-    1: unsupported, 4: unsupported, 13: unsupported,
+    1: unsupported, 13: unsupported,
+    4: [[2, 0], [3, 1], [3, 3], [4, 4], [5, 5], [6, 6]],
     3: [[1, 0], [2, 0], [3, 1], [3, 2], [3, 3], [4, 4], [5, 5], [6, 6]],
     2: [[1, 0], [2, 0], [3, 1], [3, 2], [5, 5], [6, 6]],
     5: [[1, 0], [2, 0], [3, 1], [3, 3], [4, 4], [5, 5], [6, 6]],

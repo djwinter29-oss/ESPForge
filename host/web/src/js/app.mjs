@@ -134,6 +134,10 @@ function publishCommandResult(result) {
   }
   if (effects.failure) boardState.commandFailure = { opcode: result.opcode, message: effects.failure };
   else clearCommandFailure(result.opcode);
+  if (effects.completed && result.opcode === 4 && currentSnapshot) {
+    currentSnapshot.storage_stale = true;
+    currentSnapshot.self_test_stale = true;
+  }
 }
 /** @param {number} opcode */
 function clearCommandFailure(opcode) {
@@ -647,6 +651,35 @@ async function setMsc() {
   }
 }
 
+/** @param {boolean} start */
+async function benchmark(start) {
+  if (!(start ? operationState().canStartBenchmark : operationState().canCancelBenchmark)) return;
+  const size = start ? Number(/** @type {HTMLInputElement} */ (element("benchmark-size")).value) : 0;
+  if (start && !window.confirm(`Write and verify ${size} MiB in EFTEST.BIN, then delete that file? Back up the card first. This causes card wear.`))
+    return;
+  const boardId = selectedBoard;
+  commandVersion++;
+  settingsRequestInProgress = true;
+  if (currentSnapshot) renderStatus(currentSnapshot);
+  try {
+    const response = await fetchWithDeadline(boardUrl("/api/benchmark", boardId), {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ start, size_mib: size, confirm: start }),
+    }, 15000);
+    publishCommandResult(acknowledge(await responseJson(response, "Benchmark request failed", true), 4));
+  } catch (error) {
+    if (!(error instanceof Error)) throw error;
+    if (!markCommandOutcomeUncertain(error, undefined, { kind: "resync" }, boardId))
+      settingsMessage = `Benchmark request failed: ${error.message}`;
+  } finally {
+    commandVersion++;
+    settingsRequestInProgress = false;
+    if (currentSnapshot) renderStatus(currentSnapshot);
+    void updateStatus();
+  }
+}
+element("benchmark-start").addEventListener("click", () => benchmark(true));
+element("benchmark-cancel").addEventListener("click", () => benchmark(false));
 element("msc-enable").addEventListener("click", () => requestMsc(true));
 element("msc-return").addEventListener("click", () => requestMsc(false));
 element("cancel-msc").addEventListener("click", () => mscDialog.close());

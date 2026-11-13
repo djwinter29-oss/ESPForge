@@ -58,7 +58,7 @@ def parse_identity_report(report: bytes | bytearray | list[int]) -> HardwareIden
     firmware = tuple(payload[11:14])
     mcu_id, board_model, _, capabilities = payload[14:18]
     ram_total, ram_reserved = struct.unpack_from("<II", payload, 18)
-    if capabilities != ESPFORGE_CAPABILITIES:
+    if capabilities not in (ESPFORGE_CAPABILITIES, ESPFORGE_CAPABILITIES | CAP_SELF_TEST):
         raise ValueError("HID identity capabilities do not match the ESPForge profile")
     if board_model == 1 and mcu_id != ESP32S3_MCU:
         raise ValueError("board model and MCU disagree in HID identity report")

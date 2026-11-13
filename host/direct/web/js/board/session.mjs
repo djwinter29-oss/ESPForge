@@ -76,6 +76,7 @@ export class BoardSession {
   pollWireless() { this.polling.pollWireless(); }
   reboot(confirmed) { return this.operations.reboot(confirmed); }
   setMsc(enabled, confirmEjected) { return this.operations.setMsc(enabled, confirmEjected); }
+  benchmark(start, sizeMib, confirmed) { return this.operations.benchmark(start, sizeMib, confirmed); }
   saveSettings(settings) { return this.operations.saveSettings(settings); }
   /** @param {import("./operations.mjs").ConfigurationIntent} intent */
   saveConfiguration(intent) { return this.operations.saveConfiguration(intent); }

@@ -7,6 +7,38 @@ import { config, telemetry, storage, fakeConnection, emit, says } from "../suppo
 import { Operations } from "../../web/js/board/operations.mjs";
 import { BOARD, connected, radio } from "../support/wireless.mjs";
 
+test("benchmark admission invalidates snapshots and uncertain starts are never replayed", async () => {
+  const { client, device, sent, pendingStore } = fakeConnection({ capabilities: 0xb6 });
+  await client.connect();
+  const idle = new Uint8Array(32); idle[0] = 1;
+  emit(device, 10, storage()); emit(device, 11, idle);
+  await assert.rejects(client.benchmark(true, 8, false));
+  assert.equal(sent.length, 0);
+  await client.benchmark(true, 8, true);
+  assert.deepEqual(sent[0].slice(0, 10), [20, 1, 1, 4, 0, 1, 8, 0, 0, 0]);
+  assert.equal(client.state.self_test, null);
+  assert.equal(client.state.memory, null);
+  const active = idle.slice(); active[2] = 3;
+  new DataView(active.buffer).setUint32(4, 8 * 1024 ** 2, true);
+  const busy = new Uint8Array(34); busy[0] = busy[2] = 1;
+  emit(device, 10, busy); emit(device, 11, active);
+  await client.benchmark(false, 0, false);
+  assert.deepEqual(sent[1].slice(0, 10), [20, 1, 2, 4, 0, 0, 0, 0, 0, 0]);
+  emit(device, 10, storage()); emit(device, 11, idle);
+  const receive = device.receiveFeatureReport;
+  device.receiveFeatureReport = async id => {
+    if (id === 20) throw new Error("Benchmark result lost");
+    return receive(id);
+  };
+  await assert.rejects(client.benchmark(true, 8, true));
+  const pending = JSON.parse(pendingStore.getItem("espforge.direct.pending-operation"));
+  assert.deepEqual(pending.request, { transaction_id: 3, opcode: 4,
+    benchmark_start: true, benchmark_size_mib: 8 });
+  await assert.rejects(client.benchmark(true, 8, true));
+  assert.equal(sent.length, 3);
+  await client.disconnect();
+});
+
 test("MSC admission clears old storage facts, requires eject confirmation, and never replays uncertain writes", async () => {
   const { client, device, sent, pendingStore } = fakeConnection();
   const receive = device.receiveFeatureReport;
