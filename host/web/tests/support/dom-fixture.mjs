@@ -20,7 +20,7 @@ export function domFixture() {
       set textContent(value) { textContent = String(value); this.children = []; },
       disabled: false, hidden: false, open: false, type: "", tagName: "DIV",
       scrollHeight: 0, scrollTop: 0, clientHeight: 0,
-      options: ["0", "1"].map(value => ({ value })),
+      options: ["0", "1", "configure"].map(value => ({ value })),
       setAttribute(name, value) { attributes[name] = String(value); },
       getAttribute(name) { return attributes[name] ?? null; },
       toggleAttribute(name, force) {

@@ -4,6 +4,9 @@ The browser frontend served by both the [Python host](../python/README.md) and t
 [.NET host](../dotnet/ESPForge/README.md). It uses static assets and browser ES modules without a build step.
 The independent Direct dashboard does not share this code.
 
+Choose **Configure…** in the Wi-Fi or Bluetooth dropdown to open its provisioning dialog without changing
+the radio's Enabled/Disabled selection. Wireless edits are saved with **Save&Reboot**.
+
 ## HTTP API
 
 Both hosts must serve the same ESPForge routes and JSON field names.

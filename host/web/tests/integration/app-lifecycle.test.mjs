@@ -85,7 +85,8 @@ test("Configure after a focused remote radio refresh never creates a credential 
   connected.settings.radios = 3;
   state.wirelessStatus = { ble_enabled: true, ble_key_configured: true };
   await state.tick();
-  await handlers.get("#ble-configure:click")();
+  elements.get("#settings-ble").value = "configure";
+  await handlers.get("#settings-ble:change")();
   await handlers.get("#ble-cancel:click")();
   assert.equal(elements.get("#settings-ble").value, "1");
   assert.equal(elements.get("#settings-save").disabled, true, "Configure is not a configuration edit");

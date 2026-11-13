@@ -32,7 +32,10 @@ export async function appFixture(context) {
   };
   const fixture = domFixture();
   const { handlers, elements, el: element } = fixture;
-  const configureRadio = radio => handlers.get(`#${radio}-configure:click`)();
+  const configureRadio = radio => {
+    element(`#settings-${radio}`).value = "configure";
+    return handlers.get(`#settings-${radio}:change`)();
+  };
   const connected = { connected: true, error: null, command_outcome_uncertain: false, reboot_pending: false,
     telemetry_stale: false, storage_stale: false, self_test_stale: true,
     runtime: { led_available: false, led_on: false },

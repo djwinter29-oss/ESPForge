@@ -154,8 +154,11 @@ export function bindWirelessForm({
   const refresh = () => {
     const available = supported();
     const wifiBlocked = busy || wifiCanceling || wifiCancelError !== null || cleanupRequired();
-    button("wifi-configure").disabled = !available || !ready() || busy || wifiCanceling;
-    button("ble-configure").disabled = !available || !ready() || busy || wifiCanceling || wifiCancelError !== null;
+    for (const radio of /** @type {const} */ (["wifi", "ble"])) {
+      const configure = option(`settings-${radio}`, "configure");
+      if (configure) configure.disabled = !available || !ready() || busy || wifiCanceling
+        || radio === "ble" && wifiCancelError !== null;
+    }
     el("wifi-settings").hidden = el("ble-settings").hidden = !available;
     // Wi-Fi needs a network and Bluetooth needs a control key before either can be enabled.
     const wifiOn = option("settings-wifi", "1");
@@ -319,11 +322,13 @@ export function bindWirelessForm({
   const radioDialogs = [["settings-wifi", openWifi], ["settings-ble", openBle]];
   for (const [id, open] of radioDialogs) {
     const radio = id === "settings-wifi" ? "wifi" : "ble";
-    button(`${radio}-configure`).addEventListener("click", () => {
-      if (!button(`${radio}-configure`).disabled) open();
-    });
     const changeRadio = () => {
       const value = select(id).value;
+      if (value === "configure") {
+        synchronize();
+        if (!select(id).disabled && !option(id, "configure")?.disabled) open();
+        return;
+      }
       if (value !== "0" && value !== "1") throw new Error(`Invalid radio value: ${value}`);
       editRadio(radio, value === "1");
       if (value === "0") {

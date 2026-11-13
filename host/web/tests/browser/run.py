@@ -99,13 +99,13 @@ def check_native_drafts(page: Page, origin: str, host_name: str) -> None:
             page.wait_for_function(
                 "({radio, value}) => document.querySelector('#settings-' + radio).value === value",
                 arg={"radio": radio, "value": value})
-            configure = page.locator(f"#{radio}-configure")
+            configure = page.locator(f"#settings-{radio}")
             configure.focus()
-            configure.press("Enter")
+            configure.select_option("configure")
             assert page.locator(f"#{radio}-dialog").evaluate("(dialog) => dialog.open")
             page.keyboard.press("Escape")
             page.wait_for_function("(radio) => !document.querySelector('#' + radio + '-dialog').open", arg=radio)
-            assert configure.evaluate("(button) => button === document.activeElement")
+            assert configure.evaluate("(select) => select === document.activeElement")
             assert page.locator(f"#settings-{radio}").input_value() == value
             assert page.locator("#settings-save").is_disabled(), "Configure manufactured an edit"
             page.evaluate("document.dispatchEvent(new Event('visibilitychange'))")
@@ -163,14 +163,14 @@ def check_native_transitions(page: Page, origin: str, host_name: str) -> None:
 
     for conflicting in (False, True):
         page.goto(origin)
-        page.wait_for_function("!document.querySelector('#wifi-configure').disabled")
+        page.wait_for_function("!document.querySelector('#settings-wifi').disabled")
         page.select_option("#settings-clock", "80")
-        page.locator("#wifi-configure").click()
+        page.locator("#settings-wifi").select_option("configure")
         page.locator("#wifi-ssid").fill("temporary-network")
         page.locator("#wifi-connect").click()
         page.wait_for_function("!document.querySelector('#wifi-dialog').open")
         if conflicting:
-            page.locator("#ble-configure").click()
+            page.locator("#settings-ble").select_option("configure")
             page.locator("#ble-generate").click()
             page.locator("#ble-cancel").click()
             page.evaluate("""() => {
@@ -183,7 +183,7 @@ def check_native_transitions(page: Page, origin: str, host_name: str) -> None:
             assert page.locator("#settings-save").is_disabled()
             page.locator("#wireless-discard").click()
         else:
-            page.locator("#wifi-configure").click()
+            page.locator("#settings-wifi").select_option("configure")
             page.locator("#wifi-cancel").click()
         page.wait_for_function("document.querySelector('#wifi-cancel').textContent === 'Retry clearing test'")
         assert page.locator("#wifi-dialog").evaluate("(dialog) => dialog.open")
@@ -272,7 +272,8 @@ def check_accessibility_smoke(page: Page, origin: str, host_name: str) -> None:
     page.evaluate("document.documentElement.style.zoom = ''")
     page.set_viewport_size({"width": 320, "height": 800})
     assert page.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth")
-    tab_to("#ble-configure")
+    tab_to("#settings-ble")
+    page.keyboard.press("End")
     page.keyboard.press("Enter")
     tab_to("#ble-generate")
     page.keyboard.press("Enter")
@@ -286,7 +287,7 @@ def check_accessibility_smoke(page: Page, origin: str, host_name: str) -> None:
     assert page.evaluate("document.querySelector('#ble-dialog').scrollWidth <= "
                          "document.querySelector('#ble-dialog').clientWidth")
     page.keyboard.press("Escape")
-    assert page.locator("#ble-configure").evaluate("(button) => button === document.activeElement")
+    assert page.locator("#settings-ble").evaluate("(select) => select === document.activeElement")
     check_focus()
     print(f"{host_name}: PASS 200-percent zoom, 320-pixel reflow and clipboard refusal feedback")
 
