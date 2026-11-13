@@ -104,13 +104,14 @@ west build -p always -b esp32s3_devkitc/esp32s3/procpu espforge/firmware \
 
 Inspect generated `build/firmware/zephyr/.config` and `zephyr.dts`, not just source intent.
 Required defaults include Wi-Fi, BLE, software coexistence, native Espressif SDHC, SDMMC disk, FatFs and
-the `device_next` USB stack with HID. Both FAT mkfs options must remain disabled.
+the `device_next` USB stack with HID/MSC, and UART/raw TCP diagnostic shells. Both FAT mkfs options must remain disabled.
 The configuration check also verifies native slot 0, four-bit width, the 25 MHz ceiling,
 GPIO12/11/13/14/15/10 in CLK/CMD/DAT0-DAT3 order, and command/data pull-up configuration.
 The management protocol runs over the ESP32-S3 native USB connector (USB HID, VID:PID `CAFE:4021`)
 and BLE GATT.
-The UART connector carries only the Zephyr console/log output and the ROM bootloader used for flashing;
-it has no management protocol.
+The UART connector carries the Zephyr diagnostic shell/log output and the ROM bootloader used for flashing;
+it has no dashboard management protocol. Shell commands and TCP exposure are defined in the
+[console guide](../guides/console.md).
 
 The reusable build also freezes the resolved west manifest and attaches binaries, configuration,
 dependency licenses and software-only flashing instructions. PRs and tagged releases use this same
