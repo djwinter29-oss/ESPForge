@@ -76,6 +76,7 @@ espforge_sd: &sdhc0 {
 
 &spi2 {
 	status = "okay";
+	line-idle-low;
 	pinctrl-0 = <&espforge_led_default>;
 	pinctrl-names = "default";
 	espforge_led: led-strip@0 {

@@ -96,6 +96,10 @@ def main() -> int:
     failures.extend(settings_partition_failures(root / "build/firmware/zephyr", config))
     failures.extend(sdmmc_failures(root / "build/firmware/zephyr"))
     failures.extend(phy_sensor_hook_failures(root / "build/firmware/zephyr", config))
+    led_bus = re.search(r"\bspi2:\s*spi@[0-9a-f]+\s*\{([^{}]*)",
+                        (root / "build/firmware/zephyr/zephyr.dts").read_text())
+    if not led_bus or not re.search(r"^\s*line-idle-low;", led_bus.group(1), re.M):
+        failures.append("SPI2 LED data must idle low for the WS2812 reset/latch interval")
     if failures:
         print("\n".join(failures), file=sys.stderr)
         return 1

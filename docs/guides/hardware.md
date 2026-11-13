@@ -47,8 +47,19 @@ The default LED data pin is GPIO48. This is unverified for the diymore dual-USB-
 revisions use GPIO48 (v1.0) or GPIO38 (v1.1). For GPIO38, change the LED pinctrl selection from
 `SPIM2_MOSI_GPIO48` to `SPIM2_MOSI_GPIO38` in the hardware overlay and rebuild. Reported board facts derive from that
 selection. No SPI clock, MISO or chip-select pin is assigned. The driver uses a low fixed intensity, boots Off and
-transmits an eight-bit SPI waveform at up to 6.4 MHz with a 350-microsecond reset. GPIO choice, waveform and optical
-colour still require physical qualification. A logged transmission failure disables LED control until reboot.
+transmits an eight-bit SPI waveform at up to 6.4 MHz with a 350-microsecond low reset/latch interval. SPI2 must use
+`line-idle-low`: the ESP32 SPI driver's default high idle level prevents that interval even when transmission succeeds.
+GPIO choice, waveform and optical colour still require physical qualification. A logged transmission failure disables
+LED control until reboot.
+
+Some YD-ESP32-S3-style clones have a solder link marked **RGB**, immediately beside the white RGB LED, between
+GPIO48 and the LED data input. An open link leaves the LED dark even when SPI transmissions succeed; inspect
+this before trying another GPIO. See the [board-family pinout](https://github.com/vcc-gnd/YD-ESP32-S3) and
+[RGB-link reference photo](https://github.com/HiraAbbas/Esp32-s3-Onboard-Leds-Rgb-Blinking/blob/main/rgb_solder_jumper.jpeg).
+Disconnect both USB cables and any external power before inspecting or modifying a verified RGB link.
+Do not confuse it with **IN-OUT** or **USB-OTG**, which change power connections. A matching product photo does
+not establish the link's condition on the actual board.
+
 Octal PSRAM occupies GPIO33-37, so those pins are not available on N16R8.
 Leave boot-strapping and onboard flash/PSRAM pins alone. Consult your exact board schematic.
 The requested SDMMC ceiling is 25 MHz; this is not a measured bus frequency or throughput claim.
