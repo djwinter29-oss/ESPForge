@@ -122,13 +122,14 @@ See [release automation](../deployment/release.md) for package contents and pref
 ## USB upload wrapper
 
 Use [the USB flashing instructions](../guides/getting-started.md#2-build-now-flash-later).
-`tools/firmware/flash.sh --port PORT` wraps `west flash` with the ESP32 runner,
-explicit port, 460800 upload baud, `--skip-rebuild` and `--no-erase`.
+`tools/firmware/flash.sh` wraps `west flash` with the ESP32 runner, 460800 upload baud,
+`--skip-rebuild` and `--no-erase`. If `--port PORT` is omitted, it selects a likely USB-UART
+port, preferring Silicon Labs CP210x devices; tied candidates require an explicit port.
 `--baud` overrides upload speed; `--dry-run` validates artifacts and prints the command
-without accessing a device. Missing or empty required build artifacts trigger a build first;
+without connecting to or flashing a device. Missing or empty required build artifacts trigger a build first;
 complete existing builds are reused. A wrong-board build is rejected. Runner errors propagate to the caller.
 
-`--dry-run` also prepares dependencies and builds missing firmware, but does not access hardware.
+`--dry-run` also prepares dependencies and builds missing firmware.
 Use `--help` and `--dry-run` to inspect it before uploading to hardware.
 Software-only wrapper tests use mocked installers and runners:
 `python3 -m unittest discover -s firmware/tests/tooling -v`.

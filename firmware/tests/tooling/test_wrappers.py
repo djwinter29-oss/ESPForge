@@ -13,6 +13,8 @@ MOCK = r"""#!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$*" >> "$MOCK_LOG"
 case "$*" in
+    "-")
+        printf '%s\n' "${MOCK_SERIAL_PORT:-}" ;;
     "-c "*)
         exit "${MOCK_PYTHON_STATUS:-0}" ;;
     "-m venv "*)
@@ -115,6 +117,19 @@ class WrapperTests(unittest.TestCase):
         self.log.write_text("")
         result = self.run_script("flash.sh", "--port", "/dev/mock")
         self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("-m west build ", self.commands())
+
+    def test_flash_auto_detects_serial_port_when_omitted(self):
+        self.env["MOCK_SERIAL_PORT"] = "/dev/mock-auto"
+        result = self.run_script("flash.sh")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Auto-detected serial port: /dev/mock-auto", result.stdout)
+        self.assertIn("--esp-device /dev/mock-auto", self.commands())
+
+    def test_flash_without_detectable_port_fails_before_build(self):
+        result = self.run_script("flash.sh")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Could not detect a serial port", result.stderr)
         self.assertNotIn("-m west build ", self.commands())
 
     def test_dry_run_builds_but_never_flashes(self):

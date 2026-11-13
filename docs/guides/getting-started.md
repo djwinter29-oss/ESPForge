@@ -63,16 +63,18 @@ The build uses PROCPU only, not a dual-core application.
 When hardware arrives, attach the board's **UART** (USB-to-UART bridge) connector and close any serial terminal on it:
 
 ```sh
-# Preview the upload command without accessing hardware
-bash espforge/tools/firmware/flash.sh --port /dev/ttyUSB0 --dry-run
+# Preview an upload command; the likely USB-UART port is detected automatically
+bash espforge/tools/firmware/flash.sh --dry-run
 
 # Upload the existing build and reset the board
-bash espforge/tools/firmware/flash.sh --port /dev/ttyUSB0
+bash espforge/tools/firmware/flash.sh
 ```
 
-The [flash script](../../tools/firmware/flash.sh) requires an explicit port, checks the build
-artifacts and board target, and uses Zephyr's ESP32 runner to select the correct image offset
-and flash parameters. If required artifacts are missing or empty, it builds first, including during `--dry-run`.
+The [flash script](../../tools/firmware/flash.sh) detects a likely USB-UART port when `--port`
+is omitted, preferring Silicon Labs CP210x devices. If equally likely ports are present, pass
+`--port PORT` to choose one. It checks the build artifacts and board target, and uses Zephyr's
+ESP32 runner to select the correct image offset and flash parameters. If required artifacts
+are missing or empty, it builds first, including during `--dry-run`.
 A complete existing build is reused; run the build script again after changing firmware.
 It does not request a full-chip erase, but image sectors are
 erased/replaced during flashing. Saved [boot settings](../reference/settings.md#flash-reservation) survive normal

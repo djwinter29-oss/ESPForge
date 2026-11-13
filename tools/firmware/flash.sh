@@ -3,11 +3,11 @@ set -euo pipefail
 
 usage() {
 	cat <<'EOF'
-Usage: bash tools/firmware/flash.sh --port PORT [--baud BAUD] [--dry-run]
+Usage: bash tools/firmware/flash.sh [--port PORT] [--baud BAUD] [--dry-run]
 
 Flash ESPForge through the USB-to-UART connector; build first if artifacts are missing.
 Missing workspace, Python dependencies and build tools are prepared automatically.
-  --port PORT   Required serial port, e.g. /dev/ttyUSB0 or COM4
+  --port PORT   Serial port, e.g. /dev/ttyUSB0 or COM4 (auto-detected if omitted)
   --baud BAUD   Positive upload baud rate (default: 460800)
   --dry-run     Validate prerequisites and print the command; do not flash
   -h, --help    Show this help
@@ -45,7 +45,6 @@ while (($#)); do
 	esac
 done
 
-[[ -n "$port" ]] || fail "--port is required; use --help for examples"
 [[ "$baud" =~ ^[1-9][0-9]*$ ]] || fail "--baud must be a positive integer"
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 build="$root/build/firmware"
@@ -54,6 +53,40 @@ for artifact in zephyr.bin zephyr.elf .config runners.yaml; do
 	[[ -s "$build/zephyr/$artifact" ]] || needs_build=true
 done
 source "$root/tools/firmware/env.sh"
+if [[ -z "$port" ]]; then
+	port="$(python - <<'PY'
+from serial.tools import list_ports
+
+ports = []
+for info in list_ports.comports():
+    description = f"{info.description or ''} {info.hwid or ''}".lower()
+    if info.vid == 0x10c4:
+        score = 3
+    elif info.vid in (0x1a86, 0x0403, 0x067b):
+        score = 2
+    elif info.vid is not None and "usb" in description and (
+        "serial" in description or "uart" in description
+    ):
+        score = 1
+    else:
+        continue
+    ports.append((score, info.device, info.description or "USB serial device"))
+
+if not ports:
+    raise SystemExit("Error: no likely USB serial port found; connect the board or specify --port.")
+
+best_score = max(score for score, _, _ in ports)
+matches = [(device, description) for score, device, description in ports if score == best_score]
+if len(matches) != 1:
+    choices = ", ".join(f"{device} ({description})" for device, description in matches)
+    raise SystemExit(f"Error: multiple likely serial ports found: {choices}; specify --port.")
+
+print(matches[0][0])
+PY
+)"
+	[[ -n "$port" ]] || fail "Could not detect a serial port; specify --port."
+	printf 'Auto-detected serial port: %s\n' "$port"
+fi
 if "$needs_build"; then
 	printf 'Build artifacts are missing; building firmware before upload.\n'
 	bash "$root/tools/firmware/build.sh"
