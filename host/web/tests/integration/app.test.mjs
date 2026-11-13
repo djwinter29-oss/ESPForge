@@ -222,6 +222,14 @@ test("storage telemetry, pin rows, and dashboard layout preserve presentation", 
   renderStatus(connected);
   assert.equal(elements.get("#board-model").textContent, "ESP32-S3-DevKitC-1 (ESP32-S3)");
   assert.equal(elements.get("#ram-usage").textContent, "118.2 / 512 KiB (23.1%)");
+  renderStatus({ ...connected, hardware: { ...connected.hardware, psram_total_bytes: 8 << 20,
+    psram_reserved_bytes: 1 << 20, flash_total_bytes: 16 << 20 } });
+  assert.equal(elements.get("#ram-usage").textContent, "118.2 / 512 KiB (23.1%)");
+  assert.equal(elements.get("#psram-usage").textContent, "1.0 / 8.0 MiB (12.5%)");
+  assert.equal(elements.get("#flash-capacity").textContent, "16.0 MiB");
+  renderStatus({ ...connected, hardware: { ...connected.hardware, psram_total_bytes: null, flash_total_bytes: null } });
+  assert.equal(elements.get("#psram-usage").textContent, "--");
+  assert.equal(elements.get("#flash-capacity").textContent, "--");
   renderStatus({ ...connected, hardware: { ...connected.hardware, board_model: 1, mcu: undefined } });
   assert.equal(elements.get("#board-model").textContent, "ESP32-S3-DevKitC-1");
   renderStatus({ ...connected, runtime: { cpu_usage_core0_basis_points: 1234, cpu_usage_core1_basis_points: null } });
@@ -229,7 +237,7 @@ test("storage telemetry, pin rows, and dashboard layout preserve presentation", 
   const html = readFileSync(new URL("../../src/index.html", import.meta.url), "utf8");
   const identity = html.split('aria-label="Hardware identity"')[1].split("</section>")[0];
   assert.deepEqual([...identity.matchAll(/<strong id="([^"]+)"/g)].map(match => match[1]),
-    ["product-name", "board-model", "serial", "identity-clock", "ram-usage", "firmware-version"]);
+    ["product-name", "board-model", "serial", "identity-clock", "firmware-version"]);
   assert.doesNotMatch(html, /id="ram-reserved"|id="ram-total"/);
   assert.doesNotMatch(html, /id="mcu"|Microcontroller/);
   assert.match(html, />Save&amp;Reboot<\/button>/);

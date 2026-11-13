@@ -5,13 +5,27 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   decodeIdentityReport, decodeConfigReport, decodeTelemetryReport, decodeStorageReport, decodeBenchmarkReport,
-  decodeControlResult, buildControlRequest, decodeWireless, displaySsid, matchesEspForge, ssidBytes,
+  decodeControlResult, buildControlRequest, decodeWireless, displaySsid, matchesEspForge, ssidBytes, decodeMemoryInventory,
 } from "../../web/js/protocol/codec.mjs";
-import { identity, config, telemetry, storage, result } from "../support/fixtures.mjs";
+import { identity, config, telemetry, storage, result, memoryInventory } from "../support/fixtures.mjs";
 import { status } from "../support/wireless.mjs";
 
 /** @brief Report 12 vectors with the ESPForge SSID; byte 4 never carries the TCP CLI bit. */
 const ssid = Buffer.from("ESPForge").toString("hex");
+
+test("memory inventory validates physical capacities, reservations and unavailable values", () => {
+  const report = memoryInventory();
+  assert.deepEqual(decodeMemoryInventory(report),
+    { psram_total_bytes: 8 << 20, psram_reserved_bytes: 1 << 20, flash_total_bytes: 16 << 20 });
+  const unavailable = new Uint8Array(16); unavailable[0] = 1;
+  assert.deepEqual(decodeMemoryInventory(unavailable),
+    { psram_total_bytes: null, psram_reserved_bytes: null, flash_total_bytes: null });
+  for (const [offset, value] of [[0, 2], [1, 4], [2, 1], [11, 1], [15, 0]]) {
+    const bad = report.slice(); bad[offset] = value;
+    assert.throws(() => decodeMemoryInventory(bad));
+  }
+  assert.throws(() => decodeMemoryInventory(report.slice(1)));
+});
 
 test("benchmark counters, rates and terminal facts are validated", () => {
   const report = new Uint8Array(32);

@@ -12,6 +12,12 @@ the radio's Enabled/Disabled selection. Wireless edits are saved with **Save&Reb
 Both hosts must serve the same ESPForge routes and JSON field names.
 Board-scoped routes take `?board=ID` from `/api/boards`.
 
+The Module memory panel separates internal SRAM, external PSRAM and module SPI flash. `/api/status` adds
+`hardware.psram_total_bytes`, `psram_reserved_bytes` and `flash_total_bytes`, in bytes, when the firmware advertises
+[memory inventory](../../docs/reference/usb-hid.md#report-id-13-module-memory-inventory).
+Unsupported or unavailable values are `null` or absent and display `--`. RAM reservation is linked accounting,
+including heap pools, not live usage; flash capacity is not free space. No capacity is inferred from N16R8.
+
 | Route | Purpose |
 | --- | --- |
 | `GET /`, `/favicon.svg`, `/css/<path>`, `/js/<path>` | Static dashboard assets |

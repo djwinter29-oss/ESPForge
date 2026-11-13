@@ -115,6 +115,7 @@ return ATT error `0x80`.
 | `000a` | Read | Denied (`0x80`) | 34 | [Report `10`](usb-hid.md#report-id-10-storage-status) storage status. |
 | `000b` | Read | Denied (`0x80`) | 32 or 0 | Report `11` benchmark snapshot when capability bit 5 is set; otherwise empty. |
 | `000c` | Read | Denied (`0x80`) | 48 | [Report `12`](usb-hid.md#report-id-12-wireless-status) wireless status, including saved SSID and IPv4 address. |
+| `000d` | Read | Denied (`0x80`) | 16 | [Report `13`](usb-hid.md#report-id-13-module-memory-inventory) boot-sampled module memory inventory, advertised by identity extension bit 0. |
 | `0014` | Read, Write | Denied (`0x80`) | 9 | [Control request/result](#control-characteristic). |
 | `0100` | Read | Read | 16 | Fresh challenge nonce; each read replaces the previous one. |
 | `0101` | Write Request | Write | 16 | Session or command proof. |

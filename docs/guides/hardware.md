@@ -36,6 +36,12 @@ Follow the [SD pin allocation](../reference/sdcard.md#pin-allocation) for all si
 card detection, supply and ground. An unwired detection input reads absent and prevents mounting.
 
 GPIO assignments use explicit native SDMMC slot-0 pinctrl in the project's overlay.
+The ESP32-S3 has 512 KiB of internal SRAM and no on-chip flash. N16R8 specifies the module's 16 MiB SPI flash
+and 8 MiB octal PSRAM; both are external to the SoC. PSRAM is volatile RAM, not additional flash.
+The Module memory panel separates SRAM reservation, PSRAM reservation/capacity and detected module-flash
+capacity. Reservations include linked regions and permanent heap pools, not live usage. Unknown or unavailable
+inventory remains `--`; it is not inferred from the board name. No additional flash chip or interface is configured.
+
 SPI2 is dedicated to the onboard WS2812-compatible RGB LED, with only MOSI allocated; SPI3 remains disabled.
 The default LED data pin is GPIO48. This is unverified for the diymore dual-USB-C N16R8 clone; official DevKitC-1
 revisions use GPIO48 (v1.0) or GPIO38 (v1.1). For GPIO38, change the LED pinctrl selection from

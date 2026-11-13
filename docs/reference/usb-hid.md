@@ -79,6 +79,7 @@ and scan state. MSC handoff and optional benchmarking use USB-only commands.
 | `3` | Board Telemetry | Input | Device publishes / host reads | 22 |
 | `10` | Storage Status | Input | Device publishes / host reads | 34 |
 | `12` | Wireless Status | Feature | Host reads | 48 |
+| `13` | Module Memory Inventory | Feature | Host reads | 16 |
 | `20` | Control Command & Result | Feature | Host writes/reads | 68 |
 
 ### Wire Framing
@@ -120,7 +121,7 @@ Read after connection. Identity and capabilities remain stable for that boot.
 | 13 | 1 | `firmware_patch` | Firmware semantic-version patch |
 | 14 | 1 | `mcu` | `3` ESP32-S3; other values unassigned in this project |
 | 15 | 1 | `board_model` | `0` unspecified; `1` ESP32-S3-DevKitC-1 |
-| 16 | 1 | `capabilities_extension` | Capability bits 8-15; zero in the current device |
+| 16 | 1 | `capabilities_extension` | Capability bits 8-15; bit 0 advertises Report `13` |
 | 17 | 1 | `capabilities` | Static capabilities and selected storage transport |
 | 18 | 4 | `ram_total_bytes` | Total internal SRAM, not free memory or PSRAM |
 | 22 | 4 | `ram_reserved_bytes` | Statically linked/reserved internal SRAM |
@@ -155,11 +156,11 @@ Board model `1` requires MCU `3`; model `0` makes no board claim.
 | 5 | Storage benchmark | Set only when built with the optional feature |
 | 6 | Forced settings save | Clear |
 | 7 | Wireless capability | Set |
+| 8 | Module memory inventory | Set in extension byte bit 0 |
 
-The capability byte is `0x97`, or `0xB7` with benchmarking enabled. Hosts also accept older firmware without bit 0.
-Extension bits are unassigned: devices MUST transmit zero, and hosts
-MUST NOT assign meaning to unknown extension bits. Firmware version is diagnostic information, not a substitute
-for capabilities.
+The low capability byte is `0x97`, or `0xB7` with benchmarking enabled. The extension byte is `0x01`.
+Hosts also accept older firmware without RGB or memory inventory. Unassigned extension bits MUST be transmitted
+as zero and ignored by hosts. Firmware version is diagnostic information, not a substitute for capabilities.
 
 Bits 1 and 2 identify reboot and settings-save support. Bit 4 selects the six-signal native SDMMC layout of Report `2`;
 it does **not** imply USB mass-storage support. Report `2` board flag bit 6 advertises MSC ownership control.
@@ -360,6 +361,31 @@ write/read, zero mismatches and no remaining-file flag. Hosts must reject contra
 Progress is `(written + read) * 50 / target` (zero for zero target).
 Rates are bytes multiplied by 1000 divided by the corresponding elapsed milliseconds; zero elapsed means unavailable.
 See [benchmark safety and timing](sdcard.md#optional-storage-benchmark) for cleanup and measurement boundaries.
+
+## Report ID 13: Module Memory Inventory
+
+This read-only Feature is available when Report `1` extension bit 0 (capability bit 8) is set.
+It has a 16-byte payload, or 17 bytes including the USB report ID. Authenticated BLE reads the same payload
+without the ID from characteristic `000d`. Hosts MUST NOT probe it on firmware without the advertisement;
+an advertised report that is absent or malformed is an explicit protocol error.
+
+| Offset | Size | Field |
+| ---: | ---: | --- |
+| 0 | 1 | Layout version `1` |
+| 1 | 1 | Availability: bit 0 initialized PSRAM; bit 1 successful module-flash capacity read; other bits zero |
+| 2 | 2 | Reserved, zero |
+| 4 | 4 | LE32 detected PSRAM capacity in bytes |
+| 8 | 4 | LE32 linker-reserved PSRAM bytes, including permanent heap pools |
+| 12 | 4 | LE32 detected module SPI flash capacity in bytes |
+
+An available component has nonzero capacity; PSRAM reservation cannot exceed its capacity. Unavailable
+components have zero wire fields and host JSON `null`, never guessed N16R8 capacities. The inventory is sampled
+at boot and remains immutable until reboot. Capacity reads do not write flash or allocate a new PSRAM workload.
+Driver errors are logged; availability does not constitute physical memory qualification.
+
+Report `1` SRAM accounting remains internal-only. Reserved RAM is linker accounting, not live allocation or
+free heap. Flash capacity is physical chip size, not application image size, free filesystem space or remaining
+settings capacity. The ESP32-S3 has no on-chip flash: N16R8 module flash is external to the SoC, and PSRAM is RAM.
 
 ## Report ID 20: Control Command & Result
 

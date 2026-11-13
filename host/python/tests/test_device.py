@@ -61,6 +61,25 @@ class HidEnumerationTests(unittest.TestCase):
 
 
 class HidDeviceTests(unittest.TestCase):
+    def test_identity_reads_only_advertised_memory_inventory_and_rejects_bad_reports(self):
+        from test_protocol import identity_report
+
+        client = self.connection()
+        client._expected_serial_number = None
+        report = bytearray(identity_report()); report[17] = 1
+        client._device.feature_reports = {
+            1: [report],
+            13: [bytes((13, 1, 3, 0, 0)) + struct.pack("<III", 8 << 20, 1 << 20, 16 << 20)],
+        }
+        self.assertEqual(client.read_info()["flash_total_bytes"], 16 << 20)
+        self.assertEqual(client._device.last_get, (13, 17))
+        client._device.feature_reports[1] = [identity_report()]
+        self.assertIsNone(client.read_info()["psram_total_bytes"])
+        self.assertEqual(client._device.last_get, (1, 27))
+        client._device.feature_reports = {1: [report], 13: [bytes(17)]}
+        with self.assertRaises(ProtocolError):
+            client.read_info()
+
     def test_open_failure_reports_native_reason_not_just_permissions(self):
         native = Mock()
         native.open_path.side_effect = OSError("device or resource busy")

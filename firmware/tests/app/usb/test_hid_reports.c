@@ -39,6 +39,23 @@ void test_identity_layout(void)
 	TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, out, sizeof(out));
 }
 
+void test_memory_inventory_layout_and_unavailable_components(void)
+{
+	ef_memory_inventory_t memory = {.psram_available = true, .flash_available = true,
+		.psram_total_bytes = 8u * 1024u * 1024u, .psram_reserved_bytes = 1024u * 1024u,
+		.flash_total_bytes = 16u * 1024u * 1024u};
+	const uint8_t expected[EF_MEMORY_SIZE] = {1, 3, 0, 0, 0, 0, 128, 0, 0, 0, 16, 0, 0, 0, 0, 1};
+	uint8_t out[EF_MEMORY_SIZE];
+	uint8_t unavailable[EF_MEMORY_SIZE] = {1};
+
+	ef_report_memory(&memory, out);
+	TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, out, sizeof(out));
+	memory.psram_available = false;
+	memory.flash_available = false;
+	ef_report_memory(&memory, out);
+	TEST_ASSERT_EQUAL_UINT8_ARRAY(unavailable, out, sizeof(out));
+}
+
 void test_config_layout_reflects_saved_radios(void)
 {
 	ef_config_t config = {.stored_clock_mhz = 240, .stored_radios = 0x03,

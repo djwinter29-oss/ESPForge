@@ -16,6 +16,32 @@ namespace ESPForge.Tests;
 public sealed class ProtocolTests
 {
     [Fact]
+    public void MemoryInventoryDistinguishesCapacityFromReservationAndUnavailableComponents()
+    {
+        var identityReport = IdentityReport();
+        Assert.False(HidProtocol.ParseIdentityReport(identityReport).MemoryReportSupported);
+        identityReport[17] = 1;
+        var identity = HidProtocol.ParseIdentityReport(identityReport);
+        Assert.True(identity.MemoryReportSupported);
+        var report = new byte[17]; report[0] = 13; report[1] = 1; report[2] = 3;
+        BinaryPrimitives.WriteUInt32LittleEndian(report.AsSpan(5), 8 << 20);
+        BinaryPrimitives.WriteUInt32LittleEndian(report.AsSpan(9), 1 << 20);
+        BinaryPrimitives.WriteUInt32LittleEndian(report.AsSpan(13), 16 << 20);
+        var memory = HidProtocol.ParseMemoryInventory(report, identity);
+        Assert.Equal((uint)(8 << 20), memory.PsramTotalBytes);
+        Assert.Equal((uint)(1 << 20), memory.PsramReservedBytes);
+        Assert.Equal((uint)(16 << 20), memory.FlashTotalBytes);
+        foreach (var (offset, value) in new[] { (1, 2), (2, 4), (3, 1), (12, 1), (16, 0) })
+        {
+            var invalid = (byte[])report.Clone(); invalid[offset] = (byte)value;
+            Assert.Throws<InvalidDataException>(() => HidProtocol.ParseMemoryInventory(invalid, identity));
+        }
+        report.AsSpan(2).Clear();
+        Assert.Null(HidProtocol.ParseMemoryInventory(report, identity).PsramTotalBytes);
+        Assert.Null(HidProtocol.ParseMemoryInventory(report, identity).FlashTotalBytes);
+    }
+
+    [Fact]
     public void RgbColoursAndUnavailableDriverAreValidated()
     {
         var report = new byte[23];

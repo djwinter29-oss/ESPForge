@@ -51,7 +51,9 @@ test("standalone dashboard labels profiles, active measurements, controls and ac
     assert.match(dashboard, /id="msc-controls"/);
   }
   assert.doesNotMatch(html, /25 MHz|50 MHz|Core 1 \/ Core 2|PicoForge|RP2350/);
-  assert.match(html, /Firmware RAM reserved \/ total/);
+  assert.match(html, /Internal SRAM reserved \/ total/);
+  assert.match(html, /External PSRAM reserved \/ total/);
+  assert.match(html, /Module SPI flash capacity/);
   assert.match(html, /Service load \(Core 0 \/ Core 1\)/);
   assert.match(html, /<dt>Filesystem<\/dt>/);
   assert.doesNotMatch(html, /class="eyebrow"|id="mcu"|id="memory-timing"|id="board-config"/);
@@ -59,7 +61,7 @@ test("standalone dashboard labels profiles, active measurements, controls and ac
   assert.match(html, /id="settings-title">Board configuration/);
   const identity = html.split('aria-label="Hardware identity"')[1].split("</section>")[0];
   assert.deepEqual([...identity.matchAll(/<strong id="([^"]+)"/g)].map(match => match[1]),
-    ["product-name", "board-model", "serial", "identity-clock", "ram-usage", "firmware-version"]);
+    ["product-name", "board-model", "serial", "identity-clock", "firmware-version"]);
   const runtime = html.split('<dl class="runtime-grid runtime-summary">')[1].split("</dl>")[0];
   assert.deepEqual([...runtime.matchAll(/<dt>([^<]+)<\/dt>/g)].map(match => match[1]),
     ["Uptime", "Reset cause", "Service load (Core 0 / Core 1)", "Board temperature", "Storage bus speed",

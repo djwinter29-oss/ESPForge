@@ -25,6 +25,7 @@ from espforge.reports import (
     CONTROL_PAYLOAD_SIZE,
 )
 from espforge.reports.wireless import WIRELESS_STATUS_SIZE
+from espforge.reports.identity import parse_memory_inventory_report
 
 FIRMWARE_HEADER = Path(__file__).resolve().parents[3] / "firmware/src/app/usb/hid_reports.h"
 
@@ -70,6 +71,21 @@ def control_result(opcode, status, error=0, transaction=11, data=b""):
 
 
 class ProtocolTests(unittest.TestCase):
+    def test_memory_inventory_reports_physical_capacity_and_no_invented_values(self):
+        report = bytes((13, 1, 3, 0, 0)) + struct.pack("<III", 8 << 20, 1 << 20, 16 << 20)
+        self.assertEqual(parse_memory_inventory_report(report), {
+            "psram_total_bytes": 8 << 20, "psram_reserved_bytes": 1 << 20, "flash_total_bytes": 16 << 20})
+        self.assertEqual(parse_memory_inventory_report(bytes((13, 1)) + bytes(15)), {
+            "psram_total_bytes": None, "psram_reserved_bytes": None, "flash_total_bytes": None})
+        for offset, value in ((1, 2), (2, 4), (3, 1), (12, 1)):
+            invalid = bytearray(report); invalid[offset] = value
+            with self.subTest(offset=offset), self.assertRaises(ValueError):
+                parse_memory_inventory_report(invalid)
+        legacy = parse_identity_report(identity_report())
+        self.assertFalse(legacy["memory_report_supported"])
+        advertised = bytearray(identity_report()); advertised[17] = 1
+        self.assertTrue(parse_identity_report(advertised)["memory_report_supported"])
+
     def test_rgb_led_colour_and_driver_failure_are_truthful(self):
         identity = parse_identity_report(identity_report(0x97))
         for colour in range(8):
