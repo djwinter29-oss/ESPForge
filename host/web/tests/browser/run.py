@@ -212,6 +212,45 @@ def check_native_transitions(page: Page, origin: str, host_name: str) -> None:
               " preserves unrelated drafts")
 
 
+def check_diagnostic_rows(page: Page, origin: str, host_name: str) -> None:
+    """Each visible diagnostics row fills its container, including partial rows and hidden radios."""
+    page.goto(origin)
+    expect(page.locator("#connection-label")).to_have_text("Connected")
+    viewport = page.viewport_size
+    for width in (1440, 960, 720, 320):
+        page.set_viewport_size({"width": width, "height": 900})
+        for radios in (0, 1, 2):
+            rows = page.evaluate("""(radios) => {
+                const summary = document.querySelector('.runtime-summary');
+                const wireless = ['wifi-diagnostics', 'ble-diagnostics'].map(id => document.getElementById(id));
+                const hidden = wireless.map(element => element.hidden);
+                wireless.forEach((element, index) => { element.hidden = index >= radios; });
+                const bounds = summary.getBoundingClientRect();
+                const rows = new Map();
+                for (const element of summary.children) {
+                    if (element.hidden) continue;
+                    const rect = element.getBoundingClientRect();
+                    const row = rows.get(rect.top) ?? [];
+                    row.push({left: rect.left, right: rect.right});
+                    rows.set(rect.top, row);
+                }
+                const result = [...rows.values()].map(row => ({
+                    left: row[0].left - bounds.left, right: bounds.right - row.at(-1).right,
+                    count: row.length, gaps: row.slice(1).map((cell, index) => cell.left - row[index].right)
+                }));
+                wireless.forEach((element, index) => { element.hidden = hidden[index]; });
+                return result;
+            }""", radios)
+            for row in rows:
+                assert 0 <= row["left"] <= 3 and 0 <= row["right"] <= 3, (width, radios, row)
+                assert all(abs(gap - 1) < 0.5 for gap in row["gaps"]), (width, radios, row)
+            if width == 1440:
+                assert [row["count"] for row in rows] == ([5, radios] if radios else [5]), (width, radios, rows)
+            assert page.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth")
+    page.set_viewport_size(viewport)
+    print(f"{host_name}: PASS diagnostics fill every row at desktop and mobile widths")
+
+
 def check_accessibility_smoke(page: Page, origin: str, host_name: str) -> None:
     """Traverse native focus order, check visible focus, and exercise confirmation and clipboard refusal."""
     page.add_init_script("""
@@ -369,6 +408,7 @@ def main() -> None:
                         assert len(reports) == 15 and not any(report["error"] for report in reports) and not errors, errors
                         check_native_drafts(page, origin, label)
                         check_native_transitions(page, origin, label)
+                        check_diagnostic_rows(page, origin, label)
                         check_accessibility_smoke(page, origin, label)
                         check_partial_diagnostics(page, origin, label)
                         assert page.request.get(f"{origin}/console").status == 404

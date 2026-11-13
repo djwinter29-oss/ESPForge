@@ -16,7 +16,7 @@ import sysconfig
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("version", help="expected installed distribution and displayed application version")
+    parser.add_argument("version", nargs="?", help="expected version; defaults to installed distribution metadata")
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
     assert sys.flags.isolated, "Run this check with python -I to exclude checkout imports and PYTHONPATH"
@@ -29,8 +29,9 @@ def main() -> None:
 
     assert espforge.__file__ is not None, "The installed distribution must be a regular package"
     assert not Path(espforge.__file__).resolve().is_relative_to(root / "host/python")
-    assert version("espforge") == args.version
-    assert espforge.__version__ == args.version
+    expected_version = args.version or version("espforge")
+    assert version("espforge") == expected_version
+    assert espforge.__version__ == expected_version
     assert ESPForgeHid.__module__ == "espforge.hid.device"
     assert parse_identity_report.__module__ == "espforge.reports.identity"
     for name in ("protocol", "uart", "console"):
@@ -59,7 +60,7 @@ def main() -> None:
         response = client.get("/")
         assert response.status_code == 200
         assert b"ESPForge Dashboard | Python" in response.data
-        assert f"App v{args.version}<".encode() in response.data
+        assert f"App v{expected_version}<".encode() in response.data
         for asset, content in expected.items():
             if asset.endswith(".html"):
                 continue
@@ -80,7 +81,7 @@ def main() -> None:
     scripts = Path(sysconfig.get_path("scripts"))
     executable = scripts / ("espforge.exe" if sys.platform == "win32" else "espforge")
     subprocess.run([str(executable), "--help"], check=True, timeout=10, stdout=subprocess.DEVNULL)
-    print(f"Installed ESPForge {args.version}: imports, entry points, template and {len(expected)} assets verified")
+    print(f"Installed ESPForge {expected_version}: imports, entry points, template and {len(expected)} assets verified")
 
 
 if __name__ == "__main__":

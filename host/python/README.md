@@ -29,10 +29,11 @@ espforge web
 ```
 
 Open **http://127.0.0.1:8001/**. The wheel includes the dashboard assets; Node.js and .NET are not required.
-Runtime dependencies are Flask and HIDAPI, pinned in [pyproject.toml](pyproject.toml) and locked in [uv.lock](uv.lock).
+Runtime dependencies are Flask and HIDAPI, pinned in [pyproject.toml](pyproject.toml).
 Native HID access still requires the operating system's usual libraries, drivers, and permissions.
-The displayed version comes from the installed `espforge` distribution when the imported package lies inside it;
-source checkouts without matching metadata report `0.0.0-debug`. Release packaging stamps both.
+Hatchling and hatch-vcs derive package versions from `vMAJOR.MINOR.PATCH` Git tags, with development versions
+between tags. The dashboard displays the installed `espforge` distribution version, matching `pip show espforge`,
+for both wheels and editable installs. Uninstalled source checkouts report `0.0.0-debug`.
 
 Wheels are attached to [GitHub Releases](https://github.com/djwinter29-oss/ESPForge/releases/latest) and published to
 PyPI after [release setup](../../docs/deployment/release.md#before-the-first-release); downloads may be unavailable
@@ -46,6 +47,8 @@ For an explicit development installation in your active environment, from the re
 python -m pip install --editable host/python
 espforge web
 ```
+
+Reinstall the editable package after changing commits or tags to refresh its installed version metadata.
 
 ## Commands
 

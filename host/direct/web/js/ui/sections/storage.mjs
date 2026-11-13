@@ -21,8 +21,9 @@ function formatManufacturer(manufacturer) {
 export function deriveStorageViewModel(state, previous = {}) {
   let memory = state.memory;
   let filesystemFormat = state.filesystem_format;
-  const absent = memory?.presence_known === true ? memory.present === false
-    : state.connected ? previous.absent ?? false : false;
+  const detected = state.connected && memory && memory.sample_valid !== false
+    ? memory.presence_known === true ? memory.present === true : memory.initialized === true
+    : state.connected ? previous.detected ?? false : false;
   const busy = memory?.configured && memory.sample_valid === false;
   const details = memory?.sample_valid && memory.initialized
     ? { memory, filesystemFormat } : busy && state.connected ? previous.details : null;
@@ -37,8 +38,8 @@ export function deriveStorageViewModel(state, previous = {}) {
   const manufacturer = memory?.manufacturer;
   const filesystemLabels = { unknown: "Unknown", fat12: "FAT12", fat16: "FAT16", fat32: "FAT32", exfat: "exFAT" };
   return {
-    retained: { absent, details },
-    hidden: absent,
+    retained: { detected, details },
+    hidden: !detected,
     text: {
       "memory-state": label,
       "memory-note": note,

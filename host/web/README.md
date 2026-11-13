@@ -39,7 +39,10 @@ Reserved status values remain `self_test: null`, disabled `memory.msc` and
 Unavailable per-core load, temperature, card presence, bus clock and capacity diagnostics use JSON `null`.
 The dashboard displays unavailable measurements as `--` without a footer warning; malformed diagnostic values
 still produce a warning. Unknown card presence is not treated as a confirmed missing card.
+Storage stays hidden until a fresh report detects a card or confirms successful initialization. Detected cards
+remain visible if initialization fails. Busy or stale reports retain visibility; disconnect clears detection.
 Service load shows **Core 0 / Core 1**, for example `3.1% / --` when Core 1 is unavailable.
+Diagnostic tiles expand to fill each responsive row, including rows with fewer visible tiles.
 
 Commands are serialized per board. A timeout or disconnect can leave the outcome uncertain; further writes
 remain blocked until explicit reconciliation. Clients must not replay a state-changing request.

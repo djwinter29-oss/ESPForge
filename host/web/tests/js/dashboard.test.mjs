@@ -129,9 +129,33 @@ test("server dashboard retains storage visibility through stale reports without 
       assert.equal(el("#memory-size").textContent, "--", "Stale readings must not be presented as live");
 
       render({ connected: false });
-      assert.equal(el('[aria-labelledby="memory-title"]').hidden, false, "Disconnect must clear confirmed presence");
+      assert.equal(el('[aria-labelledby="memory-title"]').hidden, true, "Disconnect must clear confirmed presence");
     }
   }));
+
+test("storage stays hidden until detected but keeps detected initialization failures visible", () => withDocument(el => {
+  const section = el('[aria-labelledby="memory-title"]');
+  renderServerStatus({ connected: false });
+  assert.equal(section.hidden, true);
+  const state = snapshot();
+  state.memory = { configured: true, sample_valid: true, initialized: false, presence_known: false, present: null };
+  renderServerStatus(state);
+  assert.equal(section.hidden, true);
+  state.memory = { ...state.memory, presence_known: true, present: true };
+  renderServerStatus(state);
+  assert.equal(section.hidden, false);
+  assert.match(el("#memory-note").textContent, /not initialized/);
+  renderServerStatus({ ...state, memory: { configured: true, sample_valid: false } });
+  assert.equal(section.hidden, false);
+  renderServerStatus({ ...state, memory: null, storage_stale: true });
+  assert.equal(section.hidden, false);
+  state.memory = { ...state.memory, presence_known: false, present: null };
+  renderServerStatus(state);
+  assert.equal(section.hidden, true);
+  state.memory.initialized = true;
+  renderServerStatus(state);
+  assert.equal(section.hidden, false, "Successful initialization establishes card detection");
+}));
 
 test("status normalization reads only the shared nested shape", () => {
   const msc = { enabled: true, transition_pending: false };

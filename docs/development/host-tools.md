@@ -48,15 +48,16 @@ Run `espforge`, `python -m espforge`, or the checkout launch script.
 | Tests | Report codecs, HID device, monitor, boards, wireless, web API, CLI, version and packaging contracts |
 
 The wheel bundles the shared dashboard assets rather than maintaining a second frontend copy.
-Python type-checking runs in strict mode. After changing dependencies, update `pyproject.toml` and run `uv lock` in
-`host/python`; the packaging tests require the lock to match the declared pins and version.
+Python type-checking runs in strict mode. Runtime dependency pins live in `pyproject.toml`; pip handles installation
+without a checked-in lockfile. Hatchling builds the package, and hatch-vcs derives its version from Git tags.
+Editable installs use the same distribution metadata as wheels; reinstall after a commit or tag change to refresh it.
 To check a wheel locally on Linux/macOS:
 
 ```sh
 python3 -m pip wheel --no-deps host/python --wheel-dir build/wheels
 python3 -m venv build/wheel-check
 build/wheel-check/bin/python -m pip install build/wheels/*.whl
-build/wheel-check/bin/python -I tools/check_python_wheel.py 0.0.0.dev0
+build/wheel-check/bin/python -I tools/check_python_wheel.py
 ```
 
 ## Shared dashboard

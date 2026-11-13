@@ -20,9 +20,10 @@ can publish release assets, and only Pages and PyPI deployment get OIDC write pe
 PR checks cancel superseded runs; release/publication runs are not cancelled mid-flight.
 No workflow flashes hardware, tests an SD card or runs a dedicated manual-tool test suite.
 
-Python is packaged like PicoForge: [pyproject.toml](../../host/python/pyproject.toml) builds the
-`espforge` wheel, which bundles `host/web/src` as `espforge/web`. The release stamps the tag version
-into the package metadata and source fallback, installs the wheel in a clean environment and runs
+Python uses Hatchling and hatch-vcs: [pyproject.toml](../../host/python/pyproject.toml) builds the
+`espforge` wheel, which bundles `host/web/src` as `espforge/web`. Git tags determine ordinary package versions;
+release builds explicitly supply the validated version through `SETUPTOOLS_SCM_PRETEND_VERSION`.
+The release installs the wheel in a clean environment and runs
 [the installed-wheel check](../../tools/check_python_wheel.py) outside the checkout. Browser checks
 run in Host Validation; the extracted Direct and installed Python packages are smoke-tested over HTTP.
 

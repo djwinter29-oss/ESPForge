@@ -2,12 +2,12 @@
 # Copyright (c) 2026 Ji Dong
 
 [build-system]
-requires = ["setuptools>=84.2.1"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling==1.32.4", "hatch-vcs==0.5.0"]
+build-backend = "hatchling.build"
 
 [project]
 name = "espforge"
-version = "0.0.0.dev0"
+dynamic = ["version"]
 description = "ESPForge USB HID control, diagnostics, and local dashboard"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -33,12 +33,23 @@ Issues = "https://github.com/djwinter29-oss/ESPForge/issues"
 [project.scripts]
 espforge = "espforge.cli:main"
 
-[tool.setuptools]
-package-dir = {"espforge" = "src/espforge", "espforge.web" = "../web/src"}
-packages = ["espforge", "espforge.web", "espforge.reports", "espforge.hid", "espforge.dashboard"]
+[tool.hatch.version]
+source = "vcs"
+tag-pattern = '^v(?P<version>\d+\.\d+\.\d+)$'
+fallback-version = "0.0.0.dev0"
 
-[tool.setuptools.package-data]
-"espforge.web" = ["index.html", "favicon.svg", "css/*.css", "js/*.mjs"]
+[tool.hatch.version.raw-options]
+root = "../.."
+fallback_root = "."
+git_describe_command = "git describe --dirty --tags --long --match v[0-9]*.[0-9]*.[0-9]*"
+
+[tool.hatch.build.hooks.custom]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/espforge"]
+
+[tool.hatch.build.targets.sdist]
+include = ["/src", "/hatch_build.py"]
 
 [tool.pyright]
 include = ["src/espforge/dashboard/boards.py", "src/espforge/dashboard/models.py",

@@ -34,7 +34,7 @@ function uptimeLabel(milliseconds) {
 
 /** @type {{memory: import("./dashboard-api.mjs").Memory, filesystemFormat: string | null | undefined} | null} */
 let lastStorageDetails = null;
-let cardAbsent = false;
+let cardDetected = false;
 /** @type {string | null} */
 let boardConfigurationSignature = null;
 /** @type {{uartTitle: HTMLElement, storageTitle: HTMLElement, uartTable: HTMLElement,
@@ -69,7 +69,7 @@ export function renderStatus(snapshot, operations = operationState(snapshot, {
   const connected = Boolean(snapshot.connected);
   if (!connected) {
     lastStorageDetails = null;
-    cardAbsent = false;
+    cardDetected = false;
   }
   const hardware = snapshot.hardware;
   const runtime = snapshot.telemetry_stale ? null : snapshot.runtime;
@@ -105,8 +105,9 @@ export function renderStatus(snapshot, operations = operationState(snapshot, {
     ? uptimeLabel(runtime.uptime_milliseconds ?? runtime.uptime_ms) : "--";
   renderWirelessStatus(snapshot);
   const memory = snapshot.storage_stale ? null : snapshot.memory;
-  if (memory?.presence_known === true) cardAbsent = memory.present === false;
-  element('[aria-labelledby="memory-title"]').hidden = cardAbsent;
+  if (connected && memory && memory.sample_valid !== false)
+    cardDetected = memory.presence_known === true ? memory.present === true : memory.initialized === true;
+  element('[aria-labelledby="memory-title"]').hidden = !cardDetected;
   element("#temperature").textContent = runtime?.temperature_valid && runtime.temperature_centidegrees != null
     ? `${(runtime.temperature_centidegrees / 100).toFixed(2)} °C` : "--";
   renderBoardConfiguration(snapshot);

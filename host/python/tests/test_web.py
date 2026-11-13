@@ -229,11 +229,10 @@ class WebTests(unittest.TestCase):
         self.assertEqual(client.get("/ble/js/app.mjs").status_code, 404)
         page = client.get("/").get_data(as_text=True)
         self.assertNotIn("/ble/", page)
-        self.assertNotIn('<option value="configure">', page)
+        self.assertIn('<option value="configure">', page)
         for radio in ("wifi", "ble"):
-            self.assertIn(f'id="{radio}-configure"', page)
-            self.assertIn(f'aria-controls="{radio}-dialog"', page)
-        self.assertIn('id="wifi-dialog"', page)
+            self.assertNotIn(f'id="{radio}-configure"', page)
+            self.assertIn(f'id="{radio}-dialog"', page)
 
     def test_forced_save_is_refused_and_false_confirmation_is_a_normal_save(self):
         monitor = FakeMonitor()
