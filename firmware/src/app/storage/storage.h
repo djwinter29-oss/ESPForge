@@ -18,8 +18,13 @@
 
 /** Initialize policy before transports start; subsequent calls belong to the storage worker. */
 void ef_storage_policy_init(bool configured, bool present, int64_t now_ms);
-/** Debounce presence, retry mounting and execute one request (0 firmware, 1 USB, or a sentinel). */
-void ef_storage_policy_poll(bool present, int64_t now_ms, int request);
+/**
+ * @brief Debounce presence, retry mounting and execute one request (0 firmware, 1 USB, or a sentinel).
+ * @param present Zero when absent, positive when inserted, or a negative card-detect error.
+ * @param now_ms Monotonic time in milliseconds.
+ * @param request One ownership request or a sentinel.
+ */
+void ef_storage_policy_poll(int present, int64_t now_ms, int request);
 
 /** Publish a coherent snapshot without holding the application lock or exposing live mutable state. */
 void ef_storage_publish(const ef_storage_t *storage);

@@ -15,7 +15,7 @@ flowchart LR
         USB["USB HID<br/>(native USB)"]
         BLE["BLE GATT"]
         App["Zephyr application<br/>Control dispatcher + boot settings<br/>Wi-Fi station + DHCP<br/>4-bit SDMMC / FatFs"]
-        Console["Zephyr console / log"]
+        Console["Zephyr diagnostic shells / log"]
         ROM["ROM bootloader<br/>(flashing)"]
     end
     UART["UART connector"]
@@ -28,6 +28,7 @@ flowchart LR
     BLE --> App
     UART --> Console
     UART --> ROM
+    TCP["Raw TCP diagnostic client"] -->|Wi-Fi| Console
 ```
 
 USB HID and BLE share ESPForge report payloads and Control semantics, defined by the
@@ -45,9 +46,10 @@ USB HID and BLE share ESPForge report payloads and Control semantics, defined by
 | USB HID | Native USB management, snapshots and periodic telemetry/storage delivery |
 | BLE | GATT service, read snapshots, Control writes and advertising |
 | Wi-Fi | Saved-network joins, candidate tests and scans |
-| Telemetry and storage | CPU load, temperature and clock; boot-time SD mount and cached card facts |
+| Diagnostic shells | Native UART and raw TCP inspection without application mutations ([console](../guides/console.md)) |
+| Telemetry and storage | CPU load, temperature and clock; runtime SD detection, FAT mount and exclusive USB handoff |
 | Boot settings | One CRC-checked next-boot record for CPU clock, radio switches and credentials ([settings](settings.md)) |
-| Board configuration | USB interface, six-signal native SDMMC wiring and temperature sensor |
+| Board configuration | USB interfaces, native SDMMC/card-detect wiring and temperature sensor |
 | Direct dashboard | Independent browser app with WebHID and Web Bluetooth |
 | Shared dashboard | Browser UI served by the Python and .NET loopback hosts |
 | Python/.NET hosts | USB HID ownership and a local HTTP API for the shared dashboard |
@@ -57,7 +59,7 @@ and [host development](../development/host-tools.md) guides.
 
 ## Lifecycle and failure handling
 
-Boot loads the [settings record](settings.md), applies the CPU clock profile, mounts the SD card once, starts Wi-Fi
+Boot loads the [settings record](settings.md), applies the CPU clock profile, initializes detected SD storage, starts Wi-Fi
 (joining the saved network when enabled), starts BLE when enabled with a saved Control key, and then enables USB.
 A mount failure is reported in Report 10 and does not stop USB or the radios. No card self-test or file write runs.
 
@@ -65,6 +67,8 @@ USB callbacks run in the USB stack thread and BLE callbacks in the Bluetooth thr
 dispatcher, and every access to settings, staging and wireless state holds one application mutex. Wi-Fi driver
 events are queued and applied by the main loop, which also starts connects, disconnects and scans outside the lock.
 Reboots are scheduled about one second after the reply so the host can read the result first.
+The [SD worker](sdcard.md) handles runtime detection and exclusive firmware/USB ownership outside the application lock;
+native MSC block I/O runs in its own USB class thread. Busy or USB-owned storage blocks reboot/settings-save.
 
 Hosts reject reports outside the wire contracts and never retry a command whose outcome is uncertain; they block further
 writes until the user confirms a re-sync. There is no implicit demo fallback.

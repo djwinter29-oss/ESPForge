@@ -30,7 +30,7 @@ Software tests do not establish hardware qualification; see [Conformance](#confo
 BLE is present only when Report `1` capability bit 7 is set. At boot the firmware loads the saved Control key and
 then starts the controller only when the Report `2` Bluetooth switch is on **and** a key is saved. Enabling the
 switch without a key logs a warning and leaves the controller off. Saving or clearing the key takes effect at the
-next boot. ESPForge has no TCP CLI listener.
+next boot. The separate [diagnostic TCP shell](../guides/console.md) is not protected by the BLE Control key.
 
 Report `12` byte 3 (`ble_state`) publishes the controller state:
 
@@ -118,6 +118,10 @@ return ATT error `0x80`.
 | `0014` | Read, Write | Denied (`0x80`) | 9 | [Control request/result](#control-characteristic). |
 | `0100` | Read | Read | 16 | Fresh challenge nonce; each read replaces the previous one. |
 | `0101` | Write Request | Write | 16 | Session or command proof. |
+
+Reports `0002` and `000a` mirror the USB card-detect/MSC flag and live ownership status.
+MSC opcode `3` remains USB-only and returns Unsupported/error `4` over BLE. Reboot/save return Busy/detail `1`
+while storage is busy or USB-owned; see [USB storage arbitration](usb-hid.md#cross-interface-resource-arbitration).
 
 `0014` is also Write Request only; Write Without Response is not advertised for `0014` or `0101`. Such commands
 are rejected by the stack before the application callback, and Write Without Response has no ATT response for a

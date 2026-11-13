@@ -24,6 +24,11 @@ test("board pin tables are reused until the displayed configuration changes", ()
   renderStatus(state);
   assert.equal(el("#board-uart").replaceCount, 2);
   assert.equal(el("#board-storage-pins").replaceCount, 2);
+  state.settings = { ...state.settings, board_flags: 0x45, card_detect_gpio: 8 };
+  renderStatus(state);
+  assert.equal(el("#board-storage-pins").replaceCount, 3);
+  assert.equal(el("#board-storage-pins").children[0].children.at(-1).textContent, "Card detect");
+  assert.equal(el("#board-storage-pins").children[1].children.at(-1).textContent, "GPIO8");
 }));
 
 test("identity RAM stays build accounting while stale inputs show no current values", () =>

@@ -68,13 +68,22 @@ test("status validates lifecycle and admission facts before allowing any transit
   for (const [field, section] of [
     ["hardware", { capabilities: "32" }], ["runtime", { led_on: "false" }],
     ["memory", { msc: { enabled: false, transition_pending: "false" } }],
+    ["memory", { initialized: true, sample_valid: "false" }],
     ["self_test", { active: false }], ["self_test", { active: "false", sequence: 1 }],
     ["self_test", { active: false, sequence: 256 }], ["board_configuration", {}],
+    ["board_configuration", { ...valid.board_configuration, board_flags: "64" }],
     ["wireless", {}], ["wireless", { ...valid.wireless, ssid_hex: "f" }],
     ["wireless", { ...valid.wireless, tcp_cli_enabled: "false" }],
     ["wireless", { ...valid.wireless, test_generation: "1" }],
     ["wireless", { ...valid.wireless, key_staged: "false" }],
   ]) assert.throws(() => statusResponse({ ...valid, [field]: section }), /Invalid status/);
+});
+
+test("MSC acknowledgements accept admission but never infer settled ownership", () => {
+  assert.deepEqual(acknowledge({}, 3), { opcode: 3, status: "completed" });
+  assert.equal(acknowledge({ control_result: { opcode: 3, status: "completed" } }, 3).status, "completed");
+  assert.throws(() => acknowledge({ control_result: { opcode: 2, status: "completed" } }, 3),
+    { uncertain: true });
 });
 
 test("successful Wi-Fi testing requires a validated generation and firmware lifetime", () => {

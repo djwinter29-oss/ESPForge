@@ -51,6 +51,10 @@ def sdmmc_failures(build: Path) -> list[str]:
             failures.append("SDMMC CLK/CMD/DAT0-DAT3 GPIOs must be 12/11/13/14/15/10")
         if "bias-pull-up;" not in pins.group(2):
             failures.append("SDMMC command/data pinctrl must request pull-ups")
+    detect = re.search(r"\bsd-detect-gpios\s*=\s*<\s*&gpio0\s+(0x[0-9a-f]+|\d+)\s+"
+                       r"(0x[0-9a-f]+|\d+)\s*>;", dts)
+    if not detect or [int(value, 0) for value in detect.groups()] != [8, 0x20]:
+        failures.append("SD card detection must use GPIO8 active-high with a pull-down")
     return failures
 
 
@@ -74,11 +78,15 @@ def main() -> int:
         "WIFI", "BT", "BT_PERIPHERAL", "ESP32_SW_COEXIST_ENABLE",
         "NET_DHCPV4", "SDHC_ESP32", "DISK_DRIVER_SDMMC", "FAT_FILESYSTEM_ELM",
         "FLASH", "FLASH_MAP", "CLOCK_CONTROL", "USB_DEVICE_STACK_NEXT",
-        "USBD_HID_SUPPORT", "HWINFO", "REBOOT", "THREAD_RUNTIME_STATS",
+        "USBD_HID_SUPPORT", "USBD_MSC_CLASS", "HWINFO", "REBOOT", "THREAD_RUNTIME_STATS",
         "ESP_SPIRAM", "SPIRAM_MODE_OCT",
+        "SHELL", "SHELL_BACKEND_SERIAL", "SHELL_BACKEND_TELNET", "DEVICE_SHELL",
     ]
-    values = {"FLASH_SIZE": "16777216", "ESP_SPIRAM_SIZE": "8388608"}
-    disabled = ["FS_FATFS_MOUNT_MKFS", "FS_FATFS_MKFS", "JSON_LIBRARY", "BT_SMP", "SPI_SDHC"]
+    values = {"FLASH_SIZE": "16777216", "ESP_SPIRAM_SIZE": "8388608", "SHELL_TELNET_PORT": "2323"}
+    disabled = ["FS_FATFS_MOUNT_MKFS", "FS_FATFS_MKFS", "JSON_LIBRARY", "BT_SMP", "SPI_SDHC",
+                "USBD_CDC_ACM_CLASS", "SHELL_TELNET_SUPPORT_COMMAND", "SHELL_LOG_BACKEND", "SHELL_HISTORY",
+                "KERNEL_SHELL", "DEVMEM_SHELL", "DATE_SHELL", "DEVICE_SHELL_INIT_CMD", "FILE_SYSTEM_SHELL",
+                "FLASH_SHELL", "NET_SHELL", "NET_L2_WIFI_SHELL", "BT_SHELL"]
     failures = [f"CONFIG_{name} must be enabled" for name in enabled
                 if config.get(f"CONFIG_{name}") != "y"]
     failures.extend(f"CONFIG_{name} must be disabled" for name in disabled
@@ -91,7 +99,9 @@ def main() -> int:
     if failures:
         print("\n".join(failures), file=sys.stderr)
         return 1
-    print("PASS: N16R8 16 MB flash and 8 MB octal PSRAM, Wi-Fi, BLE, coexistence, DHCP, native 4-bit SDMMC/FAT at 25 MHz on GPIO12/11/13/14/15/10, USB HID, settings flash; no mkfs or JSON")
+    print("PASS: N16R8 16 MB flash and 8 MB octal PSRAM, Wi-Fi, BLE, coexistence, DHCP, "
+          "native 4-bit SDMMC/FAT at 25 MHz on GPIO12/11/13/14/15/10, GPIO8 card detect, "
+          "USB HID/MSC, UART/raw TCP diagnostic shells on port 2323, settings flash; no mkfs, CDC or JSON")
     return 0
 
 

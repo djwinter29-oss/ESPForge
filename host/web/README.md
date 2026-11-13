@@ -19,6 +19,7 @@ Board-scoped routes take `?board=ID` from `/api/boards`.
 | `GET /api/status` | Identity, telemetry, storage, boot configuration and wireless status |
 | `POST /api/settings` | Save clock and radio switches, then reboot; `system_clock_mhz` is `0`, `80`, `160` or `240`, `sdcard_profile` is `0`, `radios` is `0`-`3` |
 | `POST /api/reboot` | Confirmed reboot, with `{"confirm":true}` |
+| `POST /api/msc` | Explicitly enable USB storage or return it after confirmed OS eject |
 | `POST /api/control/resync` | Explicitly reconcile an uncertain command outcome |
 | `POST /api/wireless` | Save Wi-Fi credentials, Control key and radio switches |
 | `POST /api/wireless/scan` | Scan for Wi-Fi networks |
@@ -31,16 +32,25 @@ Wireless requests may omit `tcp_cli_enabled` or supply `false`, never `true`. Om
 restaged. Opaque SSIDs use `ssid_hex` alongside an escaped display label; test/save requests may use the hex
 form to preserve network bytes.
 
-Unsupported routes are not served: `/console`, `/api/console`, `/api/led`, `/api/msc`,
+MSC requests use `{"enabled":true}` to export or `{"enabled":false,"confirm_ejected":true}` to return.
+`enabled` is required and boolean; optional `confirm_ejected` is boolean and defaults to false. Extra fields,
+nonboolean values and unconfirmed return are HTTP 400. Unavailable/stale/busy ownership is HTTP 409; transport
+failure is HTTP 503 and may leave an uncertain outcome. HTTP 200 acknowledges admission, not completed handoff:
+Python includes `control_result`, while .NET returns `{}`. Poll `/api/status` for `memory.msc.transition_pending`,
+`enabled` and `request_rejected`; do not automatically replay. See the
+[SD handoff contract](../../docs/reference/sdcard.md#usb-drive-handoff) for OS eject, reconnect and safety limitations.
+
+Unsupported routes are not served: `/console`, `/api/console`, `/api/led`,
 `/api/msc/force-return` and `/api/self-test`. The UI never requests them.
-Reserved status values remain `self_test: null`, disabled `memory.msc` and
+Reserved status values remain `self_test: null` and
 `wireless.tcp_cli_enabled: false`; their presence does not enable unsupported features.
 
 Unavailable per-core load, temperature, card presence, bus clock and capacity diagnostics use JSON `null`.
 The dashboard displays unavailable measurements as `--` without a footer warning; malformed diagnostic values
 still produce a warning. Unknown card presence is not treated as a confirmed missing card.
 Storage stays hidden until a fresh report detects a card or confirms successful initialization. Detected cards
-remain visible if initialization fails. Busy or stale reports retain visibility; disconnect clears detection.
+remain visible if initialization fails. USB-owned storage remains visible without a valid firmware SD sample.
+Busy or stale reports retain visibility; disconnect clears detection.
 Service load shows **Core 0 / Core 1**, for example `3.1% / --` when Core 1 is unavailable.
 Diagnostic tiles expand to fill each responsive row, including rows with fewer visible tiles.
 

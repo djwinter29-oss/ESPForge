@@ -120,7 +120,7 @@ sequenceDiagram
     F-->>B: Record
     B-->>M: Validated copy, or defaults
     M->>C: Apply saved CPU clock profile
-    M->>S: Mount SD filesystem once
+    M->>S: Initialize detected SD storage and runtime monitoring
     M->>W: Initialize Wi-Fi; join saved network when enabled
     M->>W: Initialize BLE when enabled with a saved Control key
     M->>M: Enable USB, then service management and telemetry
@@ -203,7 +203,8 @@ incorrect size or CRC mismatch and load complete defaults.
 
 The record stores profile IDs, not MHz; host protocols carry MHz. Service bits are stored as *disabled* flags:
 zero enables both radios. An erased flash record is invalid and loads the same complete defaults; `0xFF` is not
-itself a valid switch field. Bit 2 and other unknown service bits are invalid; there is no TCP CLI.
+itself a valid switch field. Bit 2 and other unknown service bits are invalid; the
+[diagnostic TCP shell](../guides/console.md) has no saved switch.
 The storage API accepts an empty passphrase or 8-63 non-NUL bytes and requires zero padding.
 USB staging is stricter: its specification requires printable ASCII.
 Any 32-byte key value is representable, including all zero; clearing it removes the presence flag and zeros
@@ -316,7 +317,8 @@ The Python, .NET and Direct dashboards provide **Save&Reboot**, without TCP CLI 
 
 ### Forced Save and Reboot
 
-There is no USB mass-storage ownership or forced-save workflow. Capability bit 6 is clear.
+There is no forced-save workflow; Report `1` capability bit 6 remains clear.
+Busy or USB-owned storage blocks save/reboot; safely eject and [return ownership](sdcard.md#usb-drive-handoff) first.
 USB opcode `5` with forced-save flag bit 0 returns Unsupported/error `4`; clients MUST NOT fall back silently
 to another save request. BLE opcode `5` requires all flags zero.
 

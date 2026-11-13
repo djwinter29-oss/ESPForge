@@ -81,14 +81,16 @@ a board advertising as `ESPForge-…`. See [wireless setup](../../docs/guides/wi
 |---|---|
 | Device information | Product, board/MCU, serial, system clock, reserved/total firmware RAM, and firmware version |
 | Board configuration | Next-boot clock, Wi-Fi and Bluetooth switches, and reset cause |
-| Pin configuration | Collapsible management UART and six-signal SDMMC GPIO tables |
+| Pin configuration | Collapsible management UART, SDMMC and allocated card-detect GPIO tables |
 | Live diagnostics | Uptime, Core 0 CPU load, temperature, storage bus speed, and wireless status |
 | Storage | Card state, capacity, filesystem, and card identity |
 
 Firmware RAM is boot-stable build accounting, not live heap or stack usage. ESPForge has one SD-card profile, so
 the dashboard always saves profile 0 and shows the bus clock actually reported by Storage.
 
-ESPForge has no LED control, USB mass-storage handoff, storage benchmark, forced save or TCP CLI console.
+USB connections can explicitly export an initialized SD card and return it after confirmed OS eject;
+see [SD ownership](../../docs/reference/sdcard.md#usb-drive-handoff). Bluetooth cannot change ownership.
+ESPForge has no LED control, storage benchmark, forced save or TCP CLI console.
 The dashboard omits those controls rather than inventing values.
 
 ## Controls

@@ -65,7 +65,8 @@ const mock = `<script>
     savedWireless: structuredClone(connected.wireless), testId: null,
     mismatch: false, cleanupFailure: false, cleanups: 0,
     scanInvalid: false, wirelessScans: 0, resyncs: 0, failedCommand: null, noResultCommand: null,
-    statusReads: 0, malformedStatus: null, rebootUncertain: false, wirelessRequests: [], settingsRequests: []};
+    statusReads: 0, malformedStatus: null, rebootUncertain: false, wirelessRequests: [], settingsRequests: [],
+    mscRequests: []};
   window.fetch = async (input, options = {}) => {
     const url = new URL(input, document.baseURI);
     const state = window.sharedBrowserState;
@@ -91,6 +92,13 @@ const mock = `<script>
         return response({uncertain: false, control_result: {opcode, status: "failed", error: "storage_busy"}});
       }
       return response({uncertain: false});
+    }
+    if (url.pathname === "/api/msc") {
+      const payload = JSON.parse(options.body);
+      state.mscRequests.push(payload);
+      connected.memory = { ...connected.memory, sample_valid: !payload.enabled, initialized: !payload.enabled,
+        present: payload.enabled ? null : true, msc: { enabled: payload.enabled, transition_pending: false } };
+      return response({control_result: {opcode: 3, status: "completed"}});
     }
     if (url.pathname === "/api/reboot") {
       state.reboots++;

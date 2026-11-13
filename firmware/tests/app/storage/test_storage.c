@@ -61,7 +61,7 @@ void tearDown(void)
 
 void test_insertion_is_debounced_then_mounted_and_removal_clears_all_card_facts(void)
 {
-	ef_storage_policy_poll(true, 10, EF_STORAGE_NO_REQUEST);
+	ef_storage_policy_poll(2, 10, EF_STORAGE_NO_REQUEST);
 	ef_storage_policy_poll(false, 60, EF_STORAGE_NO_REQUEST);
 	ef_storage_policy_poll(true, 100, EF_STORAGE_NO_REQUEST);
 	ef_storage_policy_poll(true, 199, EF_STORAGE_NO_REQUEST);
@@ -142,4 +142,47 @@ void test_card_changed_before_an_admitted_request_cancels_it_without_media_io(vo
 	TEST_ASSERT_EQUAL_UINT(0, refreshes);
 	TEST_ASSERT_TRUE(published.msc_request_rejected);
 	TEST_ASSERT_FALSE(published.msc_transition_pending);
+}
+
+void test_detect_error_revokes_usb_and_recovery_remounts_only_after_debounce(void)
+{
+	ef_storage_policy_init(true, true, 0);
+	ef_storage_policy_poll(true, 0, EF_STORAGE_NO_REQUEST);
+	ef_storage_policy_poll(true, 1, 1);
+	ef_storage_policy_poll(-EIO, 2, EF_STORAGE_CANCEL_REQUEST);
+	TEST_ASSERT_FALSE(published.msc_enabled);
+	TEST_ASSERT_FALSE(published.sample_valid);
+	TEST_ASSERT_FALSE(published.presence_known);
+	TEST_ASSERT_EQUAL_UINT32(0, published.block_count);
+	TEST_ASSERT_TRUE(published.msc_request_rejected);
+	unsigned before = opens;
+
+	ef_storage_policy_poll(true, 10, EF_STORAGE_NO_REQUEST);
+	TEST_ASSERT_FALSE(published.sample_valid);
+	TEST_ASSERT_EQUAL_UINT(before, opens);
+	ef_storage_policy_poll(2, 110, EF_STORAGE_NO_REQUEST);
+	TEST_ASSERT_TRUE(published.sample_valid);
+	TEST_ASSERT_TRUE(published.initialized);
+	TEST_ASSERT_FALSE(opened_usb);
+	TEST_ASSERT_FALSE(published.msc_enabled);
+}
+
+void test_brief_removal_revokes_export_and_replacement_waits_for_stable_insertion(void)
+{
+	ef_storage_policy_init(true, true, 0);
+	ef_storage_policy_poll(true, 0, EF_STORAGE_NO_REQUEST);
+	ef_storage_policy_poll(true, 1, 1);
+	unsigned before = opens;
+
+	ef_storage_policy_poll(false, 10, EF_STORAGE_NO_REQUEST);
+	TEST_ASSERT_FALSE(published.msc_enabled);
+	TEST_ASSERT_FALSE(published.initialized);
+	TEST_ASSERT_FALSE(published.sample_valid);
+	ef_storage_policy_poll(true, 20, EF_STORAGE_NO_REQUEST);
+	ef_storage_policy_poll(true, 119, EF_STORAGE_NO_REQUEST);
+	TEST_ASSERT_EQUAL_UINT(before, opens);
+	ef_storage_policy_poll(true, 120, EF_STORAGE_NO_REQUEST);
+	TEST_ASSERT_EQUAL_UINT(before + 1, opens);
+	TEST_ASSERT_FALSE(opened_usb);
+	TEST_ASSERT_FALSE(published.msc_enabled);
 }

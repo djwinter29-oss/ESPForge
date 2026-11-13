@@ -123,7 +123,7 @@ INVALID_REQUESTS = [
 
 DROPPED_ROUTES = [
     ("GET", "/console"), ("GET", "/api/console"), ("POST", "/api/console"), ("PUT", "/api/console"),
-    ("POST", "/api/led"), ("POST", "/api/msc"), ("POST", "/api/msc/force-return"), ("POST", "/api/self-test"),
+    ("POST", "/api/led"), ("POST", "/api/msc/force-return"), ("POST", "/api/self-test"),
 ]
 
 
@@ -262,6 +262,27 @@ class WebTests(unittest.TestCase):
         page = client.get("/").get_data(as_text=True)
         for marker in ('id="led-control"', 'id="msc-control"', 'id="self-test', "/console"):
             self.assertNotIn(marker, page)
+
+    def test_msc_route_requires_boolean_intent_and_explicit_eject_confirmation(self):
+        monitor = FakeMonitor()
+        result = {"control_result": {"opcode": 3, "status": "completed"}}
+        monitor.set_msc = Mock(return_value=result)
+        client = create_app(FakeBoards(monitor)).test_client()
+        for payload in ({}, {"enabled": None}, {"enabled": 1}, {"enabled": "true"},
+                        {"enabled": False}, {"enabled": False, "confirm_ejected": 1},
+                        {"enabled": True, "extra": True}):
+            with self.subTest(payload=payload):
+                response = client.post("/api/msc?board=board-a", json=payload, base_url="http://127.0.0.1")
+                self.assertEqual(response.status_code, 400)
+        monitor.set_msc.assert_not_called()
+        for enabled in (True, False):
+            payload = {"enabled": enabled}
+            if not enabled:
+                payload["confirm_ejected"] = True
+            response = client.post("/api/msc?board=board-a", json=payload, base_url="http://127.0.0.1")
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json, result)
+            monitor.set_msc.assert_called_with(enabled, not enabled)
 
     def test_dashboard_port_defaults_to_8001_and_can_be_overridden(self):
         self.assertEqual(parse_args(["web"]).port, 8001)

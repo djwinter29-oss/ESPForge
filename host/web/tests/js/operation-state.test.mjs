@@ -13,6 +13,20 @@ const ready = {
   storage_stale: false, memory: { initialized: true },
 };
 
+test("MSC controls require advertised support, a mounted card, and settled ownership", () => {
+  const supported = { ...ready, board_configuration: { board_flags: 0x45 } };
+  assert.equal(operationState(ready).canEnableMsc, false);
+  assert.equal(operationState(supported).canEnableMsc, true);
+  assert.equal(operationState(supported).canReturnMsc, false);
+  const owned = { ...supported, memory: { initialized: false, sample_valid: false },
+    msc: { enabled: true, transition_pending: false } };
+  assert.equal(operationState(owned).canEnableMsc, false);
+  assert.equal(operationState(owned).canReturnMsc, true);
+  assert.equal(operationState(owned).canReboot, false);
+  for (const changes of [{ storage_stale: true }, { msc: { enabled: true, transition_pending: true } }])
+    assert.equal(operationState({ ...owned, ...changes }).canReturnMsc, false);
+});
+
 test("capability bits match the ESPForge profile", () => {
   assert.deepEqual([CAPABILITY_REBOOT, CAPABILITY_SETTINGS, CAPABILITY_SDMMC, CAPABILITY_WIRELESS], [2, 4, 16, 128]);
   assert.equal(CAPABILITY_REBOOT | CAPABILITY_SETTINGS | CAPABILITY_SDMMC | CAPABILITY_WIRELESS, 0x96);
@@ -34,8 +48,8 @@ test("one Save projection supplies eligibility and the same reason for all draft
     [{}, { rebootPending: true }, /pending operation/],
     [{ storage_stale: true }, {}, /fresh storage status/],
     [{ msc: null }, {}, /fresh storage status/],
-    [{ msc: { enabled: true } }, {}, /unexpected USB-drive state/],
-    [{ msc: { transition_pending: true } }, {}, /unexpected USB-drive state/],
+    [{ msc: { enabled: true } }, {}, /Safely eject/],
+    [{ msc: { transition_pending: true } }, {}, /storage to become idle/],
     [{ wireless: null }, { radiosDirty: true }, /fresh wireless/],
     [{}, { wirelessBlockReason: "Retest credentials." }, /Retest credentials/],
     [{ wireless: { stale: true } }, { wirelessDirty: true }, /fresh wireless and storage/],
@@ -106,7 +120,7 @@ test("one pure policy handles every local gate without changing board facts", ()
   assert.deepEqual(ready, facts);
 });
 
-test("storage admission projects its own blocking reason without a USB drive", () => {
+test("storage admission blocks reboot and save until USB ownership is returned", () => {
   assert.equal(operationState(ready).storageBlockReason, null);
   assert.equal(operationState(ready).storageStatusReady, true);
   assert.equal(operationState(ready).storageCommandPending, false);
@@ -114,8 +128,8 @@ test("storage admission projects its own blocking reason without a USB drive", (
   for (const [changes, reason] of [
     [{ storage_stale: true }, /Waiting for fresh storage status/],
     [{ msc: null }, /Waiting for fresh storage status/],
-    [{ msc: { enabled: true } }, /unexpected USB-drive state/],
-    [{ msc: { enabled: false, transition_pending: true } }, /unexpected USB-drive state/],
+    [{ msc: { enabled: true } }, /Safely eject/],
+    [{ msc: { enabled: false, transition_pending: true } }, /storage to become idle/],
   ]) {
     const projection = operationState({ ...ready, ...changes });
     assert.match(projection.storageBlockReason, reason);

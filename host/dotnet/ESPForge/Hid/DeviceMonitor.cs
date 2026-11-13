@@ -384,7 +384,10 @@ internal sealed class DeviceMonitor : BackgroundService, IDeviceMonitor
         using (Device(cancel))
         {
             var client = Client();
-            RequireFirmwareStorage();
+            var status = Snapshot;
+            if (((status.BoardConfiguration?.BoardFlags ?? 0) & HidProtocol.BoardFlagMsc) != 0
+                || status.Memory?.Msc?.Enabled == true || status.Memory?.Msc?.TransitionPending == true)
+                RequireFirmwareStorage();
             ExecuteCommand(client, client.Reboot);
         }
     }
@@ -414,7 +417,6 @@ internal sealed class DeviceMonitor : BackgroundService, IDeviceMonitor
             }
             var client = Client();
             ExecuteCommand(client, () => client.SetMsc(enabled, confirmEjected));
-            lock (gate) storageReceipt = 0;
         }
     }
 
@@ -660,10 +662,13 @@ internal sealed class DeviceMonitor : BackgroundService, IDeviceMonitor
     {
         if (result is not { Status: ControlStatus.Completed }) return;
         lock (gate)
+        {
+            if (result.Opcode == Opcode.Msc) storageReceipt = 0;
             snapshot = snapshot with
             {
                 RebootPending = snapshot.RebootPending || result.Opcode is Opcode.Reboot or Opcode.SaveSettings,
                 WirelessCleanupRequired = snapshot.WirelessCleanupRequired && result.Opcode != Opcode.WifiCancel
             };
+        }
     }
 }

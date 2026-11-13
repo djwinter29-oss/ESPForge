@@ -49,13 +49,14 @@ The [Bluetooth LE specification](../reference/bluetooth.md) defines authenticati
 ### Save and dashboard differences
 
 **Save&Reboot** commits the radio switches and staged credentials with the other boot settings, then reboots after a
-verified save. ESPForge has no USB mass storage, so there is no forced save.
+verified save. There is no forced save: safely eject and
+[return an exported SD card](../reference/sdcard.md#usb-drive-handoff) before saving.
 
 Python and .NET manage the selected USB-attached board. Direct supports USB (WebHID) and BLE, with a restricted set of
 actions over BLE.
 
-Live diagnostics report the wireless state; an enabled switch does not mean the radio is connected. ESPForge has no
-TCP CLI.
+Live diagnostics report the wireless state; an enabled switch does not mean the radio is connected.
+The [raw TCP diagnostic shell](console.md) is reachable on a usable IPv4 connection, including a temporary Wi-Fi test.
 
 ## Security boundaries
 
@@ -65,6 +66,8 @@ TCP CLI.
   or JTAG access can read them. They are never returned in reports, kept in browser storage or written to the SD card.
 - Python and .NET bind to loopback and reject foreign Host/Origin headers. Do not expose or reverse-proxy them onto a
   LAN without a separate authentication design.
+- The board's diagnostic TCP shell is unauthenticated plaintext and is not protected by the BLE Control key.
+  Follow the [console network precautions](console.md#raw-tcp).
 
 ## Qualification
 

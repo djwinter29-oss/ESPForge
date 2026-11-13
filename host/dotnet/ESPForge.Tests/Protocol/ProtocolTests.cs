@@ -156,7 +156,7 @@ public sealed class ProtocolTests
         Assert.Null(failed.Mode);
         Assert.Null(failed.BusClockHz);
 
-        foreach (var index in new[] { 32, 33, 34 })
+        foreach (var index in new[] { 32, 33 })
         {
             var msc = StorageReport();
             msc[index] = 1;
@@ -421,6 +421,34 @@ public sealed class ProtocolTests
         BinaryPrimitives.WriteUInt32LittleEndian(report.AsSpan(11), 4096);
         report[31] = 3;
         return report;
+    }
+
+    [Fact]
+    public void MscAvailabilityAndOwnershipPreserveTheReportLayout()
+    {
+        var hardware = HidProtocol.ParseIdentityReport(IdentityReport());
+        var config = ConfigurationReport();
+        config[14] = 0x45;
+        config[17] = 8;
+        Assert.Equal(8, HidProtocol.ParseConfigurationReport(config, hardware).CardDetectGpio);
+        var owned = new byte[HidProtocol.StoragePayloadSize + 1];
+        owned[0] = HidProtocol.StorageReportId;
+        owned[1] = owned[3] = owned[32] = 1;
+        var memory = HidProtocol.ParseStorageReport(owned, hardware).Memory!;
+        Assert.True(memory.Msc!.Enabled);
+        Assert.False(memory.SampleValid);
+        Assert.False(memory.Initialized);
+        Assert.Null(memory.CapacityBytes);
+        var invalid = StorageReport();
+        invalid[32] = 1;
+        Assert.Throws<InvalidDataException>(() => HidProtocol.ParseStorageReport(invalid, hardware));
+        var enable = new byte[64];
+        enable[0] = 1;
+        Assert.Equal(new byte[] { 20, 1, 9, 3, 0, 1 },
+            HidProtocol.BuildControlRequest(9, Opcode.Msc, 0, enable)[..6]);
+        Assert.Throws<ArgumentException>(() => HidProtocol.BuildControlRequest(9, Opcode.Msc, 0, new byte[64]));
+        Assert.All(HidProtocol.BuildControlRequest(10, Opcode.Msc, 1, new byte[64])[5..],
+            value => Assert.Equal(0, value));
     }
 
     private sealed class EndpointMonitor : TestMonitor

@@ -57,14 +57,14 @@ test("WebHID matching needs the ESPForge VID:PID and the vendor collection", () 
   }
 });
 
-test("configuration validates ESPForge clocks, SD profile 0, SDMMC GPIOs, monitor UART and no LED/card detect", () => {
+test("configuration validates ESPForge clocks, SD profile 0, SDMMC GPIOs, monitor UART and optional card detect", () => {
   const id = decodeIdentityReport(identity());
   const decoded = decodeConfigReport(config(), id);
   assert.deepEqual([decoded.system_clock_mhz, decoded.sdcard_profile, decoded.radios], [240, 0, 0]);
   assert.deepEqual(decoded.storage_gpios, [12, 11, 13, 14, 15, 10]);
   assert.deepEqual([decoded.monitor_uart_index, decoded.monitor_uart_tx_gpio, decoded.monitor_uart_rx_gpio], [0, 43, 44]);
   assert.equal(Object.hasOwn(decoded, "led_gpio"), false);
-  assert.equal(Object.hasOwn(decoded, "card_detect_gpio"), false);
+  assert.equal(decoded.card_detect_gpio, 255);
   for (const clock of [0, 80, 160]) {
     const report = config(); report[1] = clock;
     assert.equal(decodeConfigReport(report, id).system_clock_mhz, clock);
@@ -110,7 +110,7 @@ test("telemetry preserves 64-bit uptime, the core-0 load sentinel and temperatur
   assert.equal(decodeTelemetryReport(absent).temperature_centidegrees, null);
 });
 
-test("storage validates native SDMMC samples, timing, capacity and CID with MSC bytes always zero", () => {
+test("storage validates native SDMMC samples, timing, capacity and CID with isolated MSC ownership", () => {
   const decoded = decodeStorageReport(storage());
   assert.equal(decoded.memory.mode, "sdmmc");
   assert.equal(decoded.memory.capacity_bytes, 512 * 100000);
@@ -123,7 +123,7 @@ test("storage validates native SDMMC samples, timing, capacity and CID with MSC 
   assert.equal(decodeStorageReport(cid).memory.manufacturer.serial_number, 0x12345678);
   assert.equal(decodeStorageReport(cid).memory.manufacturer.manufacture_year, 2025);
   for (const [offset, value] of [[2, 128], [2, 63], [2, 64], [2, 71], [4, 1], [4, 2], [3, 2], [9, 0], [9, 3],
-    [31, 1], [32, 1], [33, 1], [30, 5], [14, 1]]) {
+    [31, 1], [32, 1], [33, 2], [30, 5], [14, 1]]) {
     const bad = storage(); bad[offset] = value;
     assert.throws(() => decodeStorageReport(bad), `${offset}: ${value}`);
   }
@@ -154,7 +154,7 @@ test("control request builders encode exact 68-byte envelopes and reject malform
   for (const [opcode, options] of [[2, {}], [2, { flags: 3 }], [2, { flags: 1, args: [1] }],
     [5, { args: [200, 0, 0, 0] }], [5, { args: [240, 0, 1, 0] }], [5, { args: [240, 0, 0, 4] }],
     [5, { args: [240, 0, 0, 0, 1] }], [5, { flags: 1, args: [240, 0, 0, 0] }], [5, { flags: 4, args: [240, 0, 0, 0] }],
-    [6, { args: [33] }], [0, {}], [1, { args: [1] }], [3, { args: [1] }], [4, { args: [1, 0, 1, 0, 0] }],
+    [6, { args: [33] }], [0, {}], [1, { args: [1] }], [3, { args: [0] }], [4, { args: [1, 0, 1, 0, 0] }],
     [13, { args: Array(16).fill(1) }], [14, {}], [10, { flags: 1 }], [11, { args: [1] }]]) {
     assert.throws(() => buildControlRequest(1, opcode, options), `opcode ${opcode}`);
   }
@@ -164,7 +164,8 @@ test("control request builders encode exact 68-byte envelopes and reject malform
 test("control results enforce every opcode/status/error combination and zero result data", () => {
   const unsupported = [[4, 4]];
   const allowed = {
-    1: unsupported, 3: unsupported, 4: unsupported, 13: unsupported,
+    1: unsupported, 4: unsupported, 13: unsupported,
+    3: [[1, 0], [2, 0], [3, 1], [3, 2], [3, 3], [4, 4], [5, 5], [6, 6]],
     2: [[1, 0], [2, 0], [3, 1], [3, 2], [5, 5], [6, 6]],
     5: [[1, 0], [2, 0], [3, 1], [3, 3], [4, 4], [5, 5], [6, 6]],
     6: [[2, 0], [3, 1], [3, 3], [4, 4], [5, 5], [6, 6]],

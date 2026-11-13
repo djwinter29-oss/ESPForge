@@ -78,7 +78,7 @@ export class Operations {
     this.require("msc");
     requireValid(typeof enabled === "boolean" && typeof confirmEjected === "boolean"
       && (enabled || confirmEjected), "command-arguments");
-    if (enabled && !this.session.state.memory?.initialized)
+    if (enabled && !this.session.state.memory?.msc?.enabled && !this.session.state.memory?.initialized)
       throw new BoardError(REASON.COMMAND_BLOCKED);
     return this.session.command(OP.MSC, { flags: enabled ? 0 : 1, args: [Number(enabled)] });
   }

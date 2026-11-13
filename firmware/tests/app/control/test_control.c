@@ -148,7 +148,9 @@ void test_reboot_and_save_do_not_run_while_storage_is_busy_or_usb_owned(void)
 {
 	const uint8_t settings[4] = {240, 0, 0, 3};
 
-	ef_platform_storage_busy_IgnoreAndReturn(true);
+	ef_platform_storage_busy_StopIgnore();
+	ef_platform_storage_busy_ExpectAndReturn(true);
+	ef_platform_storage_busy_ExpectAndReturn(true);
 	assert_result(usb(EF_OP_REBOOT, 1, NULL, 0, 0), EF_STATUS_BUSY, EF_ERROR_BUSY, 1);
 	assert_result(usb(EF_OP_SAVE, 0, settings, sizeof(settings), 0), EF_STATUS_BUSY, EF_ERROR_BUSY, 1);
 	TEST_ASSERT_EQUAL_INT(0, write_calls);

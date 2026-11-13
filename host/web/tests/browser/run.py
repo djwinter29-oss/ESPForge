@@ -373,6 +373,49 @@ def check_partial_diagnostics(page: Page, origin: str, host_name: str) -> None:
     print(f"{host_name}: PASS unknown/false/sentinel diagnostics preserve valid commands and settings drafts")
 
 
+def check_msc_handoff(page: Page, origin: str, host_name: str) -> None:
+    """Exercise explicit ownership controls and detected-only storage using synthetic status snapshots."""
+    page.goto(origin)
+    page.evaluate("""() => {
+        const board = window.sharedBrowserState.connected;
+        board.board_configuration.board_flags = 0x45;
+        board.board_configuration.card_detect_gpio = 8;
+        Object.assign(board.memory, { configured: true, sample_valid: true, initialized: true,
+            presence_known: true, present: true, filesystem_format: 'fat32' });
+    }""")
+    enable = page.locator("#msc-enable")
+    returned = page.locator("#msc-return")
+    dialog = page.locator("#msc-dialog")
+    expect(enable).to_be_enabled()
+    enable.click()
+    expect(dialog).to_be_visible()
+    page.keyboard.press("Escape")
+    expect(dialog).not_to_be_visible()
+    assert page.evaluate("window.sharedBrowserState.mscRequests.length") == 0
+    enable.click()
+    page.locator("#confirm-msc").click()
+    expect(returned).to_be_enabled()
+    expect(enable).to_be_disabled()
+    returned.click()
+    expect(page.locator("#confirm-msc")).to_have_text("I have safely ejected")
+    page.locator("#confirm-msc").click()
+    expect(enable).to_be_enabled()
+    assert page.evaluate("window.sharedBrowserState.mscRequests") == [
+        {"enabled": True, "confirm_ejected": False},
+        {"enabled": False, "confirm_ejected": True},
+    ]
+    section = page.locator('section[aria-labelledby="memory-title"]')
+    page.evaluate("""() => Object.assign(window.sharedBrowserState.connected.memory,
+        { sample_valid: true, initialized: false, present: false })""")
+    expect(section).to_be_hidden()
+    page.evaluate("""() => Object.assign(window.sharedBrowserState.connected.memory,
+        { sample_valid: true, initialized: true, present: true })""")
+    expect(section).to_be_visible()
+    expect(enable).to_be_enabled()
+    assert page.evaluate("window.sharedBrowserState.mscRequests.length") == 2
+    print(f"{host_name}: PASS MSC confirmation, Escape, returned ownership and replacement without re-export")
+
+
 def main() -> None:
     """Fail on incomplete checks, assertion failures, page errors, or missing hosting assets."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -411,6 +454,7 @@ def main() -> None:
                         check_diagnostic_rows(page, origin, label)
                         check_accessibility_smoke(page, origin, label)
                         check_partial_diagnostics(page, origin, label)
+                        check_msc_handoff(page, origin, label)
                         assert page.request.get(f"{origin}/console").status == 404
                         assert not errors, errors
             finally:

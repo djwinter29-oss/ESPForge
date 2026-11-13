@@ -95,7 +95,10 @@ in editable mode on first use, checks HID permissions and runs `espforge` (defau
 - **Wireless:** provision Wi-Fi and a Control key over USB. Bluetooth connections use the independent Direct
   dashboard. See [wireless setup](../../docs/guides/wireless.md).
 
-ESPForge has no board LED, USB drive (MSC), SD benchmark, forced save, CDC console or TCP CLI console, so the
+- **USB drive:** explicitly export an initialized SD card, then safely eject in the OS before confirming return
+  to firmware. See [SD ownership](../../docs/reference/sdcard.md#usb-drive-handoff).
+
+ESPForge has no board LED, SD benchmark, forced save, CDC console or TCP CLI console, so the
 dashboard does not offer them and their routes are absent; see [Dashboard HTTP API](#dashboard-http-api).
 
 Commands can be rejected or remain uncertain after a timeout/disconnect; delivery is not completion.

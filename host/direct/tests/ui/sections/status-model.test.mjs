@@ -5,6 +5,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { deriveDashboardViewModel } from "../../../web/js/ui/sections/status-model.mjs";
 
+test("the presentation form lock also blocks otherwise-ready MSC handoff", () => {
+  const state = { connected: true, link: "usb", hardware: { capabilities: 0x96 },
+    settings: { board_flags: 0x45 }, freshness: { 10: "fresh" },
+    memory: { sample_valid: true, initialized: true } };
+  assert.equal(deriveDashboardViewModel(state).eligibility.mscReady, true);
+  assert.equal(deriveDashboardViewModel(state, true).eligibility.mscReady, false);
+});
+
 test("dashboard view model derives connection messaging and readiness without a console URL", () => {
   const disconnected = deriveDashboardViewModel({});
   assert.equal(disconnected.connection_state, "disconnected");

@@ -13,7 +13,8 @@ import { deriveOperationEligibility } from "../../state/selectors.mjs";
 /** @brief Readiness with the dashboard-only wireless-form lock folded in: a running form operation blocks writes. */
 export function deriveViewEligibility(state, formBusy = false) {
   const eligibility = deriveOperationEligibility(state);
-  return formBusy ? { ...eligibility, blocked: true, settingsReady: false, wirelessReady: false } : eligibility;
+  return formBusy ? { ...eligibility, blocked: true, settingsReady: false, wirelessReady: false, mscReady: false }
+    : eligibility;
 }
 
 /**

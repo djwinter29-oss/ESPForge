@@ -23,7 +23,7 @@ const readyState = (changes = {}) => ({
 
 test("operation eligibility is one rule table for storage, settings and wireless gates", () => {
   assert.deepEqual(deriveOperationEligibility(readyState()), { blocked: false, storageReady: true,
-    settingsReady: true, wirelessReady: true, connectionLocked: true });
+    settingsReady: true, wirelessReady: true, mscReady: false, connectionLocked: true });
 
   const flags = ["blocked", "storageReady", "settingsReady", "wirelessReady"];
   const cases = [

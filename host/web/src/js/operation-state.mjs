@@ -92,7 +92,7 @@ export function observeCommandStatus(state, snapshot) {
   return settled;
 }
 
-/** Terminal acknowledgement for reboot (2), save (5) and Wi-Fi cancel (10); other opcodes are Unsupported.
+/** Terminal acknowledgement and lifecycle effects; MSC completion acknowledges admission, not settled ownership.
  * @param {import("./dashboard-api.mjs").ControlResult} result
  */
 export function commandEffects(result) {

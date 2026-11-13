@@ -29,6 +29,11 @@ export function deriveDeviceViewModel(state, dashboard = deriveDashboardViewMode
   const ramTotal = hardware?.ram_total_bytes;
   const signals = ["CLK", "CMD", "DAT0", "DAT1", "DAT2", "DAT3"];
   const pin = value => !config ? "--" : value === 255 || value == null ? "Unassigned" : `GPIO${value}`;
+  const storagePins = signals.map((_, index) => pin(config?.storage_gpios?.[index]));
+  if (config?.card_detect_gpio != null && config.card_detect_gpio !== 255) {
+    signals.push("Card detect");
+    storagePins.push(pin(config.card_detect_gpio));
+  }
   return {
     ...dashboard,
     active: Boolean(state.connected && runtime),
@@ -38,9 +43,9 @@ export function deriveDeviceViewModel(state, dashboard = deriveDashboardViewMode
     })),
     pins: {
       signature: JSON.stringify([config?.monitor_uart_index, config?.monitor_uart_tx_gpio,
-        config?.monitor_uart_rx_gpio, config?.storage_gpios, config?.reset_cause]),
+        config?.monitor_uart_rx_gpio, config?.storage_gpios, config?.card_detect_gpio, config?.reset_cause]),
       uart: [["TX", "RX"], [pin(config?.monitor_uart_tx_gpio), pin(config?.monitor_uart_rx_gpio)]],
-      storage: [signals, signals.map((_, index) => pin(config?.storage_gpios?.[index]))],
+      storage: [signals, storagePins],
     },
     text: {
       "product-name": hardware ? `${hardware.product_name} (SDMMC)` : "--",

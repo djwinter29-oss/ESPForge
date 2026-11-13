@@ -287,9 +287,27 @@ class HidDeviceTests(unittest.TestCase):
         with self.assertRaises(InvalidRequest):
             client.set_settings({"system_clock_mhz": 240, "sdcard_profile": 0, "radios": 0,
                                  "tcp_cli_enabled": True})
-        for name in ("set_led", "set_msc", "set_self_test", "tcp_cli_auth_proof", "_reopen_for_result"):
+        for name in ("set_led", "set_self_test", "tcp_cli_auth_proof", "_reopen_for_result"):
             self.assertFalse(hasattr(client, name), name)
         self.assertEqual(client._device.sent, [])
+
+    def test_msc_validates_confirmation_and_sends_exact_hid_requests(self):
+        client = self.connection()
+        client.configuration = None
+        config = bytearray(configuration())
+        config[14] = 0x45
+        config[17] = 8
+        client._device.feature_reports[2] = [bytes(config)]
+        client._device.feature_reports[20] = [control_result(opcode=3)]
+        self.assertEqual(client.set_msc(True)["status"], "completed")
+        self.assertEqual(client._device.sent, [bytes([20, 1, 1, 3, 0, 1]) + bytes(63)])
+        for enabled, confirmation in ((False, False), (1, False), (False, 1)):
+            with self.subTest(enabled=enabled, confirmation=confirmation), self.assertRaises(ValueError):
+                client.set_msc(enabled, confirmation)
+        self.assertEqual(len(client._device.sent), 1)
+        client._device.feature_reports[20] = [control_result(opcode=3, transaction=2)]
+        client.set_msc(False, True)
+        self.assertEqual(client._device.sent[1], bytes([20, 1, 2, 3, 1]) + bytes(64))
 
     def connection(self, reports=None):
         class FakeTransport:

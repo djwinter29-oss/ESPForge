@@ -29,7 +29,8 @@ and **native four-bit SDMMC**.
 | **Watch it run** | Uptime, CPU clock, core-0 load, die temperature and firmware RAM accounting |
 | **Configure the next boot** | CPU clock, Wi-Fi/BLE switches and credentials in a CRC-checked flash record |
 | **Set up wireless** | Scan, test and save a 2.4 GHz Wi-Fi network; provision a BLE Control key over USB |
-| **Inspect storage** | Boot-time FAT mount and capacity/status reporting over native four-bit SDMMC |
+| **Use storage** | Runtime card detection, FAT mounting and explicit native USB MSC handoff over four-bit SDMMC |
+| **Inspect diagnostics** | Native Zephyr shells over UART and raw TCP; see the [console guide](docs/guides/console.md) |
 | **Build your product** | Separate board/platform code, management services and host clients, with portable firmware tests |
 
 Wi-Fi and BLE switches are enabled by default. Wi-Fi needs a saved network to connect;
@@ -45,12 +46,12 @@ flowchart LR
     Dotnet[".NET dashboard<br/>ASP.NET Core + HidSharp"] --> USB
     USB --> Board["ESP32-S3 + Zephyr<br/>Settings · Telemetry · Wi-Fi · SDMMC"]
     BLE --> Board
-    UART["UART connector<br/>Flash + console logs"] -.-> Board
+    UART["UART connector<br/>Flash + diagnostic shell/logs"] -.-> Board
 ```
 
 Use the board's **USB** connector for native USB HID (`CAFE:4021`).
-The separate **UART** connector is for flashing and console logs, not dashboard commands.
-Wi-Fi is managed by the dashboards; it is not a management transport.
+The separate **UART** connector is for flashing and a diagnostic shell/logs, not dashboard commands.
+Wi-Fi is provisioned by the dashboards and also exposes the [raw TCP diagnostic shell](docs/guides/console.md).
 
 ## Choose your dashboard
 
@@ -138,10 +139,12 @@ see the [release guide](docs/deployment/release.md).
 **Know the boundaries before deploying:**
 
 - Physical USB, Wi-Fi, BLE and SD behavior still need [hardware qualification](docs/validation/qualification-gaps.md).
-- SD storage mounts once at boot. There is **no automatic formatting**, hot-plug/remount or write benchmark.
+- SD storage supports detected insertion/replacement and explicit [USB ownership handoff](docs/reference/sdcard.md).
+  There is **no automatic formatting** or write benchmark.
 - BLE commands are Control-key authenticated, but the link is **not encrypted**; flash credentials are also unencrypted.
 - Settings use a single flash record and are **not power-loss atomic**.
-- There is no LED control, USB mass storage, TCP CLI, file-transfer API or dual-core application workload.
+- The TCP diagnostic shell is unauthenticated plaintext: use only on trusted networks, without port forwarding.
+- There is no LED control, file-transfer API or dual-core application workload.
 
 Read the [validation records](docs/validation/records/README.md) for observed evidence, not inferred guarantees.
 

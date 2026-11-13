@@ -136,6 +136,8 @@ int ef_platform_storage_request(bool usb, uint8_t transaction)
 	} else if (usb && (!snapshot.sample_valid || !snapshot.initialized || !snapshot.block_count)) {
 		err = -ENOMEDIUM;
 	} else {
+		ef_storage_t previous = snapshot;
+
 		request_generation = media_generation;
 		request_transaction = transaction;
 		request_ready_at = k_uptime_get() + EF_REBOOT_DELAY_MS;
@@ -147,8 +149,7 @@ int ef_platform_storage_request(bool usb, uint8_t transaction)
 		if (err != 0) {
 			LOG_ERR("SD ownership queue failed: %d", err);
 			request_pending = false;
-			snapshot.busy = false;
-			snapshot.msc_transition_pending = false;
+			snapshot = previous;
 		}
 	}
 	k_mutex_unlock(&snapshot_lock);
@@ -191,7 +192,7 @@ void ef_storage_report(uint8_t sequence, uint8_t out[EF_STORAGE_SIZE])
 }
 
 /** The MSC thread holds media_lock for the entire batch and checks ownership again after acquiring it. */
-static bool usb_ready(void)
+static bool usb_ready(uint32_t *blocks)
 {
 	bool ready;
 	int present = gpio_pin_get_dt(&detect);
@@ -202,6 +203,9 @@ static bool usb_ready(void)
 	}
 	k_mutex_lock(&snapshot_lock, K_FOREVER);
 	ready = present && snapshot.msc_enabled && !snapshot.busy && snapshot.block_count != 0;
+	if (blocks != NULL) {
+		*blocks = snapshot.block_count;
+	}
 	k_mutex_unlock(&snapshot_lock);
 	return ready;
 }
@@ -209,16 +213,29 @@ static bool usb_ready(void)
 static int usb_status(struct disk_info *disk)
 {
 	ARG_UNUSED(disk);
-	return usb_ready() ? DISK_STATUS_OK : DISK_STATUS_NOMEDIA;
+	return usb_ready(NULL) ? DISK_STATUS_OK : DISK_STATUS_NOMEDIA;
+}
+
+static int usb_init(struct disk_info *disk)
+{
+	ARG_UNUSED(disk);
+	return usb_ready(NULL) ? 0 : -ENOMEDIUM;
 }
 
 static int usb_read(struct disk_info *disk, uint8_t *buffer, uint32_t sector, uint32_t count)
 {
 	int err;
+	uint32_t blocks;
 
 	ARG_UNUSED(disk);
 	k_mutex_lock(&media_lock, K_FOREVER);
-	err = usb_ready() ? disk_access_read(DISK_NAME, buffer, sector, count) : -ENOMEDIUM;
+	if (!usb_ready(&blocks)) {
+		err = -ENOMEDIUM;
+	} else if (buffer == NULL || count == 0 || sector >= blocks || count > blocks - sector) {
+		err = -EINVAL;
+	} else {
+		err = disk_access_read(DISK_NAME, buffer, sector, count);
+	}
 	if (err != 0) {
 		LOG_ERR("USB SD read failed: %d", err);
 	}
@@ -229,10 +246,17 @@ static int usb_read(struct disk_info *disk, uint8_t *buffer, uint32_t sector, ui
 static int usb_write(struct disk_info *disk, const uint8_t *buffer, uint32_t sector, uint32_t count)
 {
 	int err;
+	uint32_t blocks;
 
 	ARG_UNUSED(disk);
 	k_mutex_lock(&media_lock, K_FOREVER);
-	err = usb_ready() ? disk_access_write(DISK_NAME, buffer, sector, count) : -ENOMEDIUM;
+	if (!usb_ready(&blocks)) {
+		err = -ENOMEDIUM;
+	} else if (buffer == NULL || count == 0 || sector >= blocks || count > blocks - sector) {
+		err = -EINVAL;
+	} else {
+		err = disk_access_write(DISK_NAME, buffer, sector, count);
+	}
 	if (err != 0) {
 		LOG_ERR("USB SD write failed: %d", err);
 	}
@@ -246,22 +270,30 @@ static int usb_ioctl(struct disk_info *disk, uint8_t command, void *buffer)
 
 	ARG_UNUSED(disk);
 	k_mutex_lock(&media_lock, K_FOREVER);
-	if (!usb_ready()) {
+	if (command == DISK_IOCTL_CTRL_DEINIT) {
+		/* Releasing proxy references must not deinitialize the storage worker's medium. */
+		err = 0;
+	} else if (!usb_ready(NULL)) {
 		err = -ENOMEDIUM;
 	} else if (command == DISK_IOCTL_CTRL_INIT) {
 		err = 0;
-	} else {
+	} else if (command == DISK_IOCTL_CTRL_SYNC) {
 		err = disk_access_ioctl(DISK_NAME, command, buffer);
+	} else if (command == DISK_IOCTL_GET_SECTOR_COUNT || command == DISK_IOCTL_GET_SECTOR_SIZE ||
+		   command == DISK_IOCTL_GET_ERASE_BLOCK_SZ) {
+		err = buffer == NULL ? -EINVAL : disk_access_ioctl(DISK_NAME, command, buffer);
+	} else {
+		err = -ENOTSUP;
 	}
-	if (err != 0 && command == DISK_IOCTL_CTRL_SYNC) {
-		LOG_ERR("USB SD sync failed: %d", err);
+	if (err != 0 && err != -ENOMEDIUM) {
+		LOG_ERR("USB SD ioctl %u failed: %d", command, err);
 	}
 	k_mutex_unlock(&media_lock);
 	return err;
 }
 
 static const struct disk_operations usb_ops = {
-	.init = usb_status,
+	.init = usb_init,
 	.status = usb_status,
 	.read = usb_read,
 	.write = usb_write,
@@ -281,12 +313,10 @@ static void storage_worker(void *a, void *b, void *c)
 
 		if (present < 0) {
 			LOG_ERR("SD card-detect read failed: %d", present);
-			k_sleep(K_MSEC(EF_STORAGE_RETRY_MS));
-			continue;
 		}
 		k_mutex_lock(&snapshot_lock, K_FOREVER);
-		if ((present != 0) != last_presence) {
-			last_presence = present != 0;
+		if (present < 0 || (present != 0) != last_presence) {
+			last_presence = present > 0;
 			++media_generation;
 		}
 		if (request_pending && now >= request_ready_at && k_msgq_get(&requests, &action, K_NO_WAIT) == 0) {
@@ -298,9 +328,9 @@ static void storage_worker(void *a, void *b, void *c)
 		}
 		k_mutex_unlock(&snapshot_lock);
 		k_mutex_lock(&media_lock, K_FOREVER);
-		ef_storage_policy_poll(present != 0, now, action);
+		ef_storage_policy_poll(present, now, action);
 		k_mutex_unlock(&media_lock);
-		k_sleep(K_MSEC(STORAGE_POLL_MS));
+		k_sleep(K_MSEC(present < 0 ? EF_STORAGE_RETRY_MS : STORAGE_POLL_MS));
 	}
 }
 

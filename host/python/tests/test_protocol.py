@@ -139,7 +139,7 @@ class ProtocolTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "profile"):
             parse_configuration_report(sd_profile, self.identity)
         for flags in (0x00, 0x05, 0x06, 0x24, 0x84):
-            with self.subTest(flags=flags), self.assertRaisesRegex(ValueError, "flags"):
+            with self.subTest(flags=flags), self.assertRaisesRegex(ValueError, "flags|flag"):
                 parse_configuration_report(configuration_report(flags=flags), self.identity)
         self.assertEqual(parse_configuration_report(configuration_report(flags=0x1C), self.identity)["radios"], 3)
         self.assertEqual(parse_configuration_report(configuration_report(flags=0x0C), self.identity)["radios"], 1)
@@ -203,11 +203,33 @@ class ProtocolTests(unittest.TestCase):
         bad_mode[5] = 2
         with self.assertRaisesRegex(ValueError, "bus mode"):
             parse_memory_report(bad_mode, self.identity)
-        for report in (storage_report(flags=1, msc=(0, 1, 0)), storage_report(flags=1, msc=(1, 0, 0)),
-                       storage_report(flags=0x7F, cid=bytes.fromhex("1b53444341524431211234567801aaff")),
+        for report in (storage_report(flags=0x7F, cid=bytes.fromhex("1b53444341524431211234567801aaff")),
                        storage_report(speed=2)):
             with self.subTest(report=report), self.assertRaisesRegex(ValueError, "ESPForge profile"):
                 parse_memory_report(report, self.identity)
+
+    def test_card_detection_msc_availability_and_invalidated_sd_samples(self):
+        config = bytearray(configuration_report(flags=0x45))
+        config[17] = 8
+        decoded = parse_configuration_report(config, self.identity)
+        self.assertEqual(decoded["card_detect_gpio"], 8)
+        for msc in ((1, 0, 0), (0, 1, 0), (1, 1, 1)):
+            data = parse_memory_report(storage_report(flags=1, msc=msc), self.identity)
+            self.assertFalse(data["sample_valid"])
+            self.assertFalse(data["initialized"])
+            self.assertIsNone(data["capacity_bytes"])
+            self.assertEqual(data["msc"]["enabled"], bool(msc[0]))
+            with self.assertRaises(ValueError):
+                parse_memory_report(storage_report(msc=msc), self.identity)
+
+    def test_msc_commands_require_confirmed_return_and_zero_unused_arguments(self):
+        self.assertEqual(build_control_command_report(9, ControlOpcode.MSC, arguments=b"\x01"),
+                         bytes([20, 1, 9, 3, 0, 1]) + bytes(63))
+        self.assertEqual(build_control_command_report(10, ControlOpcode.MSC, flags=1),
+                         bytes([20, 1, 10, 3, 1]) + bytes(64))
+        for flags, arguments in ((0, b"\0"), (1, b"\x01"), (1, b"\x02"), (0, b"\x01\x01")):
+            with self.subTest(flags=flags, arguments=arguments), self.assertRaises(ValueError):
+                build_control_command_report(1, ControlOpcode.MSC, flags=flags, arguments=arguments)
 
     def test_control_commands_use_report_20_and_validate_profile_fields(self):
         settings = {"system_clock_mhz": 160, "sdcard_profile": 0, "radios": 3, "tcp_cli_enabled": False}
@@ -223,7 +245,7 @@ class ProtocolTests(unittest.TestCase):
                 build_settings_command_report(invalid)
         with self.assertRaises(TypeError):
             build_settings_command_report(settings, force=True)
-        for opcode in (ControlOpcode.LED, ControlOpcode.MSC, ControlOpcode.SELF_TEST, ControlOpcode.TCP_PROOF):
+        for opcode in (ControlOpcode.LED, ControlOpcode.SELF_TEST, ControlOpcode.TCP_PROOF):
             with self.subTest(opcode=opcode), self.assertRaisesRegex(ValueError, "not available"):
                 build_control_command_report(1, opcode)
         for flags, arguments in ((1, struct.pack("<HBB", 240, 0, 0)), (0, struct.pack("<HBB", 240, 0, 4)),
@@ -263,7 +285,6 @@ class ProtocolTests(unittest.TestCase):
             control_result(5, 2, data=struct.pack("<HBBB", 240, 1, 0, 0)),
             control_result(13, 2, data=bytes(range(16))),
             control_result(1, 2),
-            control_result(3, 2),
             control_result(4, 1),
         ):
             with self.subTest(report=malformed), self.assertRaises(ValueError):

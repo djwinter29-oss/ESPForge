@@ -48,6 +48,7 @@ export function mountDashboard({ session, selectTransport, timers, environment }
   const rebootDialog = queryElement("dialog#reboot-dialog");
   const mscDialog = queryElement("dialog#msc-dialog");
   let mscTarget = false;
+  let mscUid = null;
   let wasConnected = client.state.connected;
   let refreshQueued = false;
   /** Coalesce bursts of client state changes into one render and side-effect pass per microtask. */
@@ -120,10 +121,12 @@ export function mountDashboard({ session, selectTransport, timers, environment }
     try { await operation(); } catch (error) { setUi({ action_error: describe(error) }); }
   }
 
-  for (const [id, enabled] of [["msc-enable", true], ["msc-return", false]]) {
+  for (const [id, enabled] of /** @type {[string, boolean][]} */ (
+    [["msc-enable", true], ["msc-return", false]])) {
     button(id).addEventListener("click", () => {
       if (button(id).disabled) return;
       mscTarget = enabled;
+      mscUid = client.state.hardware?.serial_number;
       element("msc-dialog-title").textContent = enabled ? "Enable USB drive?" : "Return card to firmware?";
       element("msc-warning").textContent = enabled
         ? "Firmware will unmount the card and give Linux/Windows exclusive access. USB reconnects briefly; unsaved dashboard edits may be lost."
@@ -137,6 +140,10 @@ export function mountDashboard({ session, selectTransport, timers, environment }
     if (!mscDialog.open) return;
     const enabled = mscTarget;
     mscDialog.close();
+    if (!client.state.connected || bluetoothLink() || client.state.hardware?.serial_number !== mscUid) {
+      setUi({ action_error: "Board changed; reopen the storage dialog." });
+      return;
+    }
     await client.setMsc(enabled, !enabled);
   }));
 
@@ -248,7 +255,7 @@ export function mountDashboard({ session, selectTransport, timers, environment }
   }
   // ponytail: handle Escape on keydown instead of relying on the native cancel event, because a repeated Escape may
   // close a modal without a cancelable cancel event; connection dialogs stay open while a link is being set up.
-  for (const dialog of [usbDialog, bluetoothDialog, configurationDialog, rebootDialog]) {
+  for (const dialog of [usbDialog, bluetoothDialog, configurationDialog, rebootDialog, mscDialog]) {
     dialog.addEventListener("keydown", event => {
       if (event.key !== "Escape") return;
       event.preventDefault();

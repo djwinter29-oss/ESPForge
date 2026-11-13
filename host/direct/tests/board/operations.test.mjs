@@ -3,9 +3,45 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { telemetry, storage, fakeConnection, emit, says } from "../support/fixtures.mjs";
+import { config, telemetry, storage, fakeConnection, emit, says } from "../support/fixtures.mjs";
 import { Operations } from "../../web/js/board/operations.mjs";
 import { BOARD, connected, radio } from "../support/wireless.mjs";
+
+test("MSC admission clears old storage facts, requires eject confirmation, and never replays uncertain writes", async () => {
+  const { client, device, sent, pendingStore } = fakeConnection();
+  const receive = device.receiveFeatureReport;
+  device.receiveFeatureReport = async id => {
+    if (id !== 2) return receive(id);
+    const report = config(); report[13] = 0x45; report[16] = 8;
+    return report;
+  };
+  await client.connect();
+  emit(device, 10, storage());
+  await client.setMsc(true);
+  assert.deepEqual(sent[0].slice(0, 6), [20, 1, 1, 3, 0, 1]);
+  assert.equal(client.state.memory, null);
+  await assert.rejects(client.reboot(true), says(/Fresh storage status/));
+  const owned = new Uint8Array(34);
+  owned[0] = owned[2] = owned[31] = 1;
+  emit(device, 10, owned);
+  await assert.rejects(client.setMsc(false), says(/Invalid/));
+  assert.equal(sent.length, 1);
+  await client.setMsc(true);
+  emit(device, 10, owned);
+  await client.setMsc(false, true);
+  assert.deepEqual(sent[2].slice(0, 6), [20, 1, 3, 3, 1, 0]);
+  emit(device, 10, storage());
+  device.receiveFeatureReport = async id => {
+    if (id === 20) throw new Error("Result lost");
+    return receive(id);
+  };
+  await assert.rejects(client.setMsc(true));
+  const pending = JSON.parse(pendingStore.getItem("espforge.direct.pending-operation"));
+  assert.deepEqual(pending.request, { transaction_id: 4, opcode: 3, msc_enabled: true });
+  await assert.rejects(client.setMsc(true));
+  assert.equal(sent.length, 4);
+  await client.disconnect();
+});
 
 test("stale storage and capability gates stop reboot and settings writes", async () => {
   let now = 0;

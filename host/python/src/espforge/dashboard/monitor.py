@@ -256,13 +256,21 @@ class DeviceMonitor:
                 self._snapshot["reboot_pending"] = True
             if result["status"] == "completed" and result.get("opcode") == ControlOpcode.WIFI_CANCEL:
                 self._wireless_cleanup_required = False
+            if result["status"] == "completed" and result.get("opcode") == ControlOpcode.MSC:
+                self._input_received_at.pop("memory", None)
             if self._snapshot.get("connected"):
                 self._snapshot["control_result"] = result
 
     def reboot(self) -> ControlResponse:
         with self._device():
-            self._require_firmware_storage()
-            result = self._send_control(self._client().reboot)
+            client = self._client()
+            snapshot = self.snapshot()
+            config = snapshot.get("board_configuration")
+            msc = _msc(snapshot)
+            if (config is not None and config["board_flags"] & 0x40
+                    or msc is not None and (msc.get("enabled") or msc.get("transition_pending"))):
+                self._require_firmware_storage()
+            result = self._send_control(client.reboot)
             ESPForgeHid.require_completed(result, "reboot")
             return {"control_result": result}
 
@@ -286,8 +294,6 @@ class DeviceMonitor:
                     raise BoardConflict("Mount an SD card before enabling USB mass storage")
             result = self._send_control(self._client().set_msc, enabled, confirm_ejected)
             ESPForgeHid.require_completed(result, "MSC ownership request")
-            with self._lock:
-                self._input_received_at.pop("memory", None)
             return {"control_result": result}
 
     def set_settings(self, settings: dict[str, object]) -> SettingsResponse:

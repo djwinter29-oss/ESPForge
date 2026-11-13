@@ -94,7 +94,7 @@ export function statusResponse(result) {
   /** @type {Array<[unknown, string[]]>} */
   const booleanSections = [
     [result.runtime, ["led_available", "led_on"]],
-    [result.memory, ["initialized"]],
+    [result.memory, ["initialized", "configured", "sample_valid", "presence_known"]],
     [isObject(result.memory) ? result.memory.msc : null, ["enabled", "transition_pending", "request_rejected"]],
     [result.self_test, ["active"]],
     [result.wireless, ["stale", "wifi_enabled", "ble_enabled", "ble_key_configured", "tcp_cli_enabled",
@@ -116,6 +116,11 @@ export function statusResponse(result) {
     && (!isObject(result.memory.msc) || typeof result.memory.msc.enabled !== "boolean"
       || typeof result.memory.msc.transition_pending !== "boolean"))
     throw new DashboardError("Invalid status storage ownership");
+  if (isObject(result.board_configuration) && result.board_configuration.board_flags !== undefined
+    && (typeof result.board_configuration.board_flags !== "number"
+      || !Number.isInteger(result.board_configuration.board_flags)
+      || result.board_configuration.board_flags < 0 || result.board_configuration.board_flags > 255))
+    throw new DashboardError("Invalid status board flags");
   if (result.board_configuration != null && !isSettings(result.board_configuration))
     throw new DashboardError("Invalid status board configuration");
   if (result.wireless != null) wirelessConfiguration(result.wireless);

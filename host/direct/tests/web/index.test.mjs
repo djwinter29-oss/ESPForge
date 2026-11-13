@@ -44,7 +44,8 @@ test("standalone dashboard labels profiles, active measurements, controls and ac
     assert.match(footer, /role="status" aria-live="polite"/);
     assert.match(footer, /id="status-message"[\s\S]*id="settings-note"/);
     assert.equal([...dashboard.matchAll(/id="settings-note"/g)].length, 1);
-    assert.doesNotMatch(dashboard, /self-test|benchmark|Benchmark|led-control|msc-control|console/);
+    assert.doesNotMatch(dashboard, /self-test|benchmark|Benchmark|led-control|console/);
+    assert.match(dashboard, /id="msc-controls"/);
   }
   assert.doesNotMatch(html, /25 MHz|50 MHz|Core 1 \/ Core 2|PicoForge|RP2350/);
   assert.match(html, /Firmware RAM reserved \/ total/);
@@ -67,7 +68,7 @@ test("standalone dashboard labels profiles, active measurements, controls and ac
   assert.match(html, /<details class="pin-map-disclosure">/);
   assert.match(html, /id="board-uart"[\s\S]*id="board-storage-pins"/);
   assert.deepEqual([...html.matchAll(/<dialog class="confirmation-dialog" id="([^"]+)-dialog"/g)].map(match => match[1]),
-    ["configuration", "reboot", "usb-connection"]);
+    ["msc", "configuration", "reboot", "usb-connection"]);
   for (const name of ["telemetry", "storage"]) {
     assert.match(html, new RegExp(`id="${name}-freshness" role="status"`));
   }

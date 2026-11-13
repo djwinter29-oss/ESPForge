@@ -69,8 +69,9 @@ export function deriveControlsViewModel(state, ui, environment) {
     settingsDisabled: !eligibility.settingsReady || !state.settings_supported,
     titles: Object.fromEntries(Object.entries(reasons).map(([id, text]) => [id, text ?? ""])),
     disabled: {
-      "msc-enable": !eligibility.mscReady || state.memory?.msc?.enabled === true || !state.memory?.initialized,
-      "msc-return": !eligibility.mscReady || state.memory?.msc?.enabled !== true,
+      "msc-enable": ui.formBusy || !eligibility.mscReady || state.memory?.msc?.enabled === true
+        || !state.memory?.initialized,
+      "msc-return": ui.formBusy || !eligibility.mscReady || state.memory?.msc?.enabled !== true,
       "usb-open": Boolean(state.busy || eligibility.connectionLocked && bluetooth),
       "bluetooth-open": Boolean(state.busy || eligibility.connectionLocked && !bluetooth),
       "usb-connect": Boolean(state.busy || bluetooth || usbUnsupported),

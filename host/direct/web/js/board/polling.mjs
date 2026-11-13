@@ -165,6 +165,14 @@ export class Polling {
     this.scheduleExpiry();
   }
 
+  /** @brief Require a new storage receipt after an admitted or reconciled ownership handoff. */
+  invalidateStorage() {
+    this.receipts.received.delete(REPORT.STORAGE);
+    this.session.emit("report/expired", { ...STALE[REPORT.STORAGE],
+      freshness: { ...this.session.state.freshness, [REPORT.STORAGE]: "stale" } });
+    this.scheduleExpiry();
+  }
+
   scheduleExpiry() {
     if (this.session.device) this.receipts.schedule(() => this.expireReports());
     else this.receipts.cancel();
