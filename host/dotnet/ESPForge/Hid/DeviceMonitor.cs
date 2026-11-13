@@ -12,6 +12,8 @@ namespace ESPForge;
 internal interface IDeviceMonitor : IDisposable, IAsyncDisposable
 {
     StatusResponse Snapshot { get; }
+    /// <summary>Identity of the current HID connection, or null when disconnected or unavailable.</summary>
+    object? ConnectionIdentity { get; }
     void Start();
     /// <summary>Claims idle, resolved command ownership without waiting; refuses all subsequent commands.</summary>
     bool TryRetire();
@@ -218,6 +220,15 @@ internal sealed class DeviceMonitor : BackgroundService, IDeviceMonitor
     public StatusResponse Snapshot
     {
         get { lock (gate) return Fresh(); }
+    }
+
+    public object? ConnectionIdentity
+    {
+        get
+        {
+            lock (gate)
+                return Volatile.Read(ref stopping) != 0 || Volatile.Read(ref quarantined) != 0 ? null : activeClient;
+        }
     }
 
     public CommandResyncResponse ResyncCommand(bool confirm, CancellationToken cancel = default)

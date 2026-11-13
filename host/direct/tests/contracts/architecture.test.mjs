@@ -30,7 +30,7 @@ test("Direct modules keep the agreed ownership and dependency boundaries", () =>
     state: ["state", "protocol"], board: ["board", "protocol", "state", "timers.mjs"],
     ui: ["ui", "state", "protocol", "timers.mjs"],
   };
-  assert.deepEqual(paths.filter(path => !path.includes("/")).sort(), ["app.mjs", "timers.mjs"]);
+  assert.deepEqual(paths.filter(path => !path.includes("/")).sort(), ["app.mjs", "console.mjs", "timers.mjs"]);
   // The reason-code vocabulary is a leaf every layer may import, so no layer needs English text to report a failure.
   assert.deepEqual(dependencies.get("state/errors.mjs"), [], "state/errors.mjs imports nothing");
   for (const [path, imports] of dependencies) {
@@ -163,7 +163,7 @@ test("transports are byte pipes that honour abort, reject bad framing and wipe t
   await assert.rejects(ble.setControlKey(new Uint8Array(31)), says(/Control key must be 32 bytes/));
 });
 
-test("Direct stays self-contained: only WebHID and Web Bluetooth, no host/web imports, its own favicon", () => {
+test("Direct stays self-contained: browser management and local console, no host/web imports, its own favicon", () => {
   const web = new URL("../../web/", import.meta.url);
   for (const [path, source] of sources) {
     for (const [, specifier] of source.matchAll(/\b(?:from|import)\s*\(?\s*["']([^"']+)["']/g)) {
@@ -172,7 +172,7 @@ test("Direct stays self-contained: only WebHID and Web Bluetooth, no host/web im
     assert.doesNotMatch(source, /host\/web|navigator\.serial|\bSerialPort\b|requestPort\(/,
       `${path}: Direct has no Web Serial or host/web dependency`);
   }
-  assert.ok(!paths.some(path => /serial|console|demo/.test(path)), "no Web Serial, console or demo modules");
+  assert.ok(!paths.some(path => /serial|demo/.test(path)), "no Web Serial or demo modules");
   const html = readFileSync(new URL("index.html", web), "utf8");
   for (const [, url] of html.matchAll(/\b(?:href|src)="([^"]+)"/g)) {
     if (url === "./") continue;

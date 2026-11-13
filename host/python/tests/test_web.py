@@ -129,7 +129,6 @@ INVALID_REQUESTS = [
 ]
 
 DROPPED_ROUTES = [
-    ("GET", "/console"), ("GET", "/api/console"), ("POST", "/api/console"), ("PUT", "/api/console"),
     ("POST", "/api/msc/force-return"), ("POST", "/api/self-test"),
 ]
 

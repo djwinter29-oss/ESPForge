@@ -90,7 +90,7 @@ test("keyless Bluetooth reports that a control key is needed; unavailable report
   } finally { globalThis.document = previous; }
 });
 
-test("connected Wi-Fi status is plain text: ESPForge has no network console to link", () => {
+test("without a local relay connected Wi-Fi status remains plain text", () => {
   const previous = globalThis.document;
   const { document, element } = createDocument();
   const wifi = element("#direct-wifi-state");
@@ -102,5 +102,25 @@ test("connected Wi-Fi status is plain text: ESPForge has no network console to l
     assert.equal(wifi.textContent, "HomeDev (192.168.1.9)");
     assert.equal(wifi.children.length, 0);
     assert.equal(wifi.title, "");
+  } finally { globalThis.document = previous; }
+});
+
+test("local Wi-Fi shell link requires fresh address ownership and disappears on disconnect", () => {
+  const previous = globalThis.document;
+  const { document, element } = createDocument();
+  globalThis.document = document;
+  const state = { connected: true, hardware: { capabilities: 128, serial_number: "board-a" }, freshness: { 6: "fresh" },
+    wireless: { wifi_enabled: true, wifi_state: "connected", ssid: "<script>", ipv4: "192.168.1.9" } };
+  try {
+    renderWirelessStatus(state, "/console.html?source=owner");
+    const wifi = element("#direct-wifi-state");
+    assert.equal(wifi.children.length, 1);
+    assert.equal(wifi.children[0].href, "/console.html?source=owner");
+    assert.equal(wifi.children[0].textContent, "<script> (192.168.1.9)");
+    for (const changed of [{ ...state, connected: false }, { ...state, freshness: { 6: "stale" } },
+      { ...state, wireless: { ...state.wireless, ipv4: "127.0.0.1" } }]) {
+      renderWirelessStatus(changed, "/console.html?source=owner");
+      assert.equal(wifi.children.length, 0);
+    }
   } finally { globalThis.document = previous; }
 });

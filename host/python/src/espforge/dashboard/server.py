@@ -6,12 +6,14 @@
 from __future__ import annotations
 
 from pathlib import Path
+import base64
 import secrets
 
 from flask import Flask, Response, jsonify, render_template, request, send_from_directory
 from werkzeug.exceptions import RequestEntityTooLarge
 
 from .boards import DashboardBoards
+from .console import ConsoleBridge, ConsoleConflict, console_address, console_input
 from .monitor import BoardConflict, CommandOutcomeUncertain, DeviceMonitor, _empty_snapshot
 from .. import __version__
 from ..hid.device import WirelessTestCancelled
@@ -65,7 +67,7 @@ def create_app(dashboard: DashboardBoards | None = None, web_root: Path | None =
 
     @app.errorhandler(RuntimeError)
     def conflict(error: RuntimeError) -> tuple[Response, int]:
-        if isinstance(error, (BoardConflict, WirelessTestCancelled)):
+        if isinstance(error, (BoardConflict, WirelessTestCancelled, ConsoleConflict)):
             return jsonify({"error": str(error)}), 409
         app.logger.exception("Unhandled RuntimeError")
         return jsonify({"error": "Internal server error"}), 500
@@ -110,6 +112,9 @@ def create_app(dashboard: DashboardBoards | None = None, web_root: Path | None =
     _register_ui_routes(app, root)
     _register_api_routes(app, boards)
     _register_wireless_routes(app, boards)
+    console = ConsoleBridge()
+    _register_console_routes(app, boards, console)
+    app.extensions["espforge_console"] = console
     app.extensions["espforge_monitor"] = boards
     return app
 
@@ -118,6 +123,10 @@ def _register_ui_routes(app: Flask, root: Path) -> None:
     @app.get("/")
     def index() -> str:
         return render_template("index.html", dashboard_type="Python", app_version=__version__)
+
+    @app.get("/console")
+    def console_page() -> str:
+        return render_template("console.html", dashboard_type="Python", app_version=__version__)
 
     @app.get("/favicon.svg")
     def favicon() -> Response:
@@ -134,6 +143,54 @@ def _register_ui_routes(app: Flask, root: Path) -> None:
 
 def _board(boards: DashboardBoards) -> DeviceMonitor:
     return boards.monitor(request.args.get("board"))
+
+
+def _register_console_routes(app: Flask, boards: DashboardBoards, console: ConsoleBridge) -> None:
+    @app.route("/api/console", methods=["POST", "GET", "DELETE"])
+    @app.post("/api/console/input")
+    def console_request() -> Response:
+        if request.method == "POST" and request.path == "/api/console":
+            payload = request.get_json(silent=True)
+            if not isinstance(payload, dict) or payload:
+                raise InvalidRequest("Expected an empty console request")
+            board_id = request.args.get("board")
+            monitor = _board(boards)
+
+            def target() -> str:
+                try:
+                    same_board = boards.monitor(board_id) is monitor
+                except (LookupError, BoardConflict) as error:
+                    raise ConsoleConflict("The selected board is no longer available") from error
+                snapshot = monitor.status_snapshot()
+                wireless = snapshot.get("wireless")
+                if (not same_board or not snapshot["connected"] or snapshot.get("wireless_error")
+                        or not wireless or wireless.get("stale") or not wireless.get("wifi_enabled")
+                        or wireless.get("wifi_state") != "connected"):
+                    raise ConsoleConflict("Fresh connected Wi-Fi status is required")
+                try:
+                    return console_address(wireless.get("ipv4"))
+                except ValueError as error:
+                    raise ConsoleConflict("The board has no usable Wi-Fi address") from error
+
+            address = target()
+
+            def guard() -> None:
+                if target() != address:
+                    raise ConsoleConflict("The board Wi-Fi address changed; connect again")
+
+            return jsonify({"session": console.open(address, guard), "ipv4": address})
+        token = request.headers.get("X-Console-Session")
+        if request.method == "GET":
+            data, closed = console.read(token)
+            return jsonify({"data": base64.b64encode(data).decode("ascii"), "closed": closed})
+        if request.method == "POST":
+            try:
+                data = console_input(request.get_json(silent=True))
+            except ValueError as error:
+                raise InvalidRequest(str(error)) from error
+            return jsonify({"written": console.write(token, data)})
+        console.close(token)
+        return jsonify({})
 
 
 def _register_api_routes(app: Flask, boards: DashboardBoards) -> None:
@@ -264,8 +321,13 @@ def _register_wireless_routes(app: Flask, boards: DashboardBoards) -> None:
 
 def run_server(port: int = 8001, serial_number: str | None = None, device_path: str | None = None) -> None:
     dashboard = DashboardBoards(serial_number, device_path)
+    app = None
     try:
         app = create_app(dashboard)
         app.run(host="127.0.0.1", port=port, debug=False, use_reloader=False)
     finally:
-        dashboard.close()
+        try:
+            if app is not None:
+                app.extensions["espforge_console"].close_all()
+        finally:
+            dashboard.close()

@@ -21,6 +21,10 @@ including heap pools, not live usage; flash capacity is not free space. No capac
 | Route | Purpose |
 | --- | --- |
 | `GET /`, `/favicon.svg`, `/css/<path>`, `/js/<path>` | Static dashboard assets |
+| `GET /console?board=ID` | Browser terminal for the selected board's raw TCP shell |
+| `POST /api/console?board=ID` | Open a console using fresh reported Wi-Fi status |
+| `GET`, `DELETE /api/console` | Read and close a console session |
+| `POST /api/console/input` | Send one non-idempotent shell input packet |
 | `GET /api/boards` | Discover boards and obtain IDs for board-scoped requests |
 | `GET /api/status` | Identity, telemetry, storage, boot configuration and wireless status |
 | `POST /api/settings` | Save clock and radio switches, then reboot; `system_clock_mhz` is `0`, `80`, `160` or `240`, `sdcard_profile` is `0`, `radios` is `0`-`3` |
@@ -47,8 +51,7 @@ Python includes `control_result`, while .NET returns `{}`. Poll `/api/status` fo
 `enabled` and `request_rejected`; do not automatically replay. See the
 [SD handoff contract](../../docs/reference/sdcard.md#usb-drive-handoff) for OS eject, reconnect and safety limitations.
 
-Unsupported routes are not served: `/console`, `/api/console`,
-`/api/msc/force-return` and `/api/self-test`. The UI never requests them.
+Unsupported routes are not served: `/api/msc/force-return` and `/api/self-test`. The UI never requests them.
 
 `POST /api/benchmark` accepts `{"start":true,"size_mib":32,"confirm":true}` or
 `{"start":false,"size_mib":0}`. Start requires 1–1024 MiB and explicit write confirmation.
@@ -59,7 +62,7 @@ Poll `self_test` and `self_test_stale` for [Report 11](../../docs/reference/usb-
 progress/result. `self_test` is null when absent or stale; zero-duration throughput is null.
 Controls remain hidden without capability bit 5 or detected storage; BLE is read-only.
 Never automatically replay a start/cancel request.
-`wireless.tcp_cli_enabled` remains false; the independent diagnostic shell has no dashboard bridge.
+`wireless.tcp_cli_enabled` remains false; it does not describe native diagnostic-shell readiness.
 
 Unavailable per-core load, temperature, card presence, bus clock and capacity diagnostics use JSON `null`.
 The dashboard displays unavailable measurements as `--` without a footer warning; malformed diagnostic values
@@ -73,6 +76,33 @@ Diagnostic tiles expand to fill each responsive row, including rows with fewer v
 Commands are serialized per board. A timeout or disconnect can leave the outcome uncertain; further writes
 remain blocked until explicit reconciliation. Clients must not replay a state-changing request.
 Both hosts remain loopback-only and require local request origins.
+
+## Browser shell
+
+Fresh connected Wi-Fi status becomes a link opening the [diagnostic shell](../../docs/guides/console.md) in a new tab.
+Wi-Fi connectivity does not establish that TCP port 2323 is listening; connection failures are explicit.
+
+`POST /api/console?board=ID` accepts exactly `{}`. The host obtains the address from that board's monitor, sends
+two Ctrl-C bytes followed by `shell echo on\r` in one send, and returns `{"session":"TOKEN","ipv4":"ADDRESS"}`.
+The controls discard a previous client's unfinished input before requesting native per-session echo.
+This setup is not authentication or a product setting. Session tokens are sent only in the `X-Console-Session`
+header, never URLs or persistent storage. Subsequent requests are rejected if the board changes, disconnects,
+loses fresh wireless status or changes address.
+
+`GET /api/console` long-polls up to two seconds and returns `{"data":"BASE64","closed":false}`, at most 4096 decoded
+bytes; `closed:true` means TCP EOF. `POST /api/console/input` accepts exactly `{"data":"BASE64"}`, containing
+1–1024 decoded bytes,
+and returns `{"written":N}`. A short count or failed request is uncertain: close and never resend the input.
+Input deliberately uses POST rather than an idempotent HTTP method that a client could automatically replay.
+`DELETE` closes the session and returns `{}`; HTTP 409 during cleanup means it is already unavailable.
+Only one console is admitted per host. Requests have bounded waits; sessions expire after 15 seconds without
+requests and close during host shutdown. Invalid bodies are HTTP 400, conflicts HTTP 409, TCP failures HTTP 503;
+the existing overall body limit still returns HTTP 413.
+
+The terminal renders only text, with bounded scrollback and native cursor/edit/erase support, not full VT100
+emulation or colour styling. It preserves Control keys, Tab and arrows, allows Shift+Tab to leave, and confirms
+multiline paste before sending. Closing the page tears down its relay. Reopening is always explicit.
+The raw shell is unauthenticated plaintext even when management uses authenticated BLE.
 
 ## Tests
 

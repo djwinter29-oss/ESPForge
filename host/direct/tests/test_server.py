@@ -6,6 +6,9 @@
 import contextlib
 import io
 import json
+import shutil
+import subprocess
+import sys
 import tempfile
 import threading
 import unittest
@@ -38,8 +41,10 @@ class DirectServerTests(unittest.TestCase):
         cls.thread.join(timeout=5)
         cls.quiet.stop()
 
-    def fetch(self, path, method="GET"):
-        request = urllib.request.Request(self.base + path, method=method)
+    def fetch(self, path, method="GET", body=None, headers=None):
+        data = None if body is None else json.dumps(body).encode()
+        request = urllib.request.Request(self.base + path, method=method, data=data,
+                                         headers={"Content-Type": "application/json", **(headers or {})})
         try:
             with urllib.request.urlopen(request, timeout=5) as response:
                 return response.status, response.headers, response.read()
@@ -72,6 +77,67 @@ class DirectServerTests(unittest.TestCase):
     def test_mutating_methods_are_rejected(self):
         for method in ("POST", "PUT", "DELETE", "PATCH"):
             self.assertEqual(self.fetch("/", method)[0], 405, method)
+
+    def test_console_capability_assets_and_origin_fence(self):
+        status, _, body = self.fetch("/api/console/capabilities")
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body), {"available": True})
+        for path in ("/console.html", "/css/console.css", "/js/console.mjs"):
+            self.assertEqual(self.fetch(path)[0], 200, path)
+        for headers in ({"Origin": "https://foreign.example"}, {"Host": "foreign.example"}):
+            self.assertEqual(self.fetch("/api/console", "POST", {"ipv4": "192.168.1.9"}, headers)[0], 403)
+        self.assertEqual(self.fetch("/api/console", "PATCH")[0], 405)
+
+    def test_console_requires_a_private_reported_target_and_strict_packet(self):
+        with patch.object(self.server.console, "open", return_value="opaque-session") as connect:
+            for body in ({}, {"ipv4": "127.0.0.1"}, {"ipv4": "8.8.8.8"}, {"ipv4": "0.0.0.1"},
+                         {"ipv4": "192.168.1.9", "port": 80}, {"ipv4": True}):
+                self.assertEqual(self.fetch("/api/console", "POST", body)[0], 400, body)
+            connect.assert_not_called()
+            status, _, body = self.fetch("/api/console", "POST", {"ipv4": "192.168.1.9"})
+            self.assertEqual(status, 200)
+            self.assertEqual(json.loads(body), {"session": "opaque-session", "ipv4": "192.168.1.9"})
+            connect.assert_called_once_with("192.168.1.9")
+        self.assertEqual(self.fetch("/api/console?session=ignored")[0], 409)
+        with patch.object(self.server.console, "write", return_value=5) as write:
+            status, _, body = self.fetch("/api/console/input", "POST", {"data": "aGVscA0="},
+                                         {"X-Console-Session": "owned"})
+            self.assertEqual(status, 200)
+            self.assertEqual(json.loads(body), {"written": 5})
+            write.assert_called_once_with("owned", b"help\r")
+            self.assertEqual(self.fetch("/api/console/input", "POST", {"data": "%%%"},
+                                         {"X-Console-Session": "owned"})[0], 400)
+            self.assertEqual(write.call_count, 1)
+        self.assertEqual(self.fetch("/api/console", "PUT", {"data": "aA=="})[0], 405)
+
+    def test_release_server_runs_without_checkout_or_host_dependencies(self):
+        source = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            shutil.copyfile(source / "server.py", root / "server.py")
+            shutil.copyfile(source.parent / "python/src/espforge/dashboard/console.py", root / "console_bridge.py")
+            shutil.copytree(source / "web", root / "web")
+            script = """
+import json, runpy, threading, urllib.request
+module = runpy.run_path("server.py")
+server = module["create_server"]("127.0.0.1", 0, module["_DEFAULT_WEB_ROOT"])
+thread = threading.Thread(target=server.serve_forever)
+thread.start()
+try:
+    base = f"http://127.0.0.1:{server.server_address[1]}"
+    for path in ("/console.html", "/js/console.mjs", "/js/ui/console-session.mjs"):
+        with urllib.request.urlopen(base + path, timeout=2) as response:
+            assert response.status == 200 and response.read()
+    with urllib.request.urlopen(base + "/api/console/capabilities", timeout=2) as response:
+        assert json.load(response) == {"available": True}
+finally:
+    server.shutdown()
+    server.server_close()
+    thread.join()
+"""
+            result = subprocess.run([sys.executable, "-I", "-c", script], cwd=root, timeout=10,
+                                    capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
 
 
 class DirectServerArgumentTests(unittest.TestCase):

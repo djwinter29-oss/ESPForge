@@ -7,6 +7,7 @@ namespace ESPForge.Tests;
 internal class TestMonitor : IDeviceMonitor
 {
     public virtual StatusResponse Snapshot { get; set; } = new(false, null, null, null, null, null);
+    public virtual object? ConnectionIdentity { get; set; } = new object();
     public bool Disposed { get; private set; }
     public virtual void Start() { }
     public virtual bool TryRetire() => !Snapshot.CommandOutcomeUncertain;

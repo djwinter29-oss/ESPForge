@@ -90,12 +90,35 @@ the dashboard always saves profile 0 and shows the bus clock actually reported b
 
 USB connections can explicitly export an initialized SD card and return it after confirmed OS eject;
 see [SD ownership](../../docs/reference/sdcard.md#usb-drive-handoff). Bluetooth cannot change ownership.
-ESPForge has no forced save or dashboard TCP CLI console.
+ESPForge has no forced save. Local serving also provides a browser link to the native Wi-Fi shell.
 The Device information RGB dropdown sends volatile colour requests over USB or an authenticated BLE session.
 It requires fresh available-driver telemetry; uncertain commands are reconciled without replay.
 When firmware advertises benchmarking, Storage offers confirmed start/cancel and live write/read verification results.
 See [benchmark safety and timing](../../docs/reference/sdcard.md#optional-storage-benchmark); BLE mirrors progress read-only.
 The dashboard omits those controls rather than inventing values.
+
+### Wi-Fi shell
+
+With the local server, fresh connected Wi-Fi status links to the
+[unauthenticated plaintext diagnostic shell](../../docs/guides/console.md).
+Keep the originating dashboard tab open and connected. Before opening, reading or sending input, the terminal
+checks that tab's fresh board identity and reported address; replacement, stale status or a closed dashboard
+disconnects it. The server does not own HID or BLE, and accepts only private LAN IPv4 targets on port 2323.
+Wi-Fi connectivity is not proof of listener readiness; failed TCP connections are reported explicitly.
+
+The relay is available only through same-origin loopback HTTP requests. Static hosting, including Pages and
+other local static servers, keeps Wi-Fi status as plain text rather than presenting a broken shell link.
+`GET /api/console/capabilities` reports `{"available":true}` on the local ESPForge server.
+Direct opens with `POST /api/console`, exactly `{"ipv4":"REPORTED_ADDRESS"}`; the remaining header-token,
+bounded packet and no-replay contract matches the [bridge API](../web/README.md#browser-shell).
+The release ZIP includes its standard-library relay and requires no Python host installation.
+
+Opening discards any previous client's unfinished input, then requests native `shell echo on` once for that
+session, without changing saved product settings.
+The terminal uses bounded plain-text output and supports native editing/erase sequences, not complete VT100
+emulation or colour styling. Control keys, arrows and Tab work; Shift+Tab leaves the terminal and multiline
+paste requires confirmation. Uncertain input is never retried. Close the shell tab to disconnect;
+abandoned relay sessions expire after 15 idle seconds.
 
 ## Controls
 

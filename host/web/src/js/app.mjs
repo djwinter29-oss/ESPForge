@@ -290,6 +290,7 @@ function renderStatus(snapshot) {
         : "Command outcome is uncertain. Reconnect the board and reload the dashboard before retrying."
       : boardState.commandFailure?.message ?? boardScanWarning),
     no_board_selected: !selectedBoard,
+    console_url: selectedBoard && statusReadError === null ? boardUrl("/console") : null,
     ...settingsEditState(),
     wireless_dirty: wirelessForm.dirty(),
     settings_message: settingsMessage ?? snapshot.settings_message,

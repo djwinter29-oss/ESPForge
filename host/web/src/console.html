@@ -1,0 +1,35 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: BSD-3-Clause
+Copyright (c) 2026 Ji Dong -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ESPForge Wi-Fi shell | {{ dashboard_type }}</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="stylesheet" href="/css/dashboard.css">
+  <link rel="stylesheet" href="/css/console.css">
+  <script type="module" src="/js/console.mjs"></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="ESPForge dashboard">
+      <span class="brand-mark">EF</span>
+      <span class="brand-copy"><strong>ESPForge</strong><small>{{ dashboard_type }} · App v{{ app_version }}</small></span>
+    </a>
+    <button id="console-toggle" type="button">Connect</button>
+  </header>
+  <main>
+    <section>
+      <h1>Wi-Fi shell</h1>
+      <p>The board's diagnostic shell on TCP port 2323 is unauthenticated and unencrypted. Use a trusted LAN;
+        anyone on that network can connect. Commands can change device state.</p>
+      <p>Click the terminal to type. Arrows, Tab and Control keys work; Shift+Tab leaves the terminal.
+        Select text to copy. Pasted newlines require confirmation. Input is never automatically retried.</p>
+      <p id="console-status" role="status" aria-live="polite">Disconnected.</p>
+      <pre id="terminal" tabindex="0" role="textbox" aria-label="Wi-Fi shell terminal"
+        aria-multiline="true" aria-readonly="true" spellcheck="false"></pre>
+    </section>
+  </main>
+</body>
+</html>

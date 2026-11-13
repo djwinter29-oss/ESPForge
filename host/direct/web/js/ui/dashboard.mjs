@@ -13,7 +13,8 @@ import { describe } from "./messages.mjs";
 
 /**
  * @typedef {{secure: boolean, hid: boolean, ble: boolean, now: () => number,
- *   clipboard: Pick<Clipboard, "writeText"> | null}} DashboardEnvironment
+ *   clipboard: Pick<Clipboard, "writeText"> | null,
+ *   consoleUrl?: (state: import("../state/reducer.mjs").DashboardState) => string | null}} DashboardEnvironment
  * @typedef {{session: import("../board/session.mjs").BoardSession,
  *   selectTransport: (kind: "usb" | "ble") => import("../board/session.mjs").BoardSession,
  *   timers: ReturnType<typeof import("../timers.mjs").createTimerScope>,
@@ -34,7 +35,7 @@ export function mountDashboard({ session, selectTransport, timers, environment }
   const ui = createUiStore();
   /** @param {Partial<import("../state/reducer.mjs").UiState>} changes */
   const setUi = changes => ui.dispatch({ type: "patch", changes });
-  const renderStatus = createDashboardView();
+  const renderStatus = createDashboardView(environment.consoleUrl);
   const usbDialog = queryElement("dialog#usb-connection-dialog");
   const bluetoothDialog = queryElement("dialog#bluetooth-connection-dialog");
   const settingsSave = button("settings-save");

@@ -47,8 +47,7 @@ class PackagingTests(unittest.TestCase):
         package = PROJECT / "src" / "espforge"
         for module in ("console", "device", "monitor", "protocol", "web", "demo", "server"):
             self.assertFalse((package / f"{module}.py").exists(), module)
-        for removed in ("uart", "protocol", "reports/hid.py", "reports/self_test.py", "hid/models.py",
-                        "dashboard/console.py"):
+        for removed in ("uart", "protocol", "reports/hid.py", "reports/self_test.py", "hid/models.py"):
             self.assertFalse((package / removed).exists(), removed)
 
     @unittest.skipIf(tomllib is None, "tomllib requires Python 3.11")

@@ -8,7 +8,7 @@ import { CAPABILITY_SDMMC, CAPABILITY_WIRELESS, operationState } from "./operati
 /**
  * @typedef {import("./dashboard-api.mjs").StatusSnapshot & {
  * settings_draft?: import("./dashboard-api.mjs").BootSettings,
- * settings_dirty?: boolean, wireless_dirty?: boolean, no_board_selected?: boolean,
+ * settings_dirty?: boolean, wireless_dirty?: boolean, no_board_selected?: boolean, console_url?: string | null,
  * status_read_error?: boolean, status_reading?: boolean}} DashboardView
  */
 /** @param {string} selector */
@@ -117,7 +117,7 @@ export function renderStatus(snapshot, operations = operationState(snapshot, {
   element("#serial").textContent = hardware?.serial_number || "--";
   element("#uptime").textContent = runtime
     ? uptimeLabel(runtime.uptime_milliseconds ?? runtime.uptime_ms) : "--";
-  renderWirelessStatus(snapshot);
+  renderWirelessStatus(snapshot, snapshot.console_url);
   const memory = snapshot.storage_stale ? null : snapshot.memory;
   if (connected && memory && memory.sample_valid !== false)
     cardDetected = memory.presence_known === true ? memory.present === true : memory.initialized === true;

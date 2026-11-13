@@ -1,0 +1,18 @@
+/* SPDX-License-Identifier: BSD-3-Clause
+ * Copyright (c) 2026 Ji Dong
+ */
+#terminal {
+  height: 60vh;
+  min-height: 18rem;
+  overflow: auto;
+  padding: 1rem;
+  border-radius: .5rem;
+  background: #101820;
+  color: #e4edf5;
+  font: 14px/1.5 ui-monospace, monospace;
+  white-space: pre;
+  tab-size: 8;
+}
+#terminal:focus-visible { outline: 3px solid #1683cc; outline-offset: 3px; }
+.terminal-cursor { background: #e4edf5; color: #101820; }
+#console-status { overflow-wrap: anywhere; }

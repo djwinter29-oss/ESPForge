@@ -23,7 +23,7 @@ public sealed class DashboardApplicationTests
         await using var app = await Build(boards);
         await app.StartAsync();
         using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
-        foreach (var route in new[] { "/", "/js/app.mjs", "/favicon.svg" })
+        foreach (var route in new[] { "/", "/console", "/js/app.mjs", "/favicon.svg" })
         {
             using var response = await client.GetAsync(route);
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -32,7 +32,7 @@ public sealed class DashboardApplicationTests
             Assert.Contains("frame-ancestors 'none'",
                 response.Headers.GetValues("Content-Security-Policy").Single());
             Assert.True(response.Headers.CacheControl?.NoStore);
-            if (route is "/")
+            if (route is "/" or "/console")
             {
                 var page = await response.Content.ReadAsStringAsync();
                 Assert.Contains("| .NET", page);
@@ -43,7 +43,7 @@ public sealed class DashboardApplicationTests
                 Assert.Contains($"App v{version}<", page);
             }
         }
-        foreach (var route in new[] { "/index.html", "/console.html", "/console", "/src/js/app.mjs" })
+        foreach (var route in new[] { "/index.html", "/console.html", "/src/js/app.mjs" })
             Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync(route)).StatusCode);
         using (var foreign = new HttpRequestMessage(HttpMethod.Post, "/api/reboot?board=a"))
         {

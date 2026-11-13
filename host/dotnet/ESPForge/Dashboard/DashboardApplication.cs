@@ -22,6 +22,7 @@ internal static class DashboardApplication
         builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 4096);
         builder.Services.TryAddSingleton<IDashboardBoards>(services => new DashboardBoards(serial, path,
             services.GetRequiredService<ILoggerFactory>()));
+        builder.Services.TryAddSingleton<ConsoleBridge>();
 
         var app = builder.Build();
         app.Use(async (context, next) =>
@@ -60,8 +61,11 @@ internal static class DashboardApplication
         string Page(string html) => html.Replace("{{ dashboard_type }}", ".NET").Replace("{{ app_version }}", version);
         var index = Page(await File.ReadAllTextAsync(Path.Combine(webRoot, "index.html")));
         app.MapGet("/", () => Results.Content(index, "text/html; charset=utf-8"));
+        app.MapGet("/console", async () => Results.Content(
+            Page(await File.ReadAllTextAsync(Path.Combine(webRoot, "console.html"))), "text/html; charset=utf-8"));
         app.MapStatusEndpoints();
         app.MapWirelessEndpoints();
+        app.MapConsoleEndpoints();
         if (app.Environment.IsDevelopment()) app.MapOpenApi();
         return app;
     }
