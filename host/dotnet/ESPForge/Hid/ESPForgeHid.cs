@@ -99,8 +99,13 @@ internal sealed class ESPForgeHid : IHidClient
 
     public HardwareInfoResponse ReadInfo() => identity;
 
-    private HardwareInfoResponse ReadHardwareInfo() =>
-        HidProtocol.ParseIdentityReport(readFeature(HidProtocol.IdentityReportId, HidProtocol.IdentityFeatureSize));
+    private HardwareInfoResponse ReadHardwareInfo()
+    {
+        var hardware = HidProtocol.ParseIdentityReport(readFeature(HidProtocol.IdentityReportId, HidProtocol.IdentityFeatureSize));
+        return hardware.MemoryReportSupported
+            ? HidProtocol.ParseMemoryInventory(readFeature(HidProtocol.MemoryReportId, HidProtocol.MemoryPayloadSize + 1), hardware)
+            : hardware;
+    }
 
     public BoardConfigurationResponse ReadConfiguration()
     {

@@ -32,6 +32,18 @@ class SupportedHardwareIdentity(TypedDict):
     wireless_supported: bool
     ram_total_bytes: int
     ram_reserved_bytes: int
+    memory_report_supported: bool
+    psram_total_bytes: int | None
+    psram_reserved_bytes: int | None
+    flash_total_bytes: int | None
+
+
+class MemoryInventory(TypedDict):
+    """Physical module capacities and linker reservations, not live allocation."""
+
+    psram_total_bytes: int | None
+    psram_reserved_bytes: int | None
+    flash_total_bytes: int | None
 
 
 class UnsupportedHardwareIdentity(TypedDict):

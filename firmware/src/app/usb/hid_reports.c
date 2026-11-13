@@ -39,10 +39,24 @@ void ef_report_identity(const ef_identity_t *identity, uint8_t out[EF_IDENTITY_S
 	memcpy(out + 11, identity->firmware, 3);
 	out[14] = EF_MCU_ESP32S3;
 	out[15] = EF_BOARD_DEVKITC;
-	out[16] = 0;
+	out[16] = EF_EXT_MEMORY;
 	out[17] = EF_CAPABILITIES;
 	put32(out + 18, identity->ram_total_bytes);
 	put32(out + 22, identity->ram_reserved_bytes);
+}
+
+void ef_report_memory(const ef_memory_inventory_t *memory, uint8_t out[EF_MEMORY_SIZE])
+{
+	memset(out, 0, EF_MEMORY_SIZE);
+	out[0] = 1;
+	out[1] = (memory->psram_available ? 1u : 0u) | (memory->flash_available ? 2u : 0u);
+	if (memory->psram_available) {
+		put32(out + 4, memory->psram_total_bytes);
+		put32(out + 8, memory->psram_reserved_bytes);
+	}
+	if (memory->flash_available) {
+		put32(out + 12, memory->flash_total_bytes);
+	}
 }
 
 void ef_report_config(const ef_config_t *config, uint8_t out[EF_CONFIG_SIZE])

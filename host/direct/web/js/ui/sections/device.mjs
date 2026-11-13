@@ -27,6 +27,9 @@ export function deriveDeviceViewModel(state, dashboard = deriveDashboardViewMode
   const config = state.settings;
   const ramUsed = hardware?.ram_reserved_bytes;
   const ramTotal = hardware?.ram_total_bytes;
+  const psramTotal = hardware?.psram_total_bytes;
+  const psramReserved = hardware?.psram_reserved_bytes;
+  const flashTotal = hardware?.flash_total_bytes;
   const signals = ["CLK", "CMD", "DAT0", "DAT1", "DAT2", "DAT3"];
   const pin = value => !config ? "--" : value === 255 || value == null ? "Unassigned" : `GPIO${value}`;
   const storagePins = signals.map((_, index) => pin(config?.storage_gpios?.[index]));
@@ -61,6 +64,12 @@ export function deriveDeviceViewModel(state, dashboard = deriveDashboardViewMode
         ? `${(ramUsed / 1024).toFixed(1)} / ${(ramTotal / 1024).toFixed(0)} KiB`
           + ` (${(ramUsed * 100 / ramTotal).toFixed(1)}%)` : "--",
       serial: hardware?.serial_number || "--",
+      "psram-usage": Number.isSafeInteger(psramTotal) && psramTotal > 0 && Number.isSafeInteger(psramReserved)
+        && psramReserved >= 0 && psramReserved <= psramTotal
+        ? `${(psramReserved / 1048576).toFixed(1)} / ${(psramTotal / 1048576).toFixed(1)} MiB`
+          + ` (${(psramReserved * 100 / psramTotal).toFixed(1)}%)` : "--",
+      "flash-capacity": Number.isSafeInteger(flashTotal) && flashTotal > 0
+        ? `${(flashTotal / 1048576).toFixed(1)} MiB` : "--",
       uptime: runtime ? uptimeLabel(runtime.uptime_ms) : "--",
       temperature: runtime?.temperature_valid ? `${(runtime.temperature_centidegrees / 100).toFixed(2)} °C` : "--",
       "board-uart-title": config && config.monitor_uart_index !== 255

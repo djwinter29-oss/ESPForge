@@ -66,12 +66,20 @@ Copyright (c) 2026 Ji Dong
       <div class="metric"><span>Board model</span><strong id="board-model">--</strong></div>
       <div class="metric"><span>Serial / UID</span><strong id="serial">--</strong></div>
       <div class="metric"><span>System clock</span><strong id="identity-clock">--</strong></div>
-      <div class="metric">
-        <span>Firmware RAM reserved / total</span>
-        <strong id="ram-usage" title="Static data and reserved core stacks / physical SRAM; not live usage">--</strong>
-      </div>
       <div class="metric"><span>Firmware version</span><strong id="firmware-version">--</strong></div>
       </div>
+    </section>
+
+    <section class="runtime" aria-labelledby="memory-inventory-title">
+      <h2 id="memory-inventory-title">Module memory</h2>
+      <dl class="runtime-grid memory-inventory">
+        <div><dt>Internal SRAM reserved / total</dt><dd id="ram-usage">--</dd></div>
+        <div><dt>External PSRAM reserved / total</dt><dd id="psram-usage">--</dd></div>
+        <div><dt>Module SPI flash capacity</dt><dd id="flash-capacity">--</dd></div>
+      </dl>
+      <p class="sample-time">Reserved RAM includes linked regions and heap pools, not live usage.
+        SPI flash is external to the ESP32-S3; it has no on-chip flash. PSRAM is RAM, not flash.
+        -- means unavailable or not reported by this firmware.</p>
     </section>
 
     <section class="runtime" aria-labelledby="settings-title">

@@ -58,7 +58,21 @@ export function decodeIdentityReport(report) {
     board_model: board, board_name: ({ 0: "Unspecified", 1: "ESP32-S3-DevKitC-1" })[board] ?? null,
     capabilities, transport: "sdmmc",
     ram_total_bytes: total, ram_reserved_bytes: reserved,
+    memory_report_supported: Boolean(view.getUint8(16) & 1),
   };
+}
+
+export function decodeMemoryInventory(report) {
+  const view = payload(report, 16);
+  const flags = view.getUint8(1);
+  const total = view.getUint32(4, true);
+  const reserved = view.getUint32(8, true);
+  const flash = view.getUint32(12, true);
+  requireValid(!(flags & ~3) && view.getUint16(2, true) === 0
+    && (flags & 1 ? total > 0 && reserved <= total : total === 0 && reserved === 0)
+    && (flags & 2 ? flash > 0 : flash === 0), "memory-inventory");
+  return { psram_total_bytes: flags & 1 ? total : null, psram_reserved_bytes: flags & 1 ? reserved : null,
+    flash_total_bytes: flags & 2 ? flash : null };
 }
 
 export function decodeConfigReport(report, identity) {

@@ -109,7 +109,7 @@ h2 { margin-bottom: 0; font-size: 18px; font-weight: 650; }
 
 .identity {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 1px;
   margin: 8px 0 20px;
   padding: 1px;
@@ -148,6 +148,7 @@ h2 { margin-bottom: 0; font-size: 18px; font-weight: 650; }
 }
 .runtime-grid > div { min-width: 0; min-height: 72px; padding: 12px 14px; display: grid; align-content: space-between; gap: 6px; background: var(--paper); }
 .runtime-grid dt { font: 12px var(--sans); }
+.runtime-grid.memory-inventory { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .runtime-grid dd { font: 600 14px var(--mono); }
 .runtime-grid dd[data-active="true"] { color: var(--green); }
 .runtime-grid dd[data-active="false"] { color: var(--muted); }
@@ -269,6 +270,7 @@ h2 { margin-bottom: 0; font-size: 18px; font-weight: 650; }
 }
 
 @media (max-width: 720px) {
+  .runtime-grid.memory-inventory { grid-template-columns: minmax(0, 1fr); }
   #wifi-diagnostics, #ble-diagnostics { flex-basis: 100%; }
   .topbar { padding-inline: 18px; }
   main { padding: 18px 18px 24px; }

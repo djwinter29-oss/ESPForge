@@ -10,7 +10,9 @@ namespace ESPForge;
 /// <summary>Device identity and capabilities from HID Feature report 1.</summary>
 public sealed record HardwareInfoResponse(string ProductName, string Mcu, byte McuId,
     string SerialNumber, string? FirmwareVersion = null, ushort ProductId = 0,
-    byte BoardModel = 0, byte Capabilities = 0, uint RamTotalBytes = 0, uint RamReservedBytes = 0)
+    byte BoardModel = 0, byte Capabilities = 0, uint RamTotalBytes = 0, uint RamReservedBytes = 0,
+    bool MemoryReportSupported = false, uint? PsramTotalBytes = null, uint? PsramReservedBytes = null,
+    uint? FlashTotalBytes = null)
 {
     public bool WirelessSupported => (Capabilities & HidProtocol.CapabilityWireless) != 0;
 }
@@ -185,6 +187,8 @@ internal static partial class HidProtocol
     public const byte BoardEsp32S3DevKitC1 = 1;
     public const uint Usage = 0xFF000001;
     public const byte IdentityReportId = 1;
+    public const byte MemoryReportId = 13;
+    public const int MemoryPayloadSize = 16;
     public const byte ConfigurationReportId = 2;
     public const byte TelemetryReportId = 3;
     public const byte StorageReportId = 10;
@@ -272,7 +276,23 @@ internal static partial class HidProtocol
         var mcu = mcuId == McuEsp32S3 ? "ESP32-S3" : $"Unknown MCU ({mcuId})";
         return new("ESPForge", mcu, mcuId, uid,
             $"{payload[11]}.{payload[12]}.{payload[13]}", productId, boardModel,
-            capabilities, ramTotal, ramReserved);
+            capabilities, ramTotal, ramReserved, MemoryReportSupported: (payload[16] & 1) != 0);
+    }
+
+    /// <summary>Attach boot-sampled capacities and PSRAM reservations from the advertised memory Feature.</summary>
+    public static HardwareInfoResponse ParseMemoryInventory(ReadOnlySpan<byte> report, HardwareInfoResponse identity)
+    {
+        var payload = FeaturePayload(report, MemoryReportId, MemoryPayloadSize);
+        var flags = payload[1];
+        var psramTotal = BinaryPrimitives.ReadUInt32LittleEndian(payload[4..]);
+        var psramReserved = BinaryPrimitives.ReadUInt32LittleEndian(payload[8..]);
+        var flashTotal = BinaryPrimitives.ReadUInt32LittleEndian(payload[12..]);
+        Require(payload[0] == ReportVersion && (flags & ~3) == 0 && payload[2] == 0 && payload[3] == 0
+            && ((flags & 1) != 0 ? psramTotal > 0 && psramReserved <= psramTotal : psramTotal == 0 && psramReserved == 0)
+            && ((flags & 2) != 0 ? flashTotal > 0 : flashTotal == 0), "invalid HID memory inventory");
+        return identity with { PsramTotalBytes = (flags & 1) != 0 ? psramTotal : null,
+            PsramReservedBytes = (flags & 1) != 0 ? psramReserved : null,
+            FlashTotalBytes = (flags & 2) != 0 ? flashTotal : null };
     }
 
 

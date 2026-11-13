@@ -32,6 +32,8 @@ const uint8_t *ef_board_uid(void);
 const char *ef_board_serial(void);
 
 void ef_identity_report(uint8_t out[EF_IDENTITY_SIZE]);
+/** Read the immutable boot-sampled module memory inventory. */
+void ef_memory_report(uint8_t out[EF_MEMORY_SIZE]);
 void ef_config_report(uint8_t out[EF_CONFIG_SIZE]);
 void ef_telemetry_report(uint8_t sequence, uint8_t out[EF_TELEMETRY_SIZE]);
 void ef_storage_report(uint8_t sequence, uint8_t out[EF_STORAGE_SIZE]);

@@ -56,6 +56,8 @@ from ..reports import (
     parse_control_result_report,
     parse_status_report,
 )
+from ..reports.common import MEMORY_PAYLOAD_SIZE, MEMORY_REPORT_ID
+from ..reports.identity import parse_memory_inventory_report
 from ..reports.common import SELF_TEST_REPORT_ID, BoardConflict, _validate_settings
 from ..reports.common import CAP_SELF_TEST
 from ..reports.storage import parse_benchmark_report
@@ -213,6 +215,10 @@ class ESPForgeHid:
         self._require_open()
         report = self._device.get_feature_report(IDENTITY_REPORT_ID, IDENTITY_FEATURE_SIZE)
         identity = _parse_report(parse_identity_report, report)
+        if identity["supported"] and identity["memory_report_supported"]:
+            memory_report = self._device.get_feature_report(MEMORY_REPORT_ID, MEMORY_PAYLOAD_SIZE + 1)
+            inventory = _parse_report(parse_memory_inventory_report, memory_report)
+            identity.update(inventory)
         self.identity = identity
         if self._expected_serial_number and identity.get("supported"):
             serial_number = identity.get("serial_number")

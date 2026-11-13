@@ -25,7 +25,7 @@ export const CONFIG_FLAGS = Object.freeze({
 export const CLOCKS_MHZ = Object.freeze([0, 80, 160, 240]);
 /** ESPForge report IDs; Report 11 is conditional on the benchmark capability. */
 export const REPORT = Object.freeze({
-  IDENTITY: 1, CONFIG: 2, TELEMETRY: 3, STORAGE: 10, BENCHMARK: 11, WIRELESS: 12, CONTROL: 20,
+  IDENTITY: 1, CONFIG: 2, TELEMETRY: 3, STORAGE: 10, BENCHMARK: 11, WIRELESS: 12, MEMORY: 13, CONTROL: 20,
 });
 /** Published status reports and how long each sample stays authoritative without a newer one. */
 export const REPORT_LIFETIME_MS = Object.freeze({

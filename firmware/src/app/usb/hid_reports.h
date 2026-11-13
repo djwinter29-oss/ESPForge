@@ -17,6 +17,8 @@
 #define EF_REPORT_STORAGE 10u
 #define EF_REPORT_BENCHMARK 11u
 #define EF_REPORT_WIRELESS 12u
+/** Read-only boot memory inventory Feature report. */
+#define EF_REPORT_MEMORY 13u
 #define EF_REPORT_CONTROL 20u
 
 #define EF_IDENTITY_SIZE 26u
@@ -26,6 +28,10 @@
 /** Benchmark Input payload size, excluding report ID. */
 #define EF_BENCHMARK_SIZE 32u
 #define EF_WIRELESS_SIZE 48u
+/** Memory inventory payload size, excluding report ID. */
+#define EF_MEMORY_SIZE 16u
+/** Identity extension flag: Report 13 memory inventory is available. */
+#define EF_EXT_MEMORY 0x01u
 #define EF_CONTROL_SIZE 68u
 #define EF_BLE_CONTROL_SIZE 9u
 
@@ -56,6 +62,15 @@ typedef struct {
 	uint32_t ram_total_bytes;
 	uint32_t ram_reserved_bytes;
 } ef_identity_t;
+
+/** Boot-sampled physical capacities and linker-reserved external RAM, not live heap usage. */
+typedef struct {
+	bool psram_available; /**< PSRAM initialization succeeded. */
+	bool flash_available; /**< Module flash capacity was read successfully. */
+	uint32_t psram_total_bytes; /**< Detected PSRAM chip capacity. */
+	uint32_t psram_reserved_bytes; /**< Linked PSRAM regions, including permanent heap pools. */
+	uint32_t flash_total_bytes; /**< Detected module SPI flash capacity; not free filesystem space. */
+} ef_memory_inventory_t;
 
 typedef struct {
 	uint16_t stored_clock_mhz;
@@ -114,6 +129,8 @@ typedef struct {
 } ef_wireless_t;
 
 void ef_report_identity(const ef_identity_t *identity, uint8_t out[EF_IDENTITY_SIZE]);
+/** Encode the boot memory inventory; unavailable components have zero wire values. */
+void ef_report_memory(const ef_memory_inventory_t *memory, uint8_t out[EF_MEMORY_SIZE]);
 void ef_report_config(const ef_config_t *config, uint8_t out[EF_CONFIG_SIZE]);
 void ef_report_telemetry(const ef_telemetry_t *telemetry, uint8_t out[EF_TELEMETRY_SIZE]);
 void ef_report_storage(const ef_storage_t *storage, uint8_t out[EF_STORAGE_SIZE]);

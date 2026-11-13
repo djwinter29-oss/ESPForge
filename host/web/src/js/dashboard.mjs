@@ -104,6 +104,16 @@ export function renderStatus(snapshot, operations = operationState(snapshot, {
     ? `${(ramUsed / 1024).toFixed(1)} / ${(ramTotal / 1024).toFixed(0)} KiB`
       + ` (${(ramUsed * 100 / ramTotal).toFixed(1)}%)`
     : "--";
+  const psramTotal = hardware?.psram_total_bytes;
+  const psramReserved = hardware?.psram_reserved_bytes;
+  element("#psram-usage").textContent = typeof psramTotal === "number" && Number.isSafeInteger(psramTotal)
+    && psramTotal > 0 && typeof psramReserved === "number" && Number.isSafeInteger(psramReserved)
+    && psramReserved >= 0 && psramReserved <= psramTotal
+    ? `${(psramReserved / 1048576).toFixed(1)} / ${(psramTotal / 1048576).toFixed(1)} MiB`
+      + ` (${(psramReserved * 100 / psramTotal).toFixed(1)}%)` : "--";
+  const flashTotal = hardware?.flash_total_bytes;
+  element("#flash-capacity").textContent = typeof flashTotal === "number" && Number.isSafeInteger(flashTotal)
+    && flashTotal > 0 ? `${(flashTotal / 1048576).toFixed(1)} MiB` : "--";
   element("#serial").textContent = hardware?.serial_number || "--";
   element("#uptime").textContent = runtime
     ? uptimeLabel(runtime.uptime_milliseconds ?? runtime.uptime_ms) : "--";

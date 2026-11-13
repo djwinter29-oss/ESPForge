@@ -5,7 +5,8 @@
 /** @typedef {{system_clock_mhz: number, sdcard_profile: number, radios: number}} BootSettings */
 /**
  * @typedef {{product_name?: string, capabilities?: number, board_model?: string | number, mcu?: string,
- * firmware_version?: string, serial_number?: string, ram_reserved_bytes?: number, ram_total_bytes?: number}} Hardware
+ * firmware_version?: string, serial_number?: string, ram_reserved_bytes?: number, ram_total_bytes?: number,
+ * psram_total_bytes?: number | null, psram_reserved_bytes?: number | null, flash_total_bytes?: number | null}} Hardware
  * @typedef {{led_available?: boolean, led_on?: boolean, system_clock_hz?: number, uptime_milliseconds?: number,
  * uptime_ms?: number, cpu_usage_core0_basis_points?: number | null, cpu_usage_core1_basis_points?: number | null,
  * led_colour?: number | null, cdc_open?: boolean, temperature_valid?: boolean,
@@ -158,6 +159,7 @@ function diagnosticFields(result) {
   const hardware = clean(result.hardware, "hardware", [
     ...fields("product_name mcu firmware_version serial_number", text),
     ...fields("ram_reserved_bytes ram_total_bytes", numeric),
+    ...fields("psram_total_bytes psram_reserved_bytes flash_total_bytes", value => value === null || numeric(value)),
     ["board_model", value => text(value) || numeric(value)],
   ]);
   const runtime = clean(result.runtime, "runtime", [

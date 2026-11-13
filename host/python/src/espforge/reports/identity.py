@@ -9,7 +9,7 @@ import struct
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .models import BoardConfiguration, HardwareIdentity, SupportedHardwareIdentity
+    from .models import BoardConfiguration, HardwareIdentity, MemoryInventory, SupportedHardwareIdentity
 
 from .common import (
     BOARD_NAMES,
@@ -28,6 +28,8 @@ from .common import (
     IDENTITY_PAYLOAD_SIZE,
     IDENTITY_REPORT_ID,
     MCU_NAMES,
+    MEMORY_REPORT_ID,
+    MEMORY_PAYLOAD_SIZE,
     PRODUCT_NAMES,
     REPORT_VERSION,
 )
@@ -88,6 +90,25 @@ def parse_identity_report(report: bytes | bytearray | list[int]) -> HardwareIden
         "wireless_supported": bool(capabilities & CAP_WIRELESS),
         "ram_total_bytes": ram_total,
         "ram_reserved_bytes": ram_reserved,
+        "memory_report_supported": bool(payload[16] & 1),
+        "psram_total_bytes": None,
+        "psram_reserved_bytes": None,
+        "flash_total_bytes": None,
+    }
+
+def parse_memory_inventory_report(report: bytes | bytearray | list[int]) -> MemoryInventory:
+    """Decode the advertised read-only Feature 13; unavailable components become None."""
+    payload = _feature_payload(report, MEMORY_REPORT_ID, MEMORY_PAYLOAD_SIZE)
+    flags = payload[1]
+    psram_total, psram_reserved, flash_total = struct.unpack_from("<III", payload, 4)
+    if (payload[0] != REPORT_VERSION or flags & ~3 or any(payload[2:4])
+            or (not psram_total or psram_reserved > psram_total if flags & 1 else psram_total or psram_reserved)
+            or (not flash_total if flags & 2 else flash_total)):
+        raise ValueError("invalid HID memory inventory")
+    return {
+        "psram_total_bytes": psram_total if flags & 1 else None,
+        "psram_reserved_bytes": psram_reserved if flags & 1 else None,
+        "flash_total_bytes": flash_total if flags & 2 else None,
     }
 
 def parse_configuration_report(

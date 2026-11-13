@@ -1,3 +1,6 @@
+#include <esp_flash.h>
+#include <esp_psram.h>
+
 #include "app/espforge.h"
 #include "platform/boot_config.h"
 #include "platform/ef_platform.h"
@@ -10,15 +13,21 @@
 #include <zephyr/drivers/hwinfo.h>
 #include <zephyr/kernel.h>
 #include <zephyr/linker/linker-defs.h>
+#include <zephyr/logging/log.h>
 #include <zephyr/sys/reboot.h>
 
 #define RAM_TOTAL_BYTES (512u * 1024u)
+
+LOG_MODULE_REGISTER(ef_board, LOG_LEVEL_INF);
+extern char _ext_ram_start[];
+extern char _ext_ram_end[];
 
 K_MUTEX_DEFINE(app_lock);
 
 static uint8_t uid[EF_UID_SIZE];
 static char serial[2 * EF_UID_SIZE + 1];
 static uint8_t reset_cause;
+static ef_memory_inventory_t memory_inventory;
 
 void ef_lock(void)
 {
@@ -42,6 +51,20 @@ void ef_board_init(void)
 	if (hwinfo_get_reset_cause(&cause) == 0) {
 		reset_cause = ef_reset_cause(cause);
 		(void)hwinfo_clear_reset_cause();
+	}
+	memory_inventory.psram_available = esp_psram_is_initialized();
+	if (memory_inventory.psram_available) {
+		memory_inventory.psram_total_bytes = esp_psram_get_size();
+		memory_inventory.psram_reserved_bytes = (uintptr_t)_ext_ram_end - (uintptr_t)_ext_ram_start;
+	} else {
+		LOG_ERR("PSRAM inventory unavailable: external RAM is not initialized");
+	}
+	int err = esp_flash_get_physical_size(esp_flash_default_chip, &memory_inventory.flash_total_bytes);
+
+	memory_inventory.flash_available = err == ESP_OK;
+	if (err != ESP_OK) {
+		memory_inventory.flash_total_bytes = 0;
+		LOG_ERR("Module flash capacity read failed: %d", err);
 	}
 }
 
@@ -78,6 +101,11 @@ void ef_identity_report(uint8_t out[EF_IDENTITY_SIZE])
 	memcpy(identity.uid, uid, sizeof(uid));
 	parse_version(identity.firmware);
 	ef_report_identity(&identity, out);
+}
+
+void ef_memory_report(uint8_t out[EF_MEMORY_SIZE])
+{
+	ef_report_memory(&memory_inventory, out);
 }
 
 void ef_config_report(uint8_t out[EF_CONFIG_SIZE])

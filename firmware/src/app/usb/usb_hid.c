@@ -1,5 +1,5 @@
 /*
- * Vendor HID interface on the native USB OTG port: Feature 1, 2, 12 and 20, Input 3 and 10.
+ * Vendor HID management interface on the native USB OTG port.
  */
 #include "app/espforge.h"
 #include "app/control/control.h"
@@ -31,6 +31,7 @@ static const uint8_t report_descriptor[] = {
 	0x75, 0x08,
 	FEATURE(EF_REPORT_IDENTITY, EF_IDENTITY_SIZE),
 	FEATURE(EF_REPORT_CONFIG, EF_CONFIG_SIZE),
+	FEATURE(EF_REPORT_MEMORY, EF_MEMORY_SIZE),
 	INPUT(EF_REPORT_TELEMETRY, EF_TELEMETRY_SIZE),
 	INPUT(EF_REPORT_STORAGE, EF_STORAGE_SIZE),
 #if EF_ENABLE_STORAGE_BENCHMARK
@@ -89,6 +90,7 @@ static int get_report(const struct device *dev, const uint8_t type, const uint8_
 	if (type == HID_REPORT_TYPE_FEATURE) {
 		size = id == EF_REPORT_IDENTITY ? EF_IDENTITY_SIZE :
 		       id == EF_REPORT_CONFIG	? EF_CONFIG_SIZE :
+		       id == EF_REPORT_MEMORY	? EF_MEMORY_SIZE :
 		       id == EF_REPORT_WIRELESS ? EF_WIRELESS_SIZE :
 		       id == EF_REPORT_CONTROL	? EF_CONTROL_SIZE : 0;
 	} else if (type == HID_REPORT_TYPE_INPUT) {
@@ -112,6 +114,9 @@ static int get_report(const struct device *dev, const uint8_t type, const uint8_
 		break;
 	case EF_REPORT_CONFIG:
 		ef_config_report(buf + 1);
+		break;
+	case EF_REPORT_MEMORY:
+		ef_memory_report(buf + 1);
 		break;
 	case EF_REPORT_WIRELESS:
 		ef_wireless_report(buf + 1);

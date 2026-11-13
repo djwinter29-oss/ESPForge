@@ -76,7 +76,8 @@ export const UI_KEYS = Object.freeze([
  * @property {boolean} [reconnecting]
  * @property {boolean} [busy]
  * @property {ReasonValue} [error]
- * @property {ReturnType<typeof import("../protocol/codec.mjs").decodeIdentityReport> | null} [hardware]
+ * @property {(ReturnType<typeof import("../protocol/codec.mjs").decodeIdentityReport>
+ *   & Partial<ReturnType<typeof import("../protocol/codec.mjs").decodeMemoryInventory>>) | null} [hardware]
  * @property {BoardSettings | null} [settings]
  * @property {boolean} [settings_supported]
  * @property {ReturnType<typeof import("../protocol/codec.mjs").decodeTelemetryReport> | null} [runtime]
