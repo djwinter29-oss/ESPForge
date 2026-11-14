@@ -73,6 +73,9 @@ public sealed class SharedDashboardAssetsTests
         Assert.False(nested.GetProperty("memory").GetProperty("msc").GetProperty("enabled").GetBoolean());
         Assert.Equal("fat32", nested.GetProperty("memory").GetProperty("filesystem_format").GetString());
         var configuration = nested.GetProperty("board_configuration");
+        Assert.Equal(JsonValueKind.Array, configuration.GetProperty("storage_gpios").ValueKind);
+        Assert.Equal(populated.BoardConfiguration!.StorageGpios,
+            configuration.GetProperty("storage_gpios").EnumerateArray().Select(pin => pin.GetByte()));
         Assert.Equal(0, configuration.GetProperty("stored_sysclk_profile").GetInt32());
         Assert.Equal(160, configuration.GetProperty("system_clock_mhz").GetInt32());
         Assert.Equal(0, configuration.GetProperty("sdcard_profile").GetInt32());

@@ -3,12 +3,12 @@
 
 // @ts-check
 import { renderWirelessStatus } from "./wireless-form.mjs";
-import { CAPABILITY_SDMMC, CAPABILITY_WIRELESS, operationState } from "./operation-state.mjs";
+import { CAPABILITY_SPI, CAPABILITY_SDMMC, CAPABILITY_WIRELESS, operationState } from "./operation-state.mjs";
 
 /**
  * @typedef {import("./dashboard-api.mjs").StatusSnapshot & {
  * settings_draft?: import("./dashboard-api.mjs").BootSettings,
- * settings_dirty?: boolean, wireless_dirty?: boolean, no_board_selected?: boolean,
+ * settings_dirty?: boolean, wireless_dirty?: boolean, no_board_selected?: boolean, console_url?: string | null,
  * status_read_error?: boolean, status_reading?: boolean}} DashboardView
  */
 /** @param {string} selector */
@@ -34,7 +34,7 @@ function uptimeLabel(milliseconds) {
 
 /** @type {{memory: import("./dashboard-api.mjs").Memory, filesystemFormat: string | null | undefined} | null} */
 let lastStorageDetails = null;
-let cardAbsent = false;
+let cardDetected = false;
 /** @type {string | null} */
 let boardConfigurationSignature = null;
 /** @type {{uartTitle: HTMLElement, storageTitle: HTMLElement, uartTable: HTMLElement,
@@ -69,7 +69,7 @@ export function renderStatus(snapshot, operations = operationState(snapshot, {
   const connected = Boolean(snapshot.connected);
   if (!connected) {
     lastStorageDetails = null;
-    cardAbsent = false;
+    cardDetected = false;
   }
   const hardware = snapshot.hardware;
   const runtime = snapshot.telemetry_stale ? null : snapshot.runtime;
@@ -78,7 +78,8 @@ export function renderStatus(snapshot, operations = operationState(snapshot, {
   element("#connection-label").textContent = snapshot.error
     ? "Attention" : snapshot.reconnecting ? "Reconnecting" : connected ? "Connected" : "Disconnected";
   element("#product-name").textContent = hardware?.product_name !== undefined
-    ? `${hardware.product_name}${(hardware.capabilities ?? 0) & CAPABILITY_SDMMC ? " (SDMMC)" : ""}` : "--";
+    ? `${hardware.product_name}${(hardware.capabilities ?? 0) & CAPABILITY_SDMMC ? " (SDMMC)"
+      : (hardware.capabilities ?? 0) & CAPABILITY_SPI ? " (SPI)" : ""}` : "--";
   const boardModel = typeof hardware?.board_model === "string" ? hardware.board_model
     : ({ 1: "ESP32-S3-DevKitC-1" })[hardware?.board_model ?? 0]
       ?? (hardware?.board_model !== undefined ? `Unknown (${hardware.board_model})` : "--");
@@ -90,8 +91,13 @@ export function renderStatus(snapshot, operations = operationState(snapshot, {
     : "--";
   element("#identity-clock").textContent = clock;
   renderSettings(snapshot, operations);
-  element("#cpu-usage-core0").textContent = runtime?.cpu_usage_core0_basis_points == null
-    ? "--" : `${(runtime.cpu_usage_core0_basis_points / 100).toFixed(1)}%`;
+  element("#led-control").hidden = !((hardware?.capabilities ?? 0) & 1);
+  const ledControl = /** @type {HTMLSelectElement} */ (element("#led-colour"));
+  ledControl.value = snapshot.telemetry_stale ? "" : String(runtime?.led_colour ?? "");
+  ledControl.disabled = !operations.canSetLed;
+  element("#cpu-usage-core0").textContent = [
+    runtime?.cpu_usage_core0_basis_points, runtime?.cpu_usage_core1_basis_points,
+  ].map(load => load == null ? "--" : `${(load / 100).toFixed(1)}%`).join(" / ");
   const ramUsed = hardware?.ram_reserved_bytes;
   const ramTotal = hardware?.ram_total_bytes;
   element("#ram-usage").textContent = typeof ramTotal === "number" && Number.isSafeInteger(ramTotal) && ramTotal > 0
@@ -99,18 +105,57 @@ export function renderStatus(snapshot, operations = operationState(snapshot, {
     ? `${(ramUsed / 1024).toFixed(1)} / ${(ramTotal / 1024).toFixed(0)} KiB`
       + ` (${(ramUsed * 100 / ramTotal).toFixed(1)}%)`
     : "--";
+  const psramTotal = hardware?.psram_total_bytes;
+  const psramReserved = hardware?.psram_reserved_bytes;
+  element("#psram-usage").textContent = typeof psramTotal === "number" && Number.isSafeInteger(psramTotal)
+    && psramTotal > 0 && typeof psramReserved === "number" && Number.isSafeInteger(psramReserved)
+    && psramReserved >= 0 && psramReserved <= psramTotal
+    ? `${(psramReserved / 1048576).toFixed(1)} / ${(psramTotal / 1048576).toFixed(1)} MiB`
+      + ` (${(psramReserved * 100 / psramTotal).toFixed(1)}%)` : "--";
+  const flashTotal = hardware?.flash_total_bytes;
+  element("#flash-capacity").textContent = typeof flashTotal === "number" && Number.isSafeInteger(flashTotal)
+    && flashTotal > 0 ? `${(flashTotal / 1048576).toFixed(1)} MiB` : "--";
   element("#serial").textContent = hardware?.serial_number || "--";
   element("#uptime").textContent = runtime
     ? uptimeLabel(runtime.uptime_milliseconds ?? runtime.uptime_ms) : "--";
-  renderWirelessStatus(snapshot);
+  renderWirelessStatus(snapshot, snapshot.console_url);
   const memory = snapshot.storage_stale ? null : snapshot.memory;
-  if (memory?.presence_known === true) cardAbsent = memory.present === false;
-  element('[aria-labelledby="memory-title"]').hidden = cardAbsent;
-  element("#temperature").textContent = runtime?.temperature_valid && runtime.temperature_centidegrees !== undefined
+  if (connected && memory && memory.sample_valid !== false)
+    cardDetected = memory.presence_known === true ? memory.present === true : memory.initialized === true;
+  element('[aria-labelledby="memory-title"]').hidden = !(cardDetected || memory?.msc?.enabled
+    || memory?.msc?.transition_pending);
+  element("#temperature").textContent = runtime?.temperature_valid && runtime.temperature_centidegrees != null
     ? `${(runtime.temperature_centidegrees / 100).toFixed(2)} °C` : "--";
   renderBoardConfiguration(snapshot);
   renderMemory(memory, snapshot.filesystem_format, Boolean(snapshot.storage_stale),
     snapshot.board_configuration?.card_detect_gpio);
+  element("#msc-controls").hidden = !operations.mscSupported;
+  button("#msc-enable").disabled = !operations.canEnableMsc;
+  button("#msc-return").disabled = !operations.canReturnMsc;
+  element("#benchmark-controls").hidden = !operations.benchmarkSupported || !cardDetected;
+  button("#benchmark-start").disabled = !operations.canStartBenchmark;
+  button("#benchmark-cancel").disabled = !operations.canCancelBenchmark;
+  /** @type {HTMLInputElement} */ (element("#benchmark-size")).disabled = !operations.canStartBenchmark;
+  const benchmark = snapshot.self_test_stale ? null : snapshot.self_test;
+  const rate = (/** @type {number | null | undefined} */ value) =>
+    value == null ? "--" : `${(value / 1024 ** 2).toFixed(2)} MiB/s`;
+  element("#benchmark-state").textContent = benchmark
+    ? `${benchmark.state ?? "--"} (${benchmark.progress_percent?.toFixed(1) ?? "--"}%)` : "Waiting for fresh status";
+  element("#benchmark-write").textContent = rate(benchmark?.write_bytes_per_second);
+  element("#benchmark-read").textContent = rate(benchmark?.read_bytes_per_second);
+  element("#benchmark-result").textContent = !benchmark ? "--" : benchmark.error
+    ? `Error ${benchmark.error}; filesystem ${benchmark.filesystem_result ?? "--"}`
+      + (benchmark.file_remains ? "; EFTEST.BIN may remain" : "")
+    : `${benchmark.mismatch_count ?? "--"} mismatched bytes`;
+  if (memory?.msc?.enabled || memory?.msc?.transition_pending) {
+    element("#memory-state").textContent = memory.msc.transition_pending ? "Changing ownership" : "USB drive";
+    element("#memory-note").textContent = memory.msc.transition_pending ? "Waiting for storage handoff."
+      : "Safely eject the drive in Linux/Windows before returning it to firmware.";
+    element("#memory-note").hidden = false;
+  } else if (memory?.msc?.request_rejected) {
+    element("#memory-note").textContent = "Storage handoff failed or the card changed. Check UART logs and retry explicitly.";
+    element("#memory-note").hidden = false;
+  }
 
   const message = snapshot.error ?? (snapshot.wireless_cleanup_required
     ? "Temporary Wi-Fi credentials need cleanup. Clear the Wi-Fi test before sending another command."
@@ -239,13 +284,14 @@ function renderBoardConfiguration(snapshot) {
     table.replaceChildren(headings, values);
   };
   const sdmmc = Boolean((snapshot.hardware?.capabilities ?? 0) & CAPABILITY_SDMMC);
-  const labels = ["CLK", "CMD", "DAT0", "DAT1", "DAT2", "DAT3"];
-  const signature = JSON.stringify([sdmmc, configuration]);
+  const spi = Boolean((snapshot.hardware?.capabilities ?? 0) & CAPABILITY_SPI);
+  const labels = spi ? ["SCK", "MOSI", "MISO", "CS"] : ["CLK", "CMD", "DAT0", "DAT1", "DAT2", "DAT3"];
+  const signature = JSON.stringify([sdmmc, spi, configuration]);
   if (signature !== boardConfigurationSignature) {
     boardConfigurationSignature = signature;
     setText(uartTitle, configuration?.monitor_uart_index !== undefined && configuration.monitor_uart_index !== 255
       ? `Monitor UART${configuration.monitor_uart_index}` : "Monitor UART");
-    setText(storageTitle, configuration ? `Storage (${sdmmc ? "SDMMC" : "unknown transport"})` : "Storage");
+    setText(storageTitle, configuration ? `Storage (${sdmmc ? "SDMMC" : spi ? "SPI" : "unknown transport"})` : "Storage");
     renderPins(uartTable, ["TX", "RX"],
       [configuration?.monitor_uart_tx_gpio, configuration?.monitor_uart_rx_gpio]);
     renderPins(storageTable, [...labels, "Card detect"],

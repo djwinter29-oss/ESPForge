@@ -18,6 +18,7 @@ internal sealed class ESPForgeHid : IHidClient
     private bool disposed;
     private byte[] inputReport;
     private byte[] featureReport;
+    private readonly int featureReportOffset = OperatingSystem.IsLinux() ? 1 : 0;
     private readonly TimeProvider time;
     private HardwareInfoResponse identity;
     // ponytail: Feature 2 changes only through opcode 5 or a reboot (a new handle), so it is read once per handle
@@ -61,7 +62,7 @@ internal sealed class ESPForgeHid : IHidClient
             stream.WriteTimeout = 1000;
             inputReport = new byte[Math.Max(HidProtocol.StoragePayloadSize + 1, device.GetMaxInputReportLength())];
             featureReport = new byte[Math.Max(
-                HidProtocol.ControlFeatureSize, device.GetMaxFeatureReportLength())];
+                HidProtocol.ControlFeatureSize, device.GetMaxFeatureReportLength()) + featureReportOffset];
             readFeature = GetFeatureReport;
             writeFeature = report => { RequireOpen(); stream.SetFeature(report); };
             time = TimeProvider.System;
@@ -98,8 +99,13 @@ internal sealed class ESPForgeHid : IHidClient
 
     public HardwareInfoResponse ReadInfo() => identity;
 
-    private HardwareInfoResponse ReadHardwareInfo() =>
-        HidProtocol.ParseIdentityReport(readFeature(HidProtocol.IdentityReportId, HidProtocol.IdentityFeatureSize));
+    private HardwareInfoResponse ReadHardwareInfo()
+    {
+        var hardware = HidProtocol.ParseIdentityReport(readFeature(HidProtocol.IdentityReportId, HidProtocol.IdentityFeatureSize));
+        return hardware.MemoryReportSupported
+            ? HidProtocol.ParseMemoryInventory(readFeature(HidProtocol.MemoryReportId, HidProtocol.MemoryPayloadSize + 1), hardware)
+            : hardware;
+    }
 
     public BoardConfigurationResponse ReadConfiguration()
     {
@@ -120,8 +126,10 @@ internal sealed class ESPForgeHid : IHidClient
             var data = inputReport.AsSpan(0, count);
             return data[0] switch
             {
-                HidProtocol.TelemetryReportId => new(HidProtocol.ParseTelemetryReport(data), null),
+                HidProtocol.TelemetryReportId => new(HidProtocol.ParseTelemetryReport(data, identity), null),
                 HidProtocol.StorageReportId => HidProtocol.ParseStorageReport(data, identity),
+                HidProtocol.BenchmarkReportId when (identity.Capabilities & HidProtocol.CapabilitySelfTest) != 0 =>
+                    new(null, null, HidProtocol.ParseBenchmarkReport(data)),
                 _ => throw new InvalidDataException($"unexpected HID input report ID {data[0]}")
             };
         }
@@ -161,6 +169,37 @@ internal sealed class ESPForgeHid : IHidClient
     {
         EnsureCapability(HidProtocol.CapabilityReboot, "reboot");
         SendCommand(Opcode.Reboot, 1);
+    }
+
+    public void SetMsc(bool enabled, bool confirmEjected)
+    {
+        if ((Configuration().BoardFlags & HidProtocol.BoardFlagMsc) == 0)
+            throw new BoardStateException("USB mass storage is unavailable on this firmware");
+        if (!enabled && !confirmEjected)
+            throw new ArgumentException("Safely eject the USB drive before confirming return to firmware");
+        var arguments = new byte[64];
+        arguments[0] = enabled ? (byte)1 : (byte)0;
+        SendCommand(Opcode.Msc, enabled ? (byte)0 : (byte)1, arguments);
+    }
+
+    public void SetLedColour(int colour)
+    {
+        EnsureCapability(HidProtocol.CapabilityLed, "RGB LED");
+        if (colour is < 0 or > 7) throw new ArgumentOutOfRangeException(nameof(colour));
+        var arguments = new byte[64];
+        arguments[0] = (byte)colour;
+        SendCommand(Opcode.Led, 0, arguments);
+    }
+
+    public void Benchmark(bool start, int sizeMib)
+    {
+        EnsureCapability(HidProtocol.CapabilitySelfTest, "storage benchmark");
+        if (start ? sizeMib is < 1 or > 1024 : sizeMib != 0)
+            throw new ArgumentOutOfRangeException(nameof(sizeMib), "Use 1..1024 MiB for start, zero for cancel");
+        var arguments = new byte[64];
+        arguments[0] = start ? (byte)1 : (byte)0;
+        BinaryPrimitives.WriteUInt32LittleEndian(arguments.AsSpan(1), (uint)sizeMib);
+        SendCommand(Opcode.SelfTest, 0, arguments);
     }
 
     public WirelessStatusResponse ReadWireless()
@@ -381,12 +420,15 @@ internal sealed class ESPForgeHid : IHidClient
     private byte[] GetFeatureReport(byte reportId, int requiredSize)
     {
         RequireOpen();
-        if (featureReport.Length != requiredSize)
-            featureReport = new byte[requiredSize];
+        if (featureReport.Length < requiredSize + featureReportOffset)
+            featureReport = new byte[requiredSize + featureReportOffset];
         Array.Clear(featureReport);
         featureReport[0] = reportId;
         stream.GetFeature(featureReport);
-        return featureReport;
+        // HidSharp retains a transport ID before the complete Linux hidraw report.
+        if (featureReport[0] != reportId || featureReport[featureReportOffset] != reportId)
+            throw new InvalidDataException("Unexpected HID feature report ID");
+        return featureReport.AsSpan(featureReportOffset, requiredSize).ToArray();
     }
 
     private ControlResult SendCommand(Opcode opcode, byte flags = 0, byte[]? arguments = null)

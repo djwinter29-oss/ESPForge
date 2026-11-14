@@ -9,6 +9,18 @@ You can build and preview all three dashboards before connecting hardware.
 Build target: ESP32-S3-DevKitC-1 N16R8, PROCPU, 16 MB flash and 8 MB octal PSRAM.
 Check the module marking against the [hardware guide](hardware.md) before flashing.
 Linux instructions below use Python 3.12, Zephyr 4.3.2, and Zephyr SDK 0.17.4.
+For automatic setup on Debian/Ubuntu-compatible Linux or Raspberry Pi OS, run from your existing checkout:
+
+```sh
+tools/firmware/build.sh
+```
+
+The script installs missing host packages (requesting `sudo` when needed), creates/reuses a Python venv,
+initializes a workspace in the checkout's parent directory if none exists, downloads pinned modules and radio blobs,
+and installs the ESP32-S3 SDK toolchain before building. First use requires network access and several GB of disk space.
+See [build environment options](../development/firmware.md#zephyr-target-build) to choose a Python interpreter or venv.
+The following procedure is an alternative for manual setup.
+
 Install Zephyr's [host prerequisites](https://docs.zephyrproject.org/4.3.0/develop/getting_started/index.html)
 (CMake, Ninja, device-tree compiler, compiler utilities and Python venv support).
 
@@ -38,7 +50,7 @@ a second workspace inside an existing Zephyr workspace.
 
 ## 2. Build now; flash later
 
-Run from the workspace with its venv activated:
+Run from the workspace created above; missing build prerequisites are prepared automatically:
 
 ```sh
 bash espforge/tools/firmware/build.sh
@@ -46,22 +58,28 @@ bash espforge/tools/firmware/build.sh
 
 Outputs are in `espforge/build/firmware/zephyr/`: `zephyr.elf` and `zephyr.bin`.
 Both radios and native four-bit SDMMC support are enabled in the default build; no card is needed to compile.
+For the alternate SD-over-SPI image, add `--storage sd-spi` to both build and flash commands and to
+`check_firmware_config.py`. See [image selection](../development/firmware.md#zephyr-target-build)
+and use its matching [SD wiring](../reference/sdcard.md#pin-allocation).
 The build uses PROCPU only, not a dual-core application.
 
 When hardware arrives, attach the board's **UART** (USB-to-UART bridge) connector and close any serial terminal on it:
 
 ```sh
-# Preview the upload command without accessing hardware
-bash espforge/tools/firmware/flash.sh --port /dev/ttyUSB0 --dry-run
+# Preview an upload command; the likely USB-UART port is detected automatically
+bash espforge/tools/firmware/flash.sh --dry-run
 
 # Upload the existing build and reset the board
-bash espforge/tools/firmware/flash.sh --port /dev/ttyUSB0
+bash espforge/tools/firmware/flash.sh
 ```
 
-The [flash script](../../tools/firmware/flash.sh) requires an explicit port, checks the build
-artifacts and board target, and uses Zephyr's ESP32 runner to select the correct image offset
-and flash parameters. It uploads the existing build without rebuilding; run the build script
-again after changing firmware. It does not request a full-chip erase, but image sectors are
+The [flash script](../../tools/firmware/flash.sh) detects a likely USB-UART port when `--port`
+is omitted, preferring Silicon Labs CP210x devices. If equally likely ports are present, pass
+`--port PORT` to choose one. It checks the build artifacts and board target, and uses Zephyr's
+ESP32 runner to select the correct image offset and flash parameters. If required artifacts
+are missing or empty, it builds first, including during `--dry-run`.
+A complete existing build is reused; run the build script again after changing firmware.
+It does not request a full-chip erase, but image sectors are
 erased/replaced during flashing. Saved [boot settings](../reference/settings.md#flash-reservation) survive normal
 uploads. No SD-card access is performed.
 

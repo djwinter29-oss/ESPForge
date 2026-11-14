@@ -10,7 +10,9 @@ namespace ESPForge;
 /// <summary>Device identity and capabilities from HID Feature report 1.</summary>
 public sealed record HardwareInfoResponse(string ProductName, string Mcu, byte McuId,
     string SerialNumber, string? FirmwareVersion = null, ushort ProductId = 0,
-    byte BoardModel = 0, byte Capabilities = 0, uint RamTotalBytes = 0, uint RamReservedBytes = 0)
+    byte BoardModel = 0, byte Capabilities = 0, uint RamTotalBytes = 0, uint RamReservedBytes = 0,
+    bool MemoryReportSupported = false, uint? PsramTotalBytes = null, uint? PsramReservedBytes = null,
+    uint? FlashTotalBytes = null)
 {
     public bool WirelessSupported => (Capabilities & HidProtocol.CapabilityWireless) != 0;
 }
@@ -23,7 +25,7 @@ public sealed record BootSettingsResponse(int SystemClockMhz,
 public sealed record BoardConfigurationResponse(
     [property: JsonPropertyName("stored_sysclk_profile")] ushort StoredSystemClockMhz,
     [property: JsonPropertyName("stored_sdcard_profile")] byte StoredSdCardProfile,
-    byte MonitorUartIndex, byte MonitorUartTxGpio, byte MonitorUartRxGpio, byte[] StorageGpios,
+    byte MonitorUartIndex, byte MonitorUartTxGpio, byte MonitorUartRxGpio, IReadOnlyList<byte> StorageGpios,
     byte BoardFlags, byte ResetCause, byte LedGpio, byte CardDetectGpio)
 {
     /// <summary>Next-boot values saved in this session; the stored values apply until a save replaces them.</summary>
@@ -39,7 +41,7 @@ public sealed record RuntimeStatusResponse(byte Sequence, uint UptimeMs, uint Sy
     bool UsbMounted, bool CdcOpen, bool TemperatureValid, short? TemperatureCentidegrees,
     bool LedAvailable, bool LedOn, ushort? CpuUsageCore0BasisPoints = null,
     ushort? CpuUsageCore1BasisPoints = null, uint? RamUsedBytes = null, uint? RamTotalBytes = null,
-    ulong UptimeMilliseconds = 0);
+    ulong UptimeMilliseconds = 0, byte? LedColour = null);
 
 /// <summary>Card identity decoded from the SD CID register.</summary>
 public sealed record SdCardIdentity(byte ManufacturerId, string OemId, string ProductName,
@@ -51,7 +53,7 @@ public sealed record MemoryStatusResponse(byte Sequence, bool Configured, bool P
     uint? BlockCount, ulong? CapacityBytes, SdCardIdentity? Manufacturer,
     bool SampleValid = true, byte SpeedMode = 0)
 {
-    /// <summary>USB-drive ownership fields from the same storage report; always off because ESPForge has no MSC.</summary>
+    /// <summary>USB-drive ownership fields from the same storage report.</summary>
     public MscStatusResponse? Msc { get; init; }
     /// <summary>Mounted filesystem name from the same storage report.</summary>
     public string? FilesystemFormat { get; init; }
@@ -60,7 +62,21 @@ public sealed record MemoryStatusResponse(byte Sequence, bool Configured, bool P
 public sealed record MscStatusResponse(bool Enabled, bool TransitionPending, bool RequestRejected);
 
 /// <summary>One parsed HID input report; exactly one section is set.</summary>
-internal sealed record InputReport(RuntimeStatusResponse? Runtime, MemoryStatusResponse? Memory);
+internal sealed record InputReport(RuntimeStatusResponse? Runtime, MemoryStatusResponse? Memory,
+    BenchmarkStatusResponse? SelfTest = null);
+
+/// <summary>Retained temporary-file benchmark progress from Input report 11.</summary>
+public sealed record BenchmarkStatusResponse(byte Sequence, byte StateId, uint TargetBytes, uint WrittenBytes,
+    uint ReadBytes, uint WriteElapsedMs, uint ReadElapsedMs, uint MismatchCount, byte Error, byte FilesystemResult,
+    bool FileRemains, bool VolumeMounted)
+{
+    public string State => new[] { "idle", "queued", "preparing", "writing", "reading", "cleanup",
+        "passed", "failed", "cancelled" }[StateId];
+    public bool Active => StateId is >= 1 and <= 5;
+    public double ProgressPercent => TargetBytes == 0 ? 0 : ((double)WrittenBytes + ReadBytes) * 50 / TargetBytes;
+    public double? WriteBytesPerSecond => WriteElapsedMs == 0 ? null : (double)WrittenBytes * 1000 / WriteElapsedMs;
+    public double? ReadBytesPerSecond => ReadElapsedMs == 0 ? null : (double)ReadBytes * 1000 / ReadElapsedMs;
+}
 
 /// <summary>
 /// Current HID connection and the most recent hardware/runtime reports, stored in the JSON shape the Python server
@@ -72,12 +88,10 @@ public sealed record StatusResponse(bool Connected, string? Error, HardwareInfoR
     bool TelemetryStale = true, bool StorageStale = true,
     bool CommandOutcomeUncertain = false, bool RebootPending = false, bool Reconnecting = false,
     string? WirelessPhase = null, WirelessStatusResponse? Wireless = null, string? WirelessError = null,
-    bool CommandResyncSupported = true, string? SettingsMessage = null, bool WirelessCleanupRequired = false)
+    bool CommandResyncSupported = true, string? SettingsMessage = null, bool WirelessCleanupRequired = false,
+    BenchmarkStatusResponse? SelfTest = null, bool SelfTestStale = true)
 {
     public bool SettingsSupported => BoardConfiguration is not null;
-    /// <summary>Kept for the shared dashboard JSON shape; ESPForge publishes no Report 11 benchmark.</summary>
-    public object? SelfTest => null;
-    public bool SelfTestStale => true;
 }
 
 internal readonly record struct ControlCommandReference(byte TransactionId, Opcode Opcode);
@@ -173,9 +187,13 @@ internal static partial class HidProtocol
     public const byte BoardEsp32S3DevKitC1 = 1;
     public const uint Usage = 0xFF000001;
     public const byte IdentityReportId = 1;
+    public const byte MemoryReportId = 13;
+    public const int MemoryPayloadSize = 16;
     public const byte ConfigurationReportId = 2;
     public const byte TelemetryReportId = 3;
     public const byte StorageReportId = 10;
+    public const byte BenchmarkReportId = 11;
+    public const int BenchmarkPayloadSize = 32;
     public const byte ControlReportId = 20;
     public const byte ReportVersion = 1;
     public const int IdentityPayloadSize = 26;
@@ -201,6 +219,8 @@ internal static partial class HidProtocol
     public const byte BoardFlagWifi = 1 << 3;
     public const byte BoardFlagBle = 1 << 4;
     public const byte BoardFlagTcpCli = 1 << 5;
+    /// <summary>Native USB MSC with explicit export and confirmed return is available.</summary>
+    public const byte BoardFlagMsc = 1 << 6;
     public const int BoardRadioShift = 3;
     /// <summary>Opcode 5 switches byte: bits 0..1 radios; ESPForge refuses bit 2 (TCP CLI).</summary>
     public const byte SwitchTcpCli = 1 << 2;
@@ -244,8 +264,10 @@ internal static partial class HidProtocol
         Require(productId == FamilyId, $"unsupported ESPForge product ID 0x{productId:X4}");
         var capabilities = payload[17];
         var sdmmc = (capabilities & CapabilitySdmmc) != 0;
-        const byte supported = CapabilityReboot | CapabilitySettings | CapabilitySdmmc | CapabilityWireless;
-        Require(sdmmc && (capabilities & ~supported) == 0, "invalid HID capability flags");
+        var spi = (capabilities & CapabilitySpi) != 0;
+        const byte supported = CapabilityLed | CapabilityReboot | CapabilitySettings | CapabilitySdmmc |
+            CapabilitySpi | CapabilitySelfTest | CapabilityWireless;
+        Require(sdmmc != spi && (capabilities & ~supported) == 0, "invalid HID capability flags");
         var mcuId = payload[14];
         var boardModel = payload[15];
         Require(boardModel != BoardEsp32S3DevKitC1 || mcuId == McuEsp32S3, "board model and MCU do not match");
@@ -256,7 +278,23 @@ internal static partial class HidProtocol
         var mcu = mcuId == McuEsp32S3 ? "ESP32-S3" : $"Unknown MCU ({mcuId})";
         return new("ESPForge", mcu, mcuId, uid,
             $"{payload[11]}.{payload[12]}.{payload[13]}", productId, boardModel,
-            capabilities, ramTotal, ramReserved);
+            capabilities, ramTotal, ramReserved, MemoryReportSupported: (payload[16] & 1) != 0);
+    }
+
+    /// <summary>Attach boot-sampled capacities and PSRAM reservations from the advertised memory Feature.</summary>
+    public static HardwareInfoResponse ParseMemoryInventory(ReadOnlySpan<byte> report, HardwareInfoResponse identity)
+    {
+        var payload = FeaturePayload(report, MemoryReportId, MemoryPayloadSize);
+        var flags = payload[1];
+        var psramTotal = BinaryPrimitives.ReadUInt32LittleEndian(payload[4..]);
+        var psramReserved = BinaryPrimitives.ReadUInt32LittleEndian(payload[8..]);
+        var flashTotal = BinaryPrimitives.ReadUInt32LittleEndian(payload[12..]);
+        Require(payload[0] == ReportVersion && (flags & ~3) == 0 && payload[2] == 0 && payload[3] == 0
+            && ((flags & 1) != 0 ? psramTotal > 0 && psramReserved <= psramTotal : psramTotal == 0 && psramReserved == 0)
+            && ((flags & 2) != 0 ? flashTotal > 0 : flashTotal == 0), "invalid HID memory inventory");
+        return identity with { PsramTotalBytes = (flags & 1) != 0 ? psramTotal : null,
+            PsramReservedBytes = (flags & 1) != 0 ? psramReserved : null,
+            FlashTotalBytes = (flags & 2) != 0 ? flashTotal : null };
     }
 
 
@@ -277,7 +315,8 @@ internal static partial class HidProtocol
         const int wirelessFlags = BoardFlagWifi | BoardFlagBle;
         Require(IsValidClock(clock), "unsupported persisted system-clock profile");
         Require(sdProfile == 0, "unsupported persisted SD-card profile");
-        Require((flags & ~(BoardFlagMonitorUart | wirelessFlags)) == 0, "unknown board-configuration flags");
+        Require((flags & ~(BoardFlagLed | BoardFlagMonitorUart | BoardFlagCardDetect | BoardFlagMsc | wirelessFlags)) == 0,
+            "unknown board-configuration flags");
         Require((flags & wirelessFlags) == 0 || identity.WirelessSupported,
             "wireless service switches reported without wireless capability");
         Require((uartIndex <= 1 || uartIndex == byte.MaxValue)
@@ -291,11 +330,37 @@ internal static partial class HidProtocol
         var gpioLimit = identity.McuId == McuEsp32S3 ? 49 : 256;
         foreach (var pin in gpios.Concat([tx, rx, ledGpio, detectGpio]))
             Require(pin == byte.MaxValue || pin < gpioLimit, "GPIO is invalid for the reported MCU");
-        Require(gpios.All(pin => pin != byte.MaxValue), "4-bit SDMMC requires six configured storage GPIOs");
+        var assignedCount = (identity.Capabilities & CapabilitySpi) != 0 ? 4 : 6;
+        Require(gpios.Take(assignedCount).All(pin => pin != byte.MaxValue)
+            && gpios.Skip(assignedCount).All(pin => pin == byte.MaxValue),
+            "storage GPIO layout disagrees with selected transport");
         return new(clock, sdProfile, uartIndex, tx, rx, gpios, flags, payload[14], ledGpio, detectGpio);
     }
 
-    public static RuntimeStatusResponse ParseTelemetryReport(ReadOnlySpan<byte> report)
+    public static BenchmarkStatusResponse ParseBenchmarkReport(ReadOnlySpan<byte> report)
+    {
+        var p = InputPayload(report, BenchmarkReportId, BenchmarkPayloadSize);
+        var target = BinaryPrimitives.ReadUInt32LittleEndian(p[4..]);
+        var written = BinaryPrimitives.ReadUInt32LittleEndian(p[8..]);
+        var read = BinaryPrimitives.ReadUInt32LittleEndian(p[12..]);
+        var writeMs = BinaryPrimitives.ReadUInt32LittleEndian(p[16..]);
+        var readMs = BinaryPrimitives.ReadUInt32LittleEndian(p[20..]);
+        var mismatches = BinaryPrimitives.ReadUInt32LittleEndian(p[24..]);
+        var state = p[2];
+        var flags = p[3];
+        Require(p[0] == 1 && state <= 8 && (flags & ~3) == 0 && p[28] <= 10 && p[29] <= 19
+            && p[30] == 0 && p[31] == 0 && target <= 1024u * 1024 * 1024 && target % (1024 * 1024) == 0
+            && written <= target && read <= written && mismatches <= read && (state == 7) == (p[28] != 0)
+            && (state == 7 || p[29] == 0)
+            && (state != 0 || target + (ulong)written + read + writeMs + readMs + mismatches == 0)
+            && (state != 1 || written + (ulong)read + writeMs + readMs + mismatches == 0)
+            && (state != 6 || target > 0 && written == target && read == target && mismatches == 0 && (flags & 1) == 0),
+            "invalid HID benchmark lifecycle or counters");
+        return new(p[1], state, target, written, read, writeMs, readMs, mismatches, p[28], p[29],
+            (flags & 1) != 0, (flags & 2) != 0);
+    }
+
+    public static RuntimeStatusResponse ParseTelemetryReport(ReadOnlySpan<byte> report, HardwareInfoResponse? identity = null)
     {
         var payload = InputPayload(report, TelemetryReportId, TelemetryPayloadSize);
         Require(payload[0] == ReportVersion, "unsupported HID telemetry report version");
@@ -306,19 +371,21 @@ internal static partial class HidProtocol
         var core1 = BinaryPrimitives.ReadUInt16LittleEndian(payload[14..]);
         var clock = BinaryPrimitives.ReadUInt32LittleEndian(payload[16..]);
         var flags = payload[21];
-        Require((ledFlags & ~1) == 0 && (flags & ~0x0f) == 0, "unknown HID telemetry flags");
+        Require((ledFlags & ~7) == 0 && (flags & ~0x0f) == 0, "unknown HID telemetry flags");
         Require((core0 <= 10000 || core0 == ushort.MaxValue)
             && (core1 <= 10000 || core1 == ushort.MaxValue), "invalid per-core service load");
         Require(clock != 0, "invalid system clock in HID telemetry");
         var temperatureValid = (flags & 0x04) != 0;
         var ledAvailable = (flags & 0x08) != 0;
-        var ledOn = (ledFlags & 1) != 0;
+        Require(!ledAvailable || identity is null || (identity.Capabilities & CapabilityLed) != 0,
+            "LED telemetry contradicts device capabilities");
+        var ledOn = ledFlags != 0;
         Require(!ledOn || ledAvailable, "LED state reported without an available LED");
         Require(temperatureValid || temperature == 0, "invalid telemetry temperature must be zero");
         return new(payload[20], (uint)uptime, clock, (flags & 1) != 0, (flags & 2) != 0,
             temperatureValid, temperatureValid ? temperature : null, ledAvailable, ledOn,
             core0 == ushort.MaxValue ? null : core0, core1 == ushort.MaxValue ? null : core1,
-            UptimeMilliseconds: uptime);
+            UptimeMilliseconds: uptime, LedColour: ledAvailable ? ledFlags : null);
     }
 
 
@@ -356,19 +423,20 @@ internal static partial class HidProtocol
         Require(capacityValid || blocks == 0, "invalid capacity has a block count");
         Require(cidValid || cid.IndexOfAnyExcept((byte)0) < 0, "invalid CID field is nonzero");
         Require(!sampleValid || (configured && (initialized
-            ? component == 1 && mode == 3 && (identity.Capabilities & CapabilitySdmmc) != 0
+            ? component == 1 && mode == ((identity.Capabilities & CapabilitySpi) != 0 ? 2 : 3)
             : component == 0 && mode == 0)),
             "storage sample disagrees with selected transport");
         Require(sampleValid || ((flags & 0x3e) == 0 && component == 0 && mode == 0
             && clock == 0 && speed == 0 && blocks == 0 && cid.IndexOfAnyExcept((byte)0) < 0),
             "invalid storage sample contains card data");
-        Require(mscEnabled == 0 && transition == 0 && rejected == 0, "ESPForge reports no MSC state");
+        Require(mscEnabled == 0 && transition == 0 || configured && !sampleValid,
+            "MSC ownership requires configured storage and invalid SD fields");
 
         SdCardIdentity? identityInfo = null;
         if (cidValid) identityInfo = ParseCid(cid);
         var memory = new MemoryStatusResponse(payload[1], configured, presenceKnown,
             presenceKnown ? present : null, initialized, component == 1 ? "sd-card" : null,
-            mode == 3 ? "sdmmc" : null, initialized ? clock : null,
+            mode == 3 ? "sdmmc" : mode == 2 ? "spi" : null, initialized ? clock : null,
             capacityValid ? blocks : null, capacityValid ? (ulong)blocks * 512 : null,
             identityInfo, sampleValid, speed);
         return new(null, memory with
@@ -397,6 +465,12 @@ internal static partial class HidProtocol
         if (transactionId == 0 || arguments.Length != 64 ||
             (opcode == Opcode.SaveSettings && (flags & ~SaveCommitWireless) != 0))
             throw new ArgumentException("Invalid HID control request fields");
+        if (opcode == Opcode.Msc && (arguments[0] > 1 || flags != (arguments[0] == 0 ? 1 : 0)
+            || arguments[1..].IndexOfAnyExcept((byte)0) >= 0))
+            throw new ArgumentException("MSC return requires OS-eject confirmation; export requires zero flags");
+        if (opcode == Opcode.Led && (flags != 0 || arguments[0] > 7
+            || arguments[1..].IndexOfAnyExcept((byte)0) >= 0))
+            throw new ArgumentException("LED colour must be an RGB bitmask 0..7");
         var report = new byte[ControlFeatureSize];
         report[0] = ControlReportId;
         report[1] = ReportVersion;
@@ -440,9 +514,8 @@ internal static partial class HidProtocol
             "control result has an unsupported opcode/status combination");
         Require(result.Opcode switch
         {
-            // ESPForge answers the LED and MSC opcodes with Unsupported because it has neither.
             Opcode.Led => result.Status is ControlStatus.Pending or ControlStatus.Completed
-                or ControlStatus.Invalid or ControlStatus.Unsupported or ControlStatus.Failed,
+                or ControlStatus.Invalid or ControlStatus.Unsupported or ControlStatus.Busy or ControlStatus.Failed,
             Opcode.Msc => result.Status is ControlStatus.Pending or ControlStatus.Completed
                 or ControlStatus.Invalid or ControlStatus.Unsupported or ControlStatus.Busy or ControlStatus.Failed,
             Opcode.Reboot => result.Status is ControlStatus.Pending or ControlStatus.Completed

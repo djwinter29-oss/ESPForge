@@ -24,7 +24,7 @@ from ..reports.models import (
     WirelessStatus,
     WirelessTestResult,
 )
-from ..reports import ProtocolError
+from ..reports import CAP_LED, ProtocolError
 from ..reports.common import BoardConflict as BoardConflict, ControlOpcode
 from .models import (
     ControlResponse,
@@ -47,6 +47,7 @@ _T = TypeVar("_T")
 _REPORTS = {
     "runtime": (0.750, "telemetry_stale"),
     "memory": (1.500, "storage_stale"),
+    "self_test": (1.500, "self_test_stale"),
 }
 
 
@@ -256,13 +257,50 @@ class DeviceMonitor:
                 self._snapshot["reboot_pending"] = True
             if result["status"] == "completed" and result.get("opcode") == ControlOpcode.WIFI_CANCEL:
                 self._wireless_cleanup_required = False
+            if result["status"] == "completed" and result.get("opcode") == ControlOpcode.MSC:
+                self._input_received_at.pop("memory", None)
+            if result["status"] == "completed" and result.get("opcode") == ControlOpcode.LED:
+                self._input_received_at.pop("runtime", None)
+            if result["status"] == "completed" and result.get("opcode") == ControlOpcode.SELF_TEST:
+                self._input_received_at.pop("memory", None)
+                self._input_received_at.pop("self_test", None)
             if self._snapshot.get("connected"):
                 self._snapshot["control_result"] = result
 
     def reboot(self) -> ControlResponse:
         with self._device():
-            result = self._send_control(self._client().reboot)
+            client = self._client()
+            snapshot = self.snapshot()
+            config = snapshot.get("board_configuration")
+            msc = _msc(snapshot)
+            if (config is not None and config["board_flags"] & 0x40
+                    or msc is not None and (msc.get("enabled") or msc.get("transition_pending"))):
+                self._require_firmware_storage()
+            result = self._send_control(client.reboot)
             ESPForgeHid.require_completed(result, "reboot")
+            return {"control_result": result}
+
+    def _require_firmware_storage(self) -> None:
+        snapshot = self.snapshot()
+        memory = snapshot.get("memory")
+        msc = _msc(snapshot)
+        if (snapshot.get("storage_stale") or msc is None or msc.get("enabled")
+                or msc.get("transition_pending") or memory is not None and memory.get("sample_valid") is False
+                or snapshot["self_test"] is not None and snapshot["self_test"]["active"]):
+            raise BoardConflict("Wait for idle firmware-owned storage; safely eject and return the USB drive first")
+
+    def set_msc(self, enabled: bool, confirm_ejected: bool = False) -> ControlResponse:
+        with self._device():
+            snapshot = self.snapshot()
+            msc = _msc(snapshot)
+            if snapshot.get("storage_stale") or msc is None or msc.get("transition_pending"):
+                raise BoardConflict("Waiting for fresh, settled storage ownership status")
+            if enabled and not msc.get("enabled"):
+                self._require_firmware_storage()
+                if snapshot["memory"] is None or not snapshot["memory"]["initialized"]:
+                    raise BoardConflict("Mount an SD card before enabling USB mass storage")
+            result = self._send_control(self._client().set_msc, enabled, confirm_ejected)
+            ESPForgeHid.require_completed(result, "MSC ownership request")
             return {"control_result": result}
 
     def set_settings(self, settings: dict[str, object]) -> SettingsResponse:
@@ -276,11 +314,39 @@ class DeviceMonitor:
             msc = _msc(snapshot)
             if not isinstance(msc, dict):
                 raise BoardConflict("Waiting for storage ownership status")
-            if msc.get("transition_pending") or msc.get("enabled"):
-                raise BoardConflict("Storage ownership is in transition; wait before saving boot settings")
+            self._require_firmware_storage()
             saved = self._send_control(client.set_settings, settings)
             self._publish_saved_settings(saved)
             return {"settings": saved, "control_result": client.last_command_result}
+
+    def set_led_colour(self, colour: int) -> ControlResponse:
+        with self._device():
+            snapshot = self.snapshot()
+            if not snapshot["hardware"] or not snapshot["hardware"]["capabilities"] & CAP_LED:
+                raise BoardConflict("RGB LED control is unavailable on this firmware")
+            if (snapshot["telemetry_stale"] or snapshot["runtime"] is None
+                    or not snapshot["runtime"]["led_available"]):
+                raise BoardConflict("Waiting for an available RGB LED and fresh telemetry")
+            result = self._send_control(self._client().set_led_colour, colour)
+            ESPForgeHid.require_completed(result, "LED colour request")
+            return {"control_result": result}
+
+    def benchmark(self, start: bool, size_mib: int = 0) -> ControlResponse:
+        with self._device():
+            snapshot = self.snapshot()
+            if not snapshot["hardware"] or not snapshot["hardware"]["self_test_supported"]:
+                raise BoardConflict("Storage benchmark is unavailable on this firmware")
+            if snapshot["self_test_stale"] or snapshot["self_test"] is None:
+                raise BoardConflict("Waiting for fresh benchmark status")
+            if start:
+                self._require_firmware_storage()
+                if not snapshot["memory"] or not snapshot["memory"]["initialized"]:
+                    raise BoardConflict("Mount a card before starting a benchmark")
+                if snapshot["self_test"]["active"]:
+                    raise BoardConflict("A benchmark is already active")
+            result = self._send_control(self._client().benchmark, start, size_mib)
+            ESPForgeHid.require_completed(result, "Benchmark request")
+            return {"control_result": result}
 
     def _publish_saved_settings(self, saved: BootSettings) -> None:
         with self._lock:
@@ -312,16 +378,27 @@ class DeviceMonitor:
                     "No final result matches the pending command; uncertainty remains"
                 )
             control_result, wireless = outcome
+            temporary_wifi_reset = (
+                control_result is None and wireless is not None and self._uncertain_command is not None
+            )
             with self._lock:
                 self._command_outcome_uncertain = False
                 self._uncertain_command = None
                 self._uncertain_wireless_operation = None
                 if control_result is not None:
                     self._publish_control_result(control_result)
+                if temporary_wifi_reset:
+                    self._wireless_cleanup_required = False
                 if self._snapshot.get("connected"):
                     if wireless is not None:
                         self._publish_wireless(wireless)
-            return {"uncertain": False, "control_result": control_result, "wireless": wireless}
+            response: ResyncResponse = {
+                "uncertain": False, "control_result": control_result, "wireless": wireless,
+            }
+            if temporary_wifi_reset:
+                _LOGGER.warning("Board reset discarded temporary Wi-Fi operation; no command was replayed")
+                response["temporary_wifi_reset"] = True
+            return response
 
     def _require_wireless_idle(self) -> ESPForgeHid:
         """Return the client when wireless staging cannot race storage work or another command."""
@@ -424,8 +501,10 @@ class DeviceMonitor:
             self._input_received_at[item["kind"]] = time.monotonic()
             if item["kind"] == "runtime":
                 self._snapshot["runtime"] = item["data"]
-            else:
+            elif item["kind"] == "memory":
                 self._snapshot["memory"] = item["data"]
+            else:
+                self._snapshot["self_test"] = item["data"]
             self._snapshot["connected"] = True
             self._snapshot["error"] = None
             self._snapshot["updated_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")

@@ -23,8 +23,8 @@ wire fields. Software tests do not establish hardware qualification; see [Design
 
 ## USB Interface and Discovery
 
-The device exposes one vendor-defined HID interface, interface `0`, with no boot protocol.
-There is no CDC ACM or USB mass-storage interface.
+The device exposes one vendor-defined HID interface with no boot protocol, plus native USB mass storage.
+There is no CDC ACM interface. Hosts identify HID by its usage collection, not a fixed composite interface number.
 
 | Item | Value |
 | --- | --- |
@@ -35,8 +35,8 @@ There is no CDC ACM or USB mass-storage interface.
 | Product string | `ESPForge` |
 | Serial string | Report `1` UID as 16 uppercase hexadecimal digits, in byte order |
 
-Management uses the board's native **USB** connector. The **UART** connector is for console/log output and
-ROM flashing; it has no management protocol. HID carries no CLI text, file data or SD block data.
+Management uses the board's native **USB** connector. The **UART** connector is for a diagnostic shell/log output and
+ROM flashing; it has no HID management protocol. HID carries no CLI text, file data or SD block data.
 
 Hosts MUST read Feature `1` before interpreting other reports or enabling commands. USB descriptors help find
 the interface but do not replace validation of its product ID, report version, lengths and fields.
@@ -48,7 +48,7 @@ Report ID `0` is unused. Unassigned IDs have no payload and require no padding.
 | IDs | Role | Assignments |
 | --- | --- | --- |
 | `1`-`9` | Device information and telemetry | `1` Identity; `2` Board Configuration; `3` Telemetry |
-| `10`-`19` | Application status | `10` Storage; `11` reserved benchmark report, not exposed; `12` Wireless |
+| `10`-`19` | Application status | `10` Storage; `11` optional benchmark; `12` Wireless |
 | `20`-`29` | Device and application control | `20` Control Command & Result |
 | `30`-`255` | Expansion | Unassigned |
 
@@ -62,13 +62,13 @@ The descriptor defines each exposed report's type and length.
 | Identity, firmware, capabilities and SRAM accounting | Feature `1` | Read-only; stable for one boot |
 | Stored next-boot settings and board facts | Feature `2` | Read-only; not measured runtime settings |
 | Board measurements | Input `3` | Periodic telemetry and current-snapshot GET |
-| Storage facts | Input `10` | Periodic report of cached boot-time storage facts |
+| Storage facts | Input `10` | Periodic detection, mount and USB ownership snapshot |
 | Wireless link, test, scan and staging | Feature `12` | Read-only snapshot |
 | Reboot, settings save and wireless operations | Feature `20` | SET submits a command; GET returns the latest USB result |
 
 Read-only status MUST NOT perform an action. GET MUST NOT repeat an operation, consume a result or clear it.
 A control result acknowledges validation, completion or admission; Feature `12` owns subsequent Wi-Fi test
-and scan state. No storage ownership handoff or benchmark workflow exists.
+and scan state. MSC handoff and optional benchmarking use USB-only commands.
 
 ## Report IDs
 
@@ -79,6 +79,7 @@ and scan state. No storage ownership handoff or benchmark workflow exists.
 | `3` | Board Telemetry | Input | Device publishes / host reads | 22 |
 | `10` | Storage Status | Input | Device publishes / host reads | 34 |
 | `12` | Wireless Status | Feature | Host reads | 48 |
+| `13` | Module Memory Inventory | Feature | Host reads | 16 |
 | `20` | Control Command & Result | Feature | Host writes/reads | 68 |
 
 ### Wire Framing
@@ -120,7 +121,7 @@ Read after connection. Identity and capabilities remain stable for that boot.
 | 13 | 1 | `firmware_patch` | Firmware semantic-version patch |
 | 14 | 1 | `mcu` | `3` ESP32-S3; other values unassigned in this project |
 | 15 | 1 | `board_model` | `0` unspecified; `1` ESP32-S3-DevKitC-1 |
-| 16 | 1 | `capabilities_extension` | Capability bits 8-15; zero in the current device |
+| 16 | 1 | `capabilities_extension` | Capability bits 8-15; bit 0 advertises Report `13` |
 | 17 | 1 | `capabilities` | Static capabilities and selected storage transport |
 | 18 | 4 | `ram_total_bytes` | Total internal SRAM, not free memory or PSRAM |
 | 22 | 4 | `ram_reserved_bytes` | Statically linked/reserved internal SRAM |
@@ -147,23 +148,27 @@ Board model `1` requires MCU `3`; model `0` makes no board claim.
 
 | Capability bit | Meaning | Current device |
 | ---: | --- | --- |
-| 0 | Identification LED | Clear |
+| 0 | RGB LED control | Set |
 | 1 | Confirmed standalone reboot | Set |
 | 2 | Persistent boot-settings save | Set |
-| 3 | Legacy SPI storage transport | Clear |
-| 4 | Native SDMMC storage transport | Set |
-| 5 | Storage benchmark | Clear |
+| 3 | SPI storage transport | Set only in the SD-over-SPI image |
+| 4 | Native SDMMC storage transport | Set only in the native image |
+| 5 | Storage benchmark | Set only when built with the optional feature |
 | 6 | Forced settings save | Clear |
 | 7 | Wireless capability | Set |
+| 8 | Module memory inventory | Set in extension byte bit 0 |
 
-The current capability byte is `0x96`. Extension bits are unassigned: devices MUST transmit zero, and hosts
-MUST NOT assign meaning to unknown extension bits. Firmware version is diagnostic information, not a substitute
-for capabilities.
+Exactly one storage capability is set. The native image's low capability byte is `0x97`, or `0xB7` with benchmarking;
+the SPI image uses `0x8F`, or `0xAF` with benchmarking. The extension byte is `0x01`.
+Hosts also accept older firmware without RGB or memory inventory. Unassigned extension bits MUST be transmitted
+as zero and ignored by hosts. Firmware version is diagnostic information, not a substitute for capabilities.
 
 Bits 1 and 2 identify reboot and settings-save support. Bit 4 selects the six-signal native SDMMC layout of Report `2`;
-it does **not** imply USB mass-storage support. Opcode `3` is unsupported despite a selected storage transport.
-LED, benchmark and forced-save support are absent: opcodes `1` and `4` and opcode `5` flag bit 0 return
-Unsupported/error `4`. Report `11` is unavailable. Wireless capability does not imply that Wi-Fi is connected
+bit 3 selects its four-signal SPI layout. Neither implies USB mass-storage support.
+Report `2` board flag bit 6 advertises MSC ownership control.
+Forced-save support is absent: opcode `5` flag bit 0 returns Unsupported/error `4`.
+When bit 5 is clear, opcode `4` is also unsupported and Report `11` is unavailable.
+Wireless capability does not imply that Wi-Fi is connected
 or that BLE has started.
 
 ### Board Models
@@ -199,27 +204,30 @@ Settings describe the next boot, while GPIOs describe configured board facts.
 | 4 | 1 | `monitor_uart_index` | Hardware UART index; `255` unavailable |
 | 5 | 1 | `monitor_uart_tx_gpio` | TX GPIO; `255` unassigned |
 | 6 | 1 | `monitor_uart_rx_gpio` | RX GPIO; `255` unassigned |
-| 7 | 6 | `storage_gpios` | Native SDMMC order: CLK, CMD, DAT0, DAT1, DAT2, DAT3 |
+| 7 | 6 | `storage_gpios` | Native: CLK, CMD, DAT0-DAT3; SPI: SCK, MOSI, MISO, CS, `255`, `255` |
 | 13 | 1 | `board_flags` | Flags below |
 | 14 | 1 | `reset_cause` | Reset enum below |
-| 15 | 1 | `led_gpio` | `255`; no LED control |
-| 16 | 1 | `card_detect_gpio` | `255`; no card-detect input |
+| 15 | 1 | `led_gpio` | Configured RGB data GPIO; `255` if unallocated |
+| 16 | 1 | `card_detect_gpio` | `8`, active-high card-detect input; `255` on older firmware without detection |
 | **Total** | **17** | | **18 bytes including report ID** |
 
 | Board flag bit | Meaning | Current device |
 | ---: | --- | --- |
-| 0 | Card detect configured | Clear |
-| 1 | Direct GPIO LED configured | Clear |
+| 0 | Card detect configured | Set |
+| 1 | RGB LED data GPIO allocated | Set |
 | 2 | Monitor UART enabled | Set |
 | 3 | Wi-Fi enabled for next boot | Saved switch |
 | 4 | BLE enabled for next boot | Saved switch |
 | 5 | Reserved TCP CLI switch | Clear |
-| 6-7 | Reserved | Zero |
+| 6 | Native USB MSC with explicit ownership handoff | Set |
+| 7 | Reserved | Zero |
 
-The current board reports UART0 TX GPIO43 / RX GPIO44 and SDMMC pins `12, 11, 13, 14, 15, 10`.
+The current board reports UART0 TX GPIO43 / RX GPIO44. Native storage pins are `12, 11, 13, 14, 15, 10`;
+SPI storage pins are `12, 11, 13, 10, 255, 255`.
 GPIO values are signal numbers, not physical header positions. See [SD pin allocation](sdcard.md#pin-allocation).
 Assigned GPIOs MUST be valid for the reported MCU/board. An enabled UART requires its index and both pins;
 TX/RX MUST both be assigned or both unavailable. Native four-bit SDMMC requires all six storage pins assigned.
+SPI requires its first four pins assigned and its final two slots unassigned.
 
 Wi-Fi and BLE switches default on and represent next-boot policy, not current link state.
 Hosts MUST reject unsupported stored profiles and inconsistent flags/pins.
@@ -243,7 +251,7 @@ failed submissions can therefore leave gaps. Sequences are not delivery acknowle
 | Offset | Size | Field | Meaning |
 | -----: | ---: | ----- | ------- |
 | 0 | 1 | `version` | Layout version, `1` |
-| 1 | 1 | `led_flags` | Zero; no identification output |
+| 1 | 1 | `led_flags` | Last transmitted RGB mask: red bit 0, green bit 1, blue bit 2; bits 3-7 zero |
 | 2 | 2 | `temperature_centidegrees_celsius` | Signed die-temperature estimate, hundredths of a degree Celsius |
 | 4 | 8 | `uptime_ms` | Monotonic milliseconds since boot |
 | 12 | 2 | `core0_service_load_basis_points` | Core 0 load; 10000 = 100%; `65535` unavailable |
@@ -254,7 +262,9 @@ failed submissions can therefore leave gaps. Sequences are not delivery acknowle
 | **Total** | **22** | | **23 bytes including report ID** |
 
 `espforge_flags`: bit 0 USB configured; bit 1 reserved CDC-open indication, always clear; bit 2 temperature valid;
-bit 3 reserved LED-available indication, always clear; bits 4-7 zero.
+bit 3 LED driver available; bits 4-7 zero. Unavailable LEDs transmit a zero colour mask.
+Masks 0-7 mean Off, Red, Green, Yellow, Blue, Purple, Cyan and White. Driver availability and successful transmission
+do not prove an LED is fitted, the selected data GPIO is correct, or the physical colour.
 USB configured means the host configured the device, not storage ownership.
 When temperature-valid is clear, the temperature field MUST be zero and MUST NOT be displayed as a measurement.
 
@@ -269,7 +279,7 @@ temperature.
 
 Published nominally every 500 ms while HID is ready. Input GET returns a snapshot with sequence `0` and does not
 advance the publication sequence. Publication sequences have the same gap/wrap behavior as Report `3`.
-Card initialization, capacity and filesystem type are cached boot-time facts, not hot-plug monitoring.
+It reflects the storage worker's detection, mount and ownership state; it performs no disk I/O in the HID callback.
 
 | Offset | Size | Field | Meaning |
 | -----: | ---: | ----- | ------- |
@@ -277,15 +287,15 @@ Card initialization, capacity and filesystem type are cached boot-time facts, no
 | 1 | 1 | `sequence` | Publication sequence |
 | 2 | 1 | `sd_flags` | Flags below |
 | 3 | 1 | `component_type` | `0` unavailable; `1` SD card after successful mount |
-| 4 | 1 | `bus_mode` | `0` unavailable; `3` native SDMMC after successful mount |
-| 5 | 4 | `bus_clock_hz` | Configured SDMMC ceiling after successful mount; zero otherwise |
+| 4 | 1 | `bus_mode` | `0` unavailable; `2` SPI or `3` native SDMMC after successful mount, matching identity |
+| 5 | 4 | `bus_clock_hz` | Configured storage bus ceiling after successful mount; zero otherwise |
 | 9 | 1 | `speed_mode` | `0` unavailable; `1` Standard after successful mount |
 | 10 | 4 | `block_count` | 512-byte sectors; zero unless capacity is valid |
 | 14 | 16 | `cid` | Zero; CID unavailable through the current disk API |
-| 30 | 1 | `filesystem_format` | Cached mount format: enum below |
-| 31 | 1 | `msc_enabled` | Zero; no MSC ownership |
-| 32 | 1 | `msc_transition_pending` | Zero; no handoff |
-| 33 | 1 | `msc_request_rejected` | Zero; no MSC workflow |
+| 30 | 1 | `filesystem_format` | Firmware mount format: enum below; current firmware clears it when unavailable |
+| 31 | 1 | `msc_enabled` | Boolean: USB currently owns the medium |
+| 32 | 1 | `msc_transition_pending` | Boolean: ownership request queued or storage worker busy |
+| 33 | 1 | `msc_request_rejected` | Boolean: last attempted handoff failed/cancelled; cleared by a successful handoff |
 | **Total** | **34** | | **35 bytes including report ID** |
 
 | SD flag bit | Meaning |
@@ -299,35 +309,91 @@ Card initialization, capacity and filesystem type are cached boot-time facts, no
 | 6 | Storage sample valid |
 | 7 | Reserved, zero |
 
-The current device always sets configured and sample-valid bits. A failed mount reports `sd_flags = 0x41`,
-zero component/bus/clock/speed/capacity/CID fields, and unknown filesystem. Presence is unknown, not confirmed
-absent. The actual mount error is logged to UART, not included in this report.
+An idle absent card reports `sd_flags = 0x43`; an inserted card whose mount failed reports `0x47`.
+Both have zero component/bus/clock/speed/capacity/CID fields and unknown filesystem.
+Detection errors invalidate presence rather than claiming absence. Mount errors are logged to UART.
+During USB ownership or worker activity, sample-valid is clear and only the configured SD flag may remain set.
+Component/bus/clock/speed/capacity/CID fields MUST be zero when sample-valid is clear.
 
 A successful mount sets bits 0-3 and 6, component type `1`, bus mode `3`, speed mode `1`, and the configured
 25 MHz ceiling. This clock is not a measured runtime frequency. Capacity-valid is set only when the sector-count
-query returns a nonzero count; a capacity-query failure does not undo the mount.
+query returns a nonzero count; geometry validation failure releases the medium and reports initialization failure.
 Capacity is `block_count * 512` bytes, not free filesystem space.
 
 Hosts MUST require initialized status for valid capacity, zero capacity when invalid, and zero CID while
-CID-valid is clear. Reserved flags and unsupported bus/speed/MSC values are invalid.
-A fresh HID report does not prove the card is still present: removal is not detected and cached facts remain.
+CID-valid is clear. Reserved flags, unsupported bus/speed values and nonboolean MSC bytes are invalid.
+USB ownership or a pending transition MUST NOT coexist with a valid firmware SD sample.
+Detection is debounced; a fresh report is not a guarantee against subsequent physical unplugging.
 
 Filesystem enum: `0` Unknown, `1` FAT12, `2` FAT16, `3` FAT32, `4` reserved exFAT encoding.
 The default firmware does not enable exFAT. A format enum does not imply support for creating or mounting that
-format. There is no automatic formatting, remount, repair or host file access.
+format. There is no automatic formatting, repair or management file-transfer API.
 See [SD storage](sdcard.md) for mount lifecycle and data-safety rules.
 
 ## Report ID 11: Storage Benchmark Status
 
-ID `11` is reserved but absent from the USB descriptor. There is no benchmark payload or publication in this
-project. Capability bit 5 is clear and opcode `4` returns Unsupported/error `4`.
-The BLE `000b` characteristic is an empty reserved mirror; see [GATT layout](bluetooth.md#gatt-layout).
-A future benchmark requires an explicitly specified, versioned contract, not activation of an undocumented
-upstream workflow.
+When capability bit 5 is set, Input `11` publishes the retained benchmark snapshot nominally every 500 ms.
+Its payload is 32 bytes (33 including USB report ID). When disabled it is absent from the USB descriptor;
+the BLE `000b` mirror reads empty. When enabled, authenticated BLE reads the same payload without the ID.
+
+| Offset | Size | Field |
+| ---: | ---: | --- |
+| 0 | 1 | Layout version `1` |
+| 1 | 1 | Sequence |
+| 2 | 1 | State |
+| 3 | 1 | Flags: bit 0 temporary file may remain, bit 1 volume mounted; others zero |
+| 4 | 4 | Target bytes |
+| 8 | 4 | Written bytes |
+| 12 | 4 | Read/verified bytes |
+| 16 | 4 | Write elapsed milliseconds |
+| 20 | 4 | Read elapsed milliseconds |
+| 24 | 4 | Mismatched bytes |
+| 28 | 1 | Execution error |
+| 29 | 1 | FatFs result |
+| 30 | 2 | Zero padding |
+
+Multibyte fields are little-endian. States: `0` Idle, `1` Queued, `2` Preparing, `3` Writing, `4` Reading,
+`5` Cleanup, `6` Passed, `7` Failed, `8` Cancelled. States 1–5 are active.
+Errors: `0` none, `1` busy, `2` USB owner, `3` size, `4` card unavailable, `5` insufficient space,
+`6` existing temporary file, `7` I/O, `8` verification, `9` cleanup, `10` mount.
+Error and FatFs result are zero outside Failed; Failed requires a nonzero error.
+FatFs result is 0–19, retained for I/O/cleanup failures when available.
+
+Target is zero or an integral MiB, at most 1 GiB; read ≤ written ≤ target and mismatches ≤ read.
+Idle counters are zero; Queued has zero counters except target. Passed requires a nonzero target, complete
+write/read, zero mismatches and no remaining-file flag. Hosts must reject contradictory snapshots.
+Progress is `(written + read) * 50 / target` (zero for zero target).
+Rates are bytes multiplied by 1000 divided by the corresponding elapsed milliseconds; zero elapsed means unavailable.
+See [benchmark safety and timing](sdcard.md#optional-storage-benchmark) for cleanup and measurement boundaries.
+
+## Report ID 13: Module Memory Inventory
+
+This read-only Feature is available when Report `1` extension bit 0 (capability bit 8) is set.
+It has a 16-byte payload, or 17 bytes including the USB report ID. Authenticated BLE reads the same payload
+without the ID from characteristic `000d`. Hosts MUST NOT probe it on firmware without the advertisement;
+an advertised report that is absent or malformed is an explicit protocol error.
+
+| Offset | Size | Field |
+| ---: | ---: | --- |
+| 0 | 1 | Layout version `1` |
+| 1 | 1 | Availability: bit 0 initialized PSRAM; bit 1 successful module-flash capacity read; other bits zero |
+| 2 | 2 | Reserved, zero |
+| 4 | 4 | LE32 detected PSRAM capacity in bytes |
+| 8 | 4 | LE32 linker-reserved PSRAM bytes, including permanent heap pools |
+| 12 | 4 | LE32 detected module SPI flash capacity in bytes |
+
+An available component has nonzero capacity; PSRAM reservation cannot exceed its capacity. Unavailable
+components have zero wire fields and host JSON `null`, never guessed N16R8 capacities. The inventory is sampled
+at boot and remains immutable until reboot. Capacity reads do not write flash or allocate a new PSRAM workload.
+Driver errors are logged; availability does not constitute physical memory qualification.
+
+Report `1` SRAM accounting remains internal-only. Reserved RAM is linker accounting, not live allocation or
+free heap. Flash capacity is physical chip size, not application image size, free filesystem space or remaining
+settings capacity. The ESP32-S3 has no on-chip flash: N16R8 module flash is external to the SoC, and PSRAM is RAM.
 
 ## Report ID 20: Control Command & Result
 
-Feature `20` carries reboot, settings-save, credential-staging, Wi-Fi test and scan commands.
+Feature `20` carries reboot, MSC ownership, settings-save, credential-staging, Wi-Fi test and scan commands.
 SET submits one typed operation; GET returns the latest USB result. Both payloads are exactly 68 bytes
 (69 including the report ID). BLE uses a separate [control form](bluetooth.md#control-characteristic).
 
@@ -346,10 +412,10 @@ Argument offsets in the following table are relative to the 64-byte `arguments` 
 
 | Opcode | Operation | Flags | Arguments / support |
 | ---: | --- | --- | --- |
-| `1` | Reserved LED control | - | Unsupported/error `4` |
+| `1` | RGB LED colour | `0` | Byte 0 RGB mask `0`-`7`; bytes 1-63 zero |
 | `2` | Reboot | Bit 0 confirmation required; other bits zero | All zero |
-| `3` | Reserved MSC control | - | Unsupported/error `4` |
-| `4` | Reserved storage benchmark | - | Unsupported/error `4` |
+| `3` | USB MSC ownership | Enable: `0`; return: bit 0 eject confirmation required | Byte 0: `1` USB, `0` firmware; bytes 1-63 zero |
+| `4` | Optional storage benchmark | `0` | Byte 0 action: `1` start, `0` cancel; bytes 1-4 LE32 size MiB; bytes 5-63 zero |
 | `5` | Save settings and reboot | Bit 1 commits staged wireless values; bit 0 forced save is unsupported | Bytes 0-1 clock MHz; byte 2 SD profile `0`; byte 3 switches, bit 0 Wi-Fi / bit 1 BLE; bytes 4-63 zero |
 | `6` | Stage Wi-Fi SSID | `0` | Byte 0 length; bytes 1-32 raw SSID, length 1-32; remaining bytes zero. Length `0` clears network/password |
 | `7` | Stage Wi-Fi password | `0` | Byte 0 length; bytes 1-63 printable ASCII; remaining bytes zero. Length `0` selects open network, otherwise 8-63 |
@@ -367,11 +433,44 @@ Opcode `5` accepts clocks `0`, `80`, `160`, `240` MHz, SD profile `0`, and only 
 Switch bit 2 is invalid. Forced-save bit 0 returns Unsupported/error `4` before other save-argument validation.
 A 64-character hexadecimal raw Wi-Fi PSK is not supported.
 
+### MSC Command Rules
+
+Report `2` flag bit 6 advertises this workflow; Report `1` capabilities are unchanged.
+Older firmware with bit 6 clear and card-detect GPIO `255` remains readable, but hosts MUST hide MSC controls.
+Opcode `3` is USB-only; BLE returns Unsupported/error `4`.
+
+Enable requires an initialized card with valid geometry. Return requires the user's assertion that the operating
+system safely ejected the drive; firmware cannot verify native-class OS eject. Action `2` and other force-return
+forms are invalid. Extra flag/argument bits are rejected.
+
+Completed/error `0`, with zero result data, means the ownership request was admitted (or the requested owner was
+already active). It does not prove media work succeeded. Report `10` then shows a pending transition and the
+settled ownership or rejection. The request is cancelled if the card changes before execution.
+Export briefly reconnects native USB; the same UID must be selected after reconnection.
+Handoff is deferred about one second, shortened to about 50 ms after the exact Feature `20` result is read.
+An uncertain request MUST NOT be replayed; reconcile its result explicitly and obtain fresh storage status.
+
+Busy/error `5`, detail `0`, means storage is already busy. Invalid/error `3` means no usable card is available.
+Other backend admission failures return Failed/error `6`. See [SD ownership](sdcard.md#usb-drive-handoff).
+
+### Benchmark Command Rules
+
+Opcode `4` is USB-only and requires capability bit 5; otherwise it returns Unsupported/error `4`.
+Start action `1` requires 1–1024 MiB. Cancel action `0` requires zero size; idle cancellation is a no-op.
+Flags and unused arguments must be zero. Bad layout returns Invalid/malformed; invalid size returns
+Invalid/argument, detail `3`.
+
+Completed with zero data means start/cancel admission, not a passing run. Busy details `1` and `2` identify
+worker conflict and USB ownership; Failed/detail `4` identifies an unavailable card. File-existence and
+free-space preflight happen on the worker after admission and can produce Failed Report `11`.
+Never replay uncertain requests; explicitly reconcile Feature `20`, then obtain fresh Reports `10` and `11`.
+See [benchmark safety](sdcard.md#optional-storage-benchmark) before confirming writes.
+
 ### Wireless Command Rules
 
 Credential staging, test and scan are USB-only; BLE has its restricted control form.
 Wireless capability does not imply that either radio is currently enabled or connected.
-There is no TCP CLI service or USB proof-signing operation.
+The separate [diagnostic TCP shell](../guides/console.md) has no HID switch or USB proof-signing operation.
 
 Opcodes `6`-`8` stage values in RAM; they do not write flash or reboot.
 Opcode `5` flag bit 1 commits staged wireless values with board settings in one verified flash save.
@@ -446,7 +545,7 @@ Other successful result data is zero.
 | --- | --- | --- |
 | `0` Idle | `0` | No request; ID, opcode and data zero |
 | `1` Pending | `0` | Reserved processing state; not emitted by the current synchronous dispatcher |
-| `2` Completed | `0` | Operation finished or Wi-Fi test/scan admitted |
+| `2` Completed | `0` | Operation finished or MSC/benchmark/Wi-Fi test/scan admitted |
 | `3` Invalid | `1`, `2`, `3` | Malformed request, missing confirmation or invalid argument/state |
 | `4` Unsupported | `4`, `7` | Assigned but unavailable operation, or unassigned opcode |
 | `5` Busy | `5` | Conflicting operation |
@@ -458,7 +557,13 @@ Error enum: `0` none; `1` malformed flags/unused arguments; `2` missing confirma
 | Detail | Meaning | Use |
 | ---: | --- | --- |
 | `0` | No additional detail | Default |
-| `1`-`15` | Reserved storage/benchmark details; not emitted by this device | - |
+| `1` | Storage worker busy or USB-owned medium | Busy/error `5`, opcodes `2`, `5` |
+| `2` | USB-owned medium | Busy/error `5`, opcode `4` |
+| `3` | Benchmark size invalid | Invalid/error `3`, opcode `4` |
+| `4` | Card unavailable | Failed/error `6`, opcode `4` |
+| `5`-`9` | Reserved command details; Report `11` execution errors are separate | - |
+| `10` | Mount unavailable | Failed/error `6`, opcode `4` |
+| `11`-`15` | Reserved | - |
 | `16` | Invalid SSID length | Invalid/error `3`, opcode `6` |
 | `17` | Invalid password length/characters | Invalid/error `3`, opcode `7` |
 | `18` | Invalid Control-key length | Invalid/error `3`, opcode `8` |
@@ -478,8 +583,9 @@ Details are zero for Idle, Pending, Completed and Unsupported. Report `12` has a
 
 | USB opcode | Current terminal statuses |
 | --- | --- |
-| `1`, `3`, `4`, `13` | Unsupported/error `4` |
-| `2` | Completed, Invalid/error `1` or `2`, Failed |
+| `1`, `4`, `13` | Unsupported/error `4` |
+| `2` | Completed, Invalid/error `1` or `2`, Busy, Failed |
+| `3` | Completed (admitted), Invalid/error `1`, `2` or `3`, Busy, Failed; older firmware Unsupported/error `4` |
 | `5` | Completed, Invalid/error `1` or `3`, Unsupported/error `4`, Busy, Failed |
 | `6`-`8` | Completed, Invalid/error `1` or `3`, Busy |
 | `9`, `11` | Completed, Invalid/error `1` or `3`, Busy, Failed |
@@ -582,9 +688,11 @@ BLE reboot/save returns Busy/detail `28` while unexpired USB staging exists.
 USB wireless commit rejects active tests/scans; staging during a test is Busy.
 These conflicts are rejected, not silently queued for later.
 
-There is no CDC filesystem interface, MSC ownership transition, benchmark worker or forced-save transaction.
-Adding downstream storage work requires an explicit ownership/locking design; the existence of HID does not
-provide filesystem serialization. See [architecture](architecture.md#lifecycle-and-failure-handling) and
+MSC block I/O and media lifecycle work run outside the application mutex and management loop.
+Reboot and settings-save return Busy/detail `1` while storage is busy or USB-owned.
+The optional benchmark runs on the serialized storage worker. There is no CDC filesystem interface or forced-save transaction.
+Downstream filesystem users must participate in storage ownership/locking. See
+[architecture](architecture.md#lifecycle-and-failure-handling) and
 [SD storage](sdcard.md#safety-and-ownership).
 
 ## Host Polling and Validation
@@ -594,13 +702,18 @@ constraints. Feature `1` validates identity and memory accounting; Feature `2` v
 facts; Input `3` validates sensor/load availability; Input `10` validates initialization/capacity and zeroed
 unsupported fields. Unsupported layouts and failed mandatory reads are explicit errors, not zero-filled fallbacks.
 
-Only Feature `20` is writable. Hosts MUST hide or disable LED, MSC, benchmark, forced-save and TCP CLI controls.
+Only Feature `20` is writable. Hosts MUST hide or disable forced-save and TCP CLI controls.
+LED controls require capability bit 0 and fresh telemetry with an available driver. Completed acknowledges queued
+transmission, not optical verification. Colour is volatile, starts Off, needs no settings save and is never replayed
+automatically after an uncertain command. LED requests are independent of storage ownership and benchmark activity.
+Benchmark writes require capability bit 5, USB transport and fresh benchmark/storage state.
+MSC requires Report `2` flag bit 6, USB transport and fresh, settled ownership status.
 For settings-only save, leave flag bit 1 clear; for credential commit, set it explicitly.
 Verify the saved settings and commit mask in the completion result, reconnect to the same UID, and reread
 Features `1`, `2` and `12`.
 
-Report `10` refreshes transport receipt time, not the underlying card facts.
-An unknown mount state MUST NOT be labeled confirmed absence. No report provides a file API or hot-plug guarantee.
+Report `10` refreshes receipt time for a worker snapshot, not a synchronous probe.
+Unknown presence MUST NOT be labeled confirmed absence. No report provides a file API or safe-unplug guarantee.
 
 ### Input Freshness
 
@@ -619,10 +732,11 @@ Prior values MAY be shown only as explicitly historical/stale.
 
 Hosts accept report version `1` only. An incompatible field, size, unit, validation rule or lifecycle change
 requires an affected report-version increment and coordinated firmware/host updates.
-An additive capability-selected transport does not change the existing byte layout: native SDMMC assigns bit 4,
-uses all six Report `2` pin slots and adds bus-mode value `3`, without reinterpreting legacy SPI bit 3 / mode `2`
-or reserved SDIO-PIO mode `1`. These reports retain version `1`. Current hosts require native SDMMC and reject
-legacy SPI identities; SPI-era hosts reject the native identity. Firmware and hosts MUST be updated together.
+Capability-selected transports do not change the existing byte layout: native SDMMC assigns bit 4,
+uses all six Report `2` pin slots and bus-mode value `3`; SPI uses bit 3, four assigned pin slots and mode `2`.
+SDIO-PIO mode `1` remains reserved. These reports retain version `1`. Current hosts accept either image,
+reject both/neither transport bits and require initialized storage samples to match identity.
+Older native-only hosts reject SPI identities. Firmware and hosts MUST be updated together.
 There is no wire-level SPI fallback or assumption that version `1` alone guarantees transport compatibility.
 Wire-layout versioning is independent of firmware semantic version and
 [persistent-record migration](settings.md#record-format). There is no legacy wire fallback.

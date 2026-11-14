@@ -85,7 +85,8 @@ test("Configure after a focused remote radio refresh never creates a credential 
   connected.settings.radios = 3;
   state.wirelessStatus = { ble_enabled: true, ble_key_configured: true };
   await state.tick();
-  await handlers.get("#ble-configure:click")();
+  elements.get("#settings-ble").value = "configure";
+  await handlers.get("#settings-ble:change")();
   await handlers.get("#ble-cancel:click")();
   assert.equal(elements.get("#settings-ble").value, "1");
   assert.equal(elements.get("#settings-save").disabled, true, "Configure is not a configuration edit");
@@ -816,6 +817,29 @@ test("local scan uncertainty survives polling and failed recovery, then clears o
   assert.equal(elements.get("#command-resync").hidden, true);
   assert.equal(elements.get("#reboot-control").disabled, false);
   assert.equal(requestedUrls.filter(url => url.startsWith("/api/wireless/scan?")).length, 1);
+});
+
+test("board-reset reconciliation clears temporary Wi-Fi recovery without replay or a successful test", async context => {
+  const { state, connected, handlers, elements, configureRadio, requestedUrls } = await appFixture(context);
+  connected.hardware.capabilities |= 128;
+  connected.command_resync_supported = true;
+  await state.tick();
+  configureRadio("wifi");
+  state.responses.set("/api/wireless/scan", () => reply({ invalid: true }));
+  await handlers.get("#wifi-scan:click")();
+  const wireless = { ssid: "", ssid_hex: "", wifi_enabled: false, ble_enabled: false,
+    ble_key_configured: false, tcp_cli_enabled: false, test_generation: 0, scan_generation: 0 };
+  state.resyncResult = {
+    uncertain: false, control_result: null, wireless, temporary_wifi_reset: true,
+  };
+  await handlers.get("#wifi-resync:click")();
+  assert.equal(elements.get("#command-resync").hidden, true);
+  assert.equal(elements.get("#wifi-resync").hidden, true);
+  assert.equal(elements.get("#wifi-scan").disabled, false);
+  assert.match(elements.get("#wifi-status").textContent, /restarted.*discarded.*Test again/);
+  assert.equal(requestedUrls.filter(url => url.startsWith("/api/wireless/scan?")).length, 1);
+  assert.equal(requestedUrls.filter(url => url.startsWith("/api/wireless/cancel?")).length, 0);
+  assert.equal(requestedUrls.filter(url => url.startsWith("/api/settings?")).length, 0);
 });
 
 test("local uncertainty without firmware reconciliation support explains manual recovery", async context => {

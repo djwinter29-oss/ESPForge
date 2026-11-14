@@ -20,8 +20,7 @@ test("freshness is independent, exact at deadlines, and clears caches on disconn
   await client.connect();
   assert.equal(client.state.freshness[3], "unavailable");
   emit(device, 3, telemetry()); emit(device, 10, storage());
-  emit(device, 11, new Uint8Array(32));
-  assert.equal(client.state.freshness[11], undefined, "report 11 is not tracked");
+  assert.equal(client.state.freshness[11], "unavailable", "benchmark is unavailable without its capability");
   assert.ok(client.polling.receipts.timer, "fresh reports schedule the next expiry instead of polling");
   now = 749; client.expireReports();
   assert.ok(client.state.runtime);

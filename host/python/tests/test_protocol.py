@@ -16,6 +16,7 @@ from espforge.reports import (
     parse_control_result_report,
     parse_identity_report,
     parse_memory_report,
+    parse_benchmark_report,
     parse_status_report,
     IDENTITY_PAYLOAD_SIZE,
     CONFIGURATION_PAYLOAD_SIZE,
@@ -24,6 +25,7 @@ from espforge.reports import (
     CONTROL_PAYLOAD_SIZE,
 )
 from espforge.reports.wireless import WIRELESS_STATUS_SIZE
+from espforge.reports.identity import parse_memory_inventory_report
 
 FIRMWARE_HEADER = Path(__file__).resolve().parents[3] / "firmware/src/app/usb/hid_reports.h"
 
@@ -69,6 +71,83 @@ def control_result(opcode, status, error=0, transaction=11, data=b""):
 
 
 class ProtocolTests(unittest.TestCase):
+    def test_spi_transport_reports_pins_and_rejects_mismatched_bus_modes(self):
+        spi = parse_identity_report(identity_report(capabilities=0x8E))
+        native = parse_identity_report(identity_report())
+        self.assertEqual(spi["storage_transport"], "spi")
+        config = bytearray(configuration_report())
+        config[8:14] = bytes([12, 11, 13, 10, 255, 255])
+        self.assertEqual(parse_configuration_report(config, spi)["storage_gpios"], (12, 11, 13, 10, 255, 255))
+        with self.assertRaises(ValueError):
+            parse_configuration_report(config, native)
+        with self.assertRaises(ValueError):
+            parse_configuration_report(configuration_report(), spi)
+        report = bytearray(storage_report())
+        report[5] = 2
+        self.assertEqual(parse_memory_report(report, spi)["mode"], "spi")
+        with self.assertRaises(ValueError):
+            parse_memory_report(report, native)
+        with self.assertRaises(ValueError):
+            parse_memory_report(storage_report(), spi)
+
+    def test_memory_inventory_reports_physical_capacity_and_no_invented_values(self):
+        report = bytes((13, 1, 3, 0, 0)) + struct.pack("<III", 8 << 20, 1 << 20, 16 << 20)
+        self.assertEqual(parse_memory_inventory_report(report), {
+            "psram_total_bytes": 8 << 20, "psram_reserved_bytes": 1 << 20, "flash_total_bytes": 16 << 20})
+        self.assertEqual(parse_memory_inventory_report(bytes((13, 1)) + bytes(15)), {
+            "psram_total_bytes": None, "psram_reserved_bytes": None, "flash_total_bytes": None})
+        for offset, value in ((1, 2), (2, 4), (3, 1), (12, 1)):
+            invalid = bytearray(report); invalid[offset] = value
+            with self.subTest(offset=offset), self.assertRaises(ValueError):
+                parse_memory_inventory_report(invalid)
+        legacy = parse_identity_report(identity_report())
+        self.assertFalse(legacy["memory_report_supported"])
+        advertised = bytearray(identity_report()); advertised[17] = 1
+        self.assertTrue(parse_identity_report(advertised)["memory_report_supported"])
+
+    def test_rgb_led_colour_and_driver_failure_are_truthful(self):
+        identity = parse_identity_report(identity_report(0x97))
+        for colour in range(8):
+            status = parse_status_report(telemetry_report(led_flags=colour, flags=0x0D), identity)
+            self.assertEqual(status["led_colour"], colour)
+            self.assertEqual(status["led_on"], colour != 0)
+            command = build_control_command_report(7, 1, arguments=bytes((colour,)))
+            self.assertEqual(command[:6], bytes((20, 1, 7, 1, 0, colour)))
+        self.assertIsNone(parse_status_report(telemetry_report(), identity)["led_colour"])
+        with self.assertRaises(ValueError):
+            parse_status_report(telemetry_report(led_flags=4, flags=0x0D), self.identity)
+        for flags, args in ((1, b"\4"), (0, b"\10"), (0, b"\4\1")):
+            with self.assertRaises(ValueError):
+                build_control_command_report(7, 1, flags=flags, arguments=args)
+
+    def test_benchmark_progress_rates_and_terminal_validation(self):
+        report = bytearray(33)
+        report[:5] = bytes((11, 1, 9, 3, 3))
+        struct.pack_into("<IIIIII", report, 5, 1048576, 524288, 0, 500, 0, 0)
+        status = parse_benchmark_report(report)
+        self.assertTrue(status["active"])
+        self.assertEqual(status["progress_percent"], 25)
+        self.assertEqual(status["write_bytes_per_second"], 1048576)
+        self.assertIsNone(status["read_bytes_per_second"])
+        for offset, value in ((3, 9), (4, 4), (29, 7), (30, 1), (31, 1)):
+            bad = report.copy()
+            bad[offset] = value
+            with self.subTest(offset=offset), self.assertRaises(ValueError):
+                parse_benchmark_report(bad)
+        report[3:5] = bytes((6, 2))
+        struct.pack_into("<IIIIII", report, 5, 1048576, 1048576, 1048576, 1000, 500, 0)
+        self.assertEqual(parse_benchmark_report(report)["progress_percent"], 100)
+        report[4] |= 1
+        with self.assertRaises(ValueError):
+            parse_benchmark_report(report)
+
+    def test_benchmark_command_encodes_size_and_requires_valid_action(self):
+        request = build_control_command_report(7, 4, arguments=struct.pack("<BI", 1, 1024))
+        self.assertEqual(request[:10], bytes((20, 1, 7, 4, 0, 1, 0, 4, 0, 0)))
+        for action, size in ((1, 0), (1, 1025), (0, 1), (2, 32)):
+            with self.subTest(action=action, size=size), self.assertRaises(ValueError):
+                build_control_command_report(7, 4, arguments=struct.pack("<BI", action, size))
+
     def setUp(self):
         self.identity = parse_identity_report(identity_report())
 
@@ -121,9 +200,9 @@ class ProtocolTests(unittest.TestCase):
                 other = parse_identity_report(identity_report(product=product))
                 self.assertFalse(other["supported"])
                 self.assertEqual(other["product_name"], name)
-        for invalid in (identity_report(capabilities=0), identity_report(capabilities=0x8F),
-                        identity_report(capabilities=0xCE), identity_report(capabilities=0xAE),
-                        identity_report(capabilities=0x8e), identity_report(mcu=2, board=1)):
+        for invalid in (identity_report(capabilities=0), identity_report(capabilities=0xCF),
+                        identity_report(capabilities=0xCE), identity_report(capabilities=0xBE),
+                        identity_report(capabilities=0x9e), identity_report(mcu=2, board=1)):
             with self.subTest(report=invalid), self.assertRaises(ValueError):
                 parse_identity_report(invalid)
         unknown_mcu = parse_identity_report(identity_report(mcu=9, board=0))
@@ -139,7 +218,7 @@ class ProtocolTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "profile"):
             parse_configuration_report(sd_profile, self.identity)
         for flags in (0x00, 0x05, 0x06, 0x24, 0x84):
-            with self.subTest(flags=flags), self.assertRaisesRegex(ValueError, "flags"):
+            with self.subTest(flags=flags), self.assertRaisesRegex(ValueError, "flags|flag"):
                 parse_configuration_report(configuration_report(flags=flags), self.identity)
         self.assertEqual(parse_configuration_report(configuration_report(flags=0x1C), self.identity)["radios"], 3)
         self.assertEqual(parse_configuration_report(configuration_report(flags=0x0C), self.identity)["radios"], 1)
@@ -153,7 +232,7 @@ class ProtocolTests(unittest.TestCase):
             parse_configuration_report(led, self.identity)
         spi_layout = bytearray(configuration_report())
         spi_layout[12:14] = bytes([255, 255])
-        with self.assertRaisesRegex(ValueError, "SDMMC"):
+        with self.assertRaisesRegex(ValueError, "storage GPIO"):
             parse_configuration_report(spi_layout, self.identity)
 
     def test_telemetry_decodes_profile_values_and_rejects_unavailable_features(self):
@@ -168,7 +247,7 @@ class ProtocolTests(unittest.TestCase):
             parse_status_report(telemetry_report(flags=0x01), self.identity)
         for report in (telemetry_report(flags=0x07), telemetry_report(flags=0x0D),
                        telemetry_report(led_flags=1), telemetry_report(core1=5678)):
-            with self.subTest(report=report), self.assertRaisesRegex(ValueError, "ESPForge profile"):
+            with self.subTest(report=report), self.assertRaisesRegex(ValueError, "ESPForge profile|LED"):
                 parse_status_report(report, self.identity)
         bad_load = bytes([3]) + struct.pack("<BBhQHHIBB", 1, 0, 0, 1, 10001, 0xFFFF, 240_000_000, 0, 0)
         with self.assertRaisesRegex(ValueError, "CPU usage"):
@@ -203,11 +282,33 @@ class ProtocolTests(unittest.TestCase):
         bad_mode[5] = 2
         with self.assertRaisesRegex(ValueError, "bus mode"):
             parse_memory_report(bad_mode, self.identity)
-        for report in (storage_report(flags=1, msc=(0, 1, 0)), storage_report(flags=1, msc=(1, 0, 0)),
-                       storage_report(flags=0x7F, cid=bytes.fromhex("1b53444341524431211234567801aaff")),
+        for report in (storage_report(flags=0x7F, cid=bytes.fromhex("1b53444341524431211234567801aaff")),
                        storage_report(speed=2)):
             with self.subTest(report=report), self.assertRaisesRegex(ValueError, "ESPForge profile"):
                 parse_memory_report(report, self.identity)
+
+    def test_card_detection_msc_availability_and_invalidated_sd_samples(self):
+        config = bytearray(configuration_report(flags=0x45))
+        config[17] = 8
+        decoded = parse_configuration_report(config, self.identity)
+        self.assertEqual(decoded["card_detect_gpio"], 8)
+        for msc in ((1, 0, 0), (0, 1, 0), (1, 1, 1)):
+            data = parse_memory_report(storage_report(flags=1, msc=msc), self.identity)
+            self.assertFalse(data["sample_valid"])
+            self.assertFalse(data["initialized"])
+            self.assertIsNone(data["capacity_bytes"])
+            self.assertEqual(data["msc"]["enabled"], bool(msc[0]))
+            with self.assertRaises(ValueError):
+                parse_memory_report(storage_report(msc=msc), self.identity)
+
+    def test_msc_commands_require_confirmed_return_and_zero_unused_arguments(self):
+        self.assertEqual(build_control_command_report(9, ControlOpcode.MSC, arguments=b"\x01"),
+                         bytes([20, 1, 9, 3, 0, 1]) + bytes(63))
+        self.assertEqual(build_control_command_report(10, ControlOpcode.MSC, flags=1),
+                         bytes([20, 1, 10, 3, 1]) + bytes(64))
+        for flags, arguments in ((0, b"\0"), (1, b"\x01"), (1, b"\x02"), (0, b"\x01\x01")):
+            with self.subTest(flags=flags, arguments=arguments), self.assertRaises(ValueError):
+                build_control_command_report(1, ControlOpcode.MSC, flags=flags, arguments=arguments)
 
     def test_control_commands_use_report_20_and_validate_profile_fields(self):
         settings = {"system_clock_mhz": 160, "sdcard_profile": 0, "radios": 3, "tcp_cli_enabled": False}
@@ -223,7 +324,7 @@ class ProtocolTests(unittest.TestCase):
                 build_settings_command_report(invalid)
         with self.assertRaises(TypeError):
             build_settings_command_report(settings, force=True)
-        for opcode in (ControlOpcode.LED, ControlOpcode.MSC, ControlOpcode.SELF_TEST, ControlOpcode.TCP_PROOF):
+        for opcode in (ControlOpcode.TCP_PROOF,):
             with self.subTest(opcode=opcode), self.assertRaisesRegex(ValueError, "not available"):
                 build_control_command_report(1, opcode)
         for flags, arguments in ((1, struct.pack("<HBB", 240, 0, 0)), (0, struct.pack("<HBB", 240, 0, 4)),
@@ -262,8 +363,7 @@ class ProtocolTests(unittest.TestCase):
             result_report(0, clock=200),
             control_result(5, 2, data=struct.pack("<HBBB", 240, 1, 0, 0)),
             control_result(13, 2, data=bytes(range(16))),
-            control_result(1, 2),
-            control_result(3, 2),
+            control_result(1, 2, data=b"\1"),
             control_result(4, 1),
         ):
             with self.subTest(report=malformed), self.assertRaises(ValueError):

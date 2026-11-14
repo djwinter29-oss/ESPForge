@@ -40,6 +40,18 @@ python3 server.py --port 8000
 
 For either local option, open **<http://127.0.0.1:8000/>**. The local server requires Python, but does not require the
 ESPForge Python host package. Keep the default loopback binding for local use.
+Local startup does not require reverse DNS resolution of the bind address.
+
+Local checkout launches serve a temporary, versioned copy without editing the source assets. Like the other hosts,
+versions use `vMAJOR.MINOR.PATCH` Git tags: the next commit after `v1.2.3` displays `1.2.4-dev.1`.
+Direct also appends the short commit ID and `.dirty` when there are uncommitted changes. With no release tag,
+it uses `0.0.0-dev.COUNT`; unavailable Git identity produces an explicit warning and `0.0.0-debug`.
+Restart the server after commits or edits to refresh the snapshot.
+
+Release ZIPs and Pages retain the exact release version, independently of any surrounding Git checkout.
+The version label's tooltip shows the source commit; `build.json` records the version, commit and dirty state.
+An inconsistent page or build identity is rejected rather than silently restamped. A custom `--directory`
+without build metadata is still served unchanged.
 
 Opening `index.html` as a `file://` URL is not supported. WebHID and Web Bluetooth require a supported browser and
 OS in a secure context, such as HTTPS or localhost. Bluetooth support on Linux varies by browser and adapter.
@@ -70,15 +82,44 @@ a board advertising as `ESPForge-…`. See [wireless setup](../../docs/guides/wi
 |---|---|
 | Device information | Product, board/MCU, serial, system clock, reserved/total firmware RAM, and firmware version |
 | Board configuration | Next-boot clock, Wi-Fi and Bluetooth switches, and reset cause |
-| Pin configuration | Collapsible management UART and six-signal SDMMC GPIO tables |
+| Pin configuration | Collapsible management UART, SDMMC and allocated card-detect GPIO tables |
 | Live diagnostics | Uptime, Core 0 CPU load, temperature, storage bus speed, and wireless status |
 | Storage | Card state, capacity, filesystem, and card identity |
 
 Firmware RAM is boot-stable build accounting, not live heap or stack usage. ESPForge has one SD-card profile, so
 the dashboard always saves profile 0 and shows the bus clock actually reported by Storage.
 
-ESPForge has no LED control, USB mass-storage handoff, storage benchmark, forced save or TCP CLI console.
+USB connections can explicitly export an initialized SD card and return it after confirmed OS eject;
+see [SD ownership](../../docs/reference/sdcard.md#usb-drive-handoff). Bluetooth cannot change ownership.
+ESPForge has no forced save. Local serving also provides a browser link to the native Wi-Fi shell.
+The Device information RGB dropdown sends volatile colour requests over USB or an authenticated BLE session.
+It requires fresh available-driver telemetry; uncertain commands are reconciled without replay.
+When firmware advertises benchmarking, Storage offers confirmed start/cancel and live write/read verification results.
+See [benchmark safety and timing](../../docs/reference/sdcard.md#optional-storage-benchmark); BLE mirrors progress read-only.
 The dashboard omits those controls rather than inventing values.
+
+### Wi-Fi shell
+
+With the local server, fresh connected Wi-Fi status links to the
+[unauthenticated plaintext diagnostic shell](../../docs/guides/console.md).
+Keep the originating dashboard tab open and connected. Before opening, reading or sending input, the terminal
+checks that tab's fresh board identity and reported address; replacement, stale status or a closed dashboard
+disconnects it. The server does not own HID or BLE, and accepts only private LAN IPv4 targets on port 2323.
+Wi-Fi connectivity is not proof of listener readiness; failed TCP connections are reported explicitly.
+
+The relay is available only through same-origin loopback HTTP requests. Static hosting, including Pages and
+other local static servers, keeps Wi-Fi status as plain text rather than presenting a broken shell link.
+`GET /api/console/capabilities` reports `{"available":true}` on the local ESPForge server.
+Direct opens with `POST /api/console`, exactly `{"ipv4":"REPORTED_ADDRESS"}`; the remaining header-token,
+bounded packet and no-replay contract matches the [bridge API](../web/README.md#browser-shell).
+The release ZIP includes its standard-library relay and requires no Python host installation.
+
+Opening discards any previous client's unfinished input, then requests native `shell echo on` once for that
+session, without changing saved product settings.
+The terminal uses bounded plain-text output and supports native editing/erase sequences, not complete VT100
+emulation or colour styling. Control keys, arrows and Tab work; Shift+Tab leaves the terminal and multiline
+paste requires confirmation. Uncertain input is never retried. Close the shell tab to disconnect;
+abandoned relay sessions expire after 15 idle seconds.
 
 ## Controls
 

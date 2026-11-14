@@ -72,34 +72,20 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
 
-      - name: Set release package version
+      - name: Stage dashboard assets and build wheel
         env:
-          VERSION: ${{ needs.validate-tag.outputs.version }}
-        run: |
-          python - <<'PY'
-          import os
-          from pathlib import Path
-          import re
-          for filename, field in (
-              ("host/python/pyproject.toml", "version"),
-              ("host/python/src/espforge/__init__.py", "DEFAULT_VERSION"),
-          ):
-              path = Path(filename)
-              text, count = re.subn(rf'^{field} = "[^"]+"$', f'{field} = "{os.environ["VERSION"]}"',
-                                    path.read_text(), flags=re.MULTILINE)
-              assert count == 1, f"Expected one {field} in {path}"
-              path.write_text(text)
-          PY
-
-      - name: Build wheel
+          SETUPTOOLS_SCM_PRETEND_VERSION: ${{ needs.validate-tag.outputs.version }}
         run: |
           cp LICENSE host/python/LICENSE
+          mkdir -p host/python/src/espforge/web
+          cp -R host/web/src/. host/python/src/espforge/web/
           python -m pip wheel --disable-pip-version-check --no-deps host/python --wheel-dir dist
 
       - name: Verify installed wheel and bundled dashboard
@@ -127,6 +113,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
@@ -149,20 +136,20 @@ jobs:
           import time
           import urllib.error
           import urllib.request
+          from host.direct.server import build_site, identity
 
           version = os.environ["VERSION"]
           Path("build/packages").mkdir(parents=True, exist_ok=True)
           footer = "Software checks do not qualify physical USB HID, Wi-Fi, BLE or SD behavior.\n"
 
-          # ESPForge Direct is standalone: its own web/, server.py and LICENSE.
+          # The standalone Direct archive includes the standard-library console relay.
           direct = Path("build/direct-release")
-          shutil.copytree("host/direct/web", direct / "web")
+          _, commit, dirty = identity(Path.cwd())
+          assert commit == os.environ["SOURCE_SHA"], "Direct source commit differs from release"
+          build_site(Path("host/direct/web"), direct / "web", version, commit, dirty)
           shutil.copyfile("host/direct/server.py", direct / "server.py")
+          shutil.copyfile("host/python/src/espforge/dashboard/console.py", direct / "console_bridge.py")
           shutil.copyfile("LICENSE", direct / "LICENSE")
-          index = direct / "web/index.html"
-          html = index.read_text(encoding="utf-8")
-          assert html.count("App v0.0.0-debug<") == 1, "Direct version placeholder missing"
-          index.write_text(html.replace("App v0.0.0-debug<", f"App v{version}<"), encoding="utf-8")
           (direct / "RELEASE.txt").write_text(
               f"ESPForge {version}\nSource: {os.environ['SOURCE_SHA']}\n"
               "Run: python3 server.py --port 8000\nOpen: http://127.0.0.1:8000/ in desktop Chrome or Edge\n"
@@ -210,12 +197,14 @@ jobs:
                           process.wait(timeout=10)
 
           def check_direct(origin, directory):
-              assert sorted(path.name for path in directory.iterdir()) == ["LICENSE", "RELEASE.txt", "server.py", "web"]
+              assert sorted(path.name for path in directory.iterdir() if path.name != "__pycache__") == [
+                  "LICENSE", "RELEASE.txt", "console_bridge.py", "server.py", "web"]
               headers, body = fetch(f"{origin}/")
-              assert f"App v{version}<".encode() in body
+              assert f'aria-label="Host application version" title="{commit}">{version}</span>'.encode() in body
               assert "default-src 'self'" in headers["Content-Security-Policy"]
               assert fetch(f"{origin}/favicon.svg")[0]["Content-Type"].startswith("image/svg+xml")
               assert fetch(f"{origin}/js/app.mjs")[0]["Content-Type"].startswith("text/javascript")
+              assert json.loads(fetch(f"{origin}/api/console/capabilities")[1]) == {"available": True}
 
           smoke(f"build/packages/espforge-direct-v{version}.zip", ["server.py"], "web", check_direct)
           PY
@@ -244,8 +233,8 @@ jobs:
       - name: Download firmware build
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: espforge-esp32s3-software-build
-          path: build/firmware-package
+          pattern: espforge-esp32s3-*-software-build
+          path: build/firmware-packages
 
       - name: Download dashboard packages
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -258,7 +247,10 @@ jobs:
         env:
           VERSION: ${{ needs.validate-tag.outputs.version }}
         run: |
-          (cd build/firmware-package && zip -r "../packages/espforge-firmware-v$VERSION-esp32s3-devkitc.zip" .)
+          for storage in sdmmc sd-spi; do
+            (cd "build/firmware-packages/espforge-esp32s3-$storage-software-build" &&
+              zip -r "../../packages/espforge-firmware-v$VERSION-esp32s3-devkitc-$storage.zip" .)
+          done
           cd build/packages
           sha256sum *.zip *.tar.gz *.whl > SHA256SUMS.txt
 
@@ -273,6 +265,7 @@ jobs:
           body: |
             Software-only ESP32-S3-DevKitC-1 N16R8 (16 MB flash, 8 MB octal PSRAM) release, built with pinned Zephyr dependencies.
             Firmware and host packages include source provenance and license notices.
+            Separate SDMMC and SD-over-SPI firmware archives are provided; use the matching wiring.
             The Direct archive is standalone; the Python wheel bundles the shared dashboard; .NET hosts are self-contained.
 
             **Not hardware-qualified:** firmware has not been flashed by this workflow.

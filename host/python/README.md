@@ -29,10 +29,11 @@ espforge web
 ```
 
 Open **http://127.0.0.1:8001/**. The wheel includes the dashboard assets; Node.js and .NET are not required.
-Runtime dependencies are Flask and HIDAPI, pinned in [pyproject.toml](pyproject.toml) and locked in [uv.lock](uv.lock).
+Runtime dependencies are Flask and HIDAPI, pinned in [pyproject.toml](pyproject.toml).
 Native HID access still requires the operating system's usual libraries, drivers, and permissions.
-The displayed version comes from the installed `espforge` distribution when the imported package lies inside it;
-source checkouts without matching metadata report `0.0.0-debug`. Release packaging stamps both.
+Hatchling and hatch-vcs derive package versions from `vMAJOR.MINOR.PATCH` Git tags, with development versions
+between tags. The dashboard displays the installed `espforge` distribution version, matching `pip show espforge`,
+for both wheels and editable installs. Uninstalled source checkouts report `0.0.0-debug`.
 
 Wheels are attached to [GitHub Releases](https://github.com/djwinter29-oss/ESPForge/releases/latest) and published to
 PyPI after [release setup](../../docs/deployment/release.md#before-the-first-release); downloads may be unavailable
@@ -46,6 +47,14 @@ For an explicit development installation in your active environment, from the re
 python -m pip install --editable host/python
 espforge web
 ```
+
+Reinstall the editable package after changing commits or tags to refresh its installed version metadata.
+Alternatively, `bash tools/host/run-python.sh web` refreshes the editable installation on every launch, so its
+dashboard version matches the package metadata for the current checkout. The script reuses its virtual environment;
+if installation fails, it does not start the host with stale metadata. Stop an already-running host before relaunching.
+
+Source-checkout launches need no asset copy. Building a wheel or source distribution requires
+[explicit asset staging](../../docs/development/host-tools.md#python-host-design) first; there is no custom build hook.
 
 ## Commands
 
@@ -86,7 +95,10 @@ in editable mode on first use, checks HID permissions and runs `espforge` (defau
 - **Wireless:** provision Wi-Fi and a Control key over USB. Bluetooth connections use the independent Direct
   dashboard. See [wireless setup](../../docs/guides/wireless.md).
 
-ESPForge has no board LED, USB drive (MSC), SD benchmark, forced save, CDC console or TCP CLI console, so the
+- **USB drive:** explicitly export an initialized SD card, then safely eject in the OS before confirming return
+  to firmware. See [SD ownership](../../docs/reference/sdcard.md#usb-drive-handoff).
+
+ESPForge has no board LED, SD benchmark, forced save, CDC console or TCP CLI console, so the
 dashboard does not offer them and their routes are absent; see [Dashboard HTTP API](#dashboard-http-api).
 
 Commands can be rejected or remain uncertain after a timeout/disconnect; delivery is not completion.
@@ -109,7 +121,7 @@ For host tests, type checks and frontend ownership, see [Host development](../..
 | `espforge.hid` | HIDAPI device access and Report 20 command exchange |
 | `espforge.dashboard` | Board monitor, multi-board selection, and the loopback Flask server |
 | `espforge.cli` | The `espforge` and `python -m espforge` entry point |
-| `espforge.web` | Package data built from `host/web/src`; it is not copied into this directory |
+| `espforge.web` | Dashboard assets explicitly staged from the shared frontend for package builds |
 
 Each public package can be imported independently without opening a device.
 

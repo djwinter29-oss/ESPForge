@@ -8,11 +8,10 @@
 #define HWINFO_RESET_POR 0x08u
 #define HWINFO_RESET_WATCHDOG 0x10u
 
-/* DevKitC monitor UART0 and native SDMMC pins. */
+/* DevKitC monitor UART0. */
 #define MONITOR_UART_INDEX 0u
 #define MONITOR_UART_TX 43u
 #define MONITOR_UART_RX 44u
-static const uint8_t storage_gpios[6] = {12u, 11u, 13u, 14u, 15u, 10u};
 
 #define CONFIG_FLAG_MONITOR_UART 0x04u
 #define CONFIG_FLAG_WIFI 0x08u
@@ -39,16 +38,39 @@ void ef_report_identity(const ef_identity_t *identity, uint8_t out[EF_IDENTITY_S
 	memcpy(out + 11, identity->firmware, 3);
 	out[14] = EF_MCU_ESP32S3;
 	out[15] = EF_BOARD_DEVKITC;
-	out[16] = 0;
+	out[16] = EF_EXT_MEMORY;
 	out[17] = EF_CAPABILITIES;
 	put32(out + 18, identity->ram_total_bytes);
 	put32(out + 22, identity->ram_reserved_bytes);
+}
+
+void ef_report_memory(const ef_memory_inventory_t *memory, uint8_t out[EF_MEMORY_SIZE])
+{
+	memset(out, 0, EF_MEMORY_SIZE);
+	out[0] = 1;
+	out[1] = (memory->psram_available ? 1u : 0u) | (memory->flash_available ? 2u : 0u);
+	if (memory->psram_available) {
+		put32(out + 4, memory->psram_total_bytes);
+		put32(out + 8, memory->psram_reserved_bytes);
+	}
+	if (memory->flash_available) {
+		put32(out + 12, memory->flash_total_bytes);
+	}
 }
 
 void ef_report_config(const ef_config_t *config, uint8_t out[EF_CONFIG_SIZE])
 {
 	uint8_t flags = CONFIG_FLAG_MONITOR_UART;
 
+	if (config->led_available) {
+		flags |= 0x02u;
+	}
+	if (config->card_detect_available) {
+		flags |= 0x01u;
+	}
+	if (config->msc_supported) {
+		flags |= EF_CONFIG_FLAG_MSC;
+	}
 	if (config->stored_radios & EF_WIRELESS_WIFI) {
 		flags |= CONFIG_FLAG_WIFI;
 	}
@@ -62,18 +84,18 @@ void ef_report_config(const ef_config_t *config, uint8_t out[EF_CONFIG_SIZE])
 	out[4] = MONITOR_UART_INDEX;
 	out[5] = MONITOR_UART_TX;
 	out[6] = MONITOR_UART_RX;
-	memcpy(out + 7, storage_gpios, sizeof(storage_gpios));
+	memcpy(out + 7, config->storage_gpios, sizeof(config->storage_gpios));
 	out[13] = flags;
 	out[14] = config->reset_cause;
-	out[15] = EF_GPIO_UNASSIGNED;
-	out[16] = EF_GPIO_UNASSIGNED;
+	out[15] = config->led_available ? config->led_gpio : EF_GPIO_UNASSIGNED;
+	out[16] = config->card_detect_available ? config->card_detect_gpio : EF_GPIO_UNASSIGNED;
 }
 
 void ef_report_telemetry(const ef_telemetry_t *telemetry, uint8_t out[EF_TELEMETRY_SIZE])
 {
 	memset(out, 0, EF_TELEMETRY_SIZE);
 	out[0] = 1;
-	out[1] = 0;
+	out[1] = telemetry->led_available ? telemetry->led_colour : 0;
 	if (telemetry->temperature_valid) {
 		put16(out + 2, (uint16_t)telemetry->temperature_centi_c);
 	}
@@ -83,30 +105,60 @@ void ef_report_telemetry(const ef_telemetry_t *telemetry, uint8_t out[EF_TELEMET
 	put16(out + 14, EF_LOAD_UNAVAILABLE);
 	put32(out + 16, telemetry->system_clock_hz);
 	out[20] = telemetry->sequence;
-	out[21] = (uint8_t)((telemetry->usb_configured ? 0x01u : 0) | (telemetry->temperature_valid ? 0x04u : 0));
+	out[21] = (uint8_t)((telemetry->usb_configured ? 0x01u : 0) | (telemetry->temperature_valid ? 0x04u : 0) |
+			   (telemetry->led_available ? 0x08u : 0));
 }
 
 void ef_report_storage(const ef_storage_t *storage, uint8_t out[EF_STORAGE_SIZE])
 {
-	/* Storage is configured and every published sample is valid; no card-detect input exists. */
-	uint8_t sd_flags = 0x01u | 0x40u;
+	uint8_t sd_flags = storage->configured ? 0x01u : 0;
+	bool valid = storage->sample_valid && !storage->msc_enabled && !storage->msc_transition_pending;
 
 	memset(out, 0, EF_STORAGE_SIZE);
 	out[0] = 1;
 	out[1] = storage->sequence;
-	if (storage->initialized) {
-		sd_flags |= 0x02u | 0x04u | 0x08u;
+	if (valid) {
+		sd_flags |= 0x40u;
+		if (storage->presence_known) {
+			sd_flags |= 0x02u;
+		}
+		if (storage->present) {
+			sd_flags |= 0x04u;
+		}
+	}
+	if (valid && storage->initialized) {
+		sd_flags |= 0x08u;
 		if (storage->capacity_valid) {
 			sd_flags |= 0x20u;
 			put32(out + 10, storage->block_count);
 		}
 		out[3] = 1;
-		out[4] = 3;
+		out[4] = EF_STORAGE_SPI ? 2 : 3;
 		put32(out + 5, storage->bus_clock_hz);
 		out[9] = 1;
 	}
 	out[2] = sd_flags;
 	out[30] = storage->filesystem_format <= 4 ? storage->filesystem_format : 0;
+	out[31] = storage->msc_enabled;
+	out[32] = storage->msc_transition_pending;
+	out[33] = storage->msc_request_rejected;
+}
+
+void ef_report_benchmark(const ef_benchmark_t *status, uint8_t out[EF_BENCHMARK_SIZE])
+{
+	memset(out, 0, EF_BENCHMARK_SIZE);
+	out[0] = 1;
+	out[1] = status->sequence;
+	out[2] = status->state;
+	out[3] = status->flags;
+	put32(out + 4, status->target_bytes);
+	put32(out + 8, status->written_bytes);
+	put32(out + 12, status->read_bytes);
+	put32(out + 16, status->write_elapsed_ms);
+	put32(out + 20, status->read_elapsed_ms);
+	put32(out + 24, status->mismatch_count);
+	out[28] = status->state == EF_BENCHMARK_FAILED ? status->error : 0;
+	out[29] = status->state == EF_BENCHMARK_FAILED ? status->filesystem_result : 0;
 }
 
 void ef_report_wireless(const ef_wireless_t *wireless, uint8_t out[EF_WIRELESS_SIZE])

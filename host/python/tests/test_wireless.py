@@ -171,14 +171,13 @@ class WirelessTests(unittest.TestCase):
         self.assertEqual(command[5:8], bytes((2, 0x34, 0x12)))
 
     def test_detail_namespace_and_status_applicability(self):
-        # Opcode 4 (MSC) is not provided by ESPForge, so even otherwise-valid MSC details are rejected.
-        valid = [(5, 3, 3, 27),
+        valid = [(4, 3, 3, 3), (4, 5, 5, 2), (4, 6, 6, 10), (5, 3, 3, 27),
                  (5, 5, 5, 26), (6, 3, 3, 16), (7, 3, 3, 17), (8, 3, 3, 18),
                  (9, 3, 3, 20), (12, 3, 3, 22), (12, 5, 5, 26)]
         for opcode, state, error, detail in valid:
             parsed = parse_control_result_report(result(opcode, state=state, error=error, data=bytes((detail,))))
             self.assertEqual(parsed["detail"], detail)
-        invalid = [(4, 3, 3, 3), (4, 5, 5, 2), (4, 6, 6, 10), (4, 6, 6, 8), (4, 6, 6, 9), (5, 5, 5, 28), (6, 5, 5, 26),
+        invalid = [(4, 6, 6, 8), (4, 6, 6, 9), (5, 5, 5, 28), (6, 5, 5, 26),
                    (13, 5, 5, 25), (10, 1, 0, 0), (6, 1, 0, 0), (5, 3, 1, 27),
                    (12, 3, 3, 16), (5, 2, 0, 255)]
         for opcode, state, error, detail in invalid:
@@ -496,6 +495,45 @@ class WirelessTests(unittest.TestCase):
         client.read_configuration.side_effect = OSError("no Report 2")
         self.assertFalse(client._complete_settings(request)["tcp_cli_enabled"])
         client.read_configuration.assert_not_called()
+
+    def test_resync_discards_only_reset_ram_wifi_operations_without_replaying_them(self):
+        for opcode in (6, 7, 9, 10, 11, 12):
+            with self.subTest(opcode=opcode):
+                client = self.client([result(0, transaction=0, state=0), status(wifi=0, ssid=b"")])
+                client._command_uncertain = True
+                client._uncertain_command = (7, opcode)
+                client._uncertain_wireless_operation = ("test", 2)
+                control, wireless = client.reconcile_outcome((7, opcode), ("test", 2))
+                self.assertIsNone(control, "reset is not a successful command result")
+                self.assertEqual(wireless["test_generation"], 0)
+                self.assertFalse(client.command_uncertain)
+                self.assertIsNone(client._uncertain_command)
+                self.assertIsNone(client._uncertain_wireless_operation)
+                client._device.send_feature_report.assert_not_called()
+
+    def test_resync_never_discards_save_reboot_key_or_nonreset_wifi(self):
+        for opcode in (2, 5, 8):
+            with self.subTest(opcode=opcode):
+                client = self.client([result(0, transaction=0, state=0)])
+                client._command_uncertain = True
+                self.assertIsNone(client.reconcile_outcome((7, opcode), None))
+                self.assertTrue(client.command_uncertain)
+                client._device.send_feature_report.assert_not_called()
+        for wireless in (
+            status(scan=2, generation=1), status(wifi=6, test=1),
+            status(flags=0x13), status(flags=0x23), status(flags=0x43),
+        ):
+            with self.subTest(wireless=wireless):
+                client = self.client([result(0, transaction=0, state=0), wireless])
+                client._command_uncertain = True
+                self.assertIsNone(client.reconcile_outcome((7, 9), ("test", 2)))
+                self.assertTrue(client.command_uncertain)
+
+    def test_confirmed_wifi_failure_without_driver_reason_is_not_called_a_timeout(self):
+        client = self.client([status(wifi=6, test=1)])
+        with self.assertRaisesRegex(RuntimeError, "driver did not report a reason"):
+            client._poll_wireless("test", 0, 35)
+        self.assertFalse(client.command_uncertain)
 
     def test_status_read_returns_owned_snapshot_without_mutating_previous_reads(self):
         for initial, active in ((status(), False), (status(wifi=4, flags=0x33, test=1), True),

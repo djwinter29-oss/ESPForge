@@ -3,27 +3,11 @@
 
 """ESPForge host tools."""
 
-import importlib.metadata
-from pathlib import Path
+from importlib.metadata import PackageNotFoundError, version
 
-DEFAULT_VERSION = "0.0.0-debug"
-
-
-def _resolve_package_version(distribution_name: str, package_file: str) -> str:
-    """Return the owning installed distribution version, or the source-tree fallback."""
-    try:
-        distribution = importlib.metadata.distribution(distribution_name)
-    except importlib.metadata.PackageNotFoundError:
-        return DEFAULT_VERSION
-    package_path = Path(package_file).resolve()
-    distribution_root = Path(str(distribution.locate_file(""))).resolve()
-    try:
-        package_path.relative_to(distribution_root)
-    except ValueError:
-        return DEFAULT_VERSION
-    return distribution.version
-
-
-__version__ = _resolve_package_version("espforge", __file__)
+try:
+    __version__ = version("espforge")
+except PackageNotFoundError:
+    __version__ = "0.0.0-debug"
 
 __all__ = ["__version__"]

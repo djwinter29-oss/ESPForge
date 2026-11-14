@@ -12,9 +12,9 @@ test("server dashboard keeps radio dialogs and confirmation controls without dro
     const footer = dashboard.split('<footer class="status-line"')[1].split("</footer>")[0];
     assert.doesNotMatch(settings, /id="settings-note"/);
     assert.doesNotMatch(settings, /wireless-actions|wifi-open|ble-open/);
-    assert.doesNotMatch(settings, /value="configure"/);
+    assert.doesNotMatch(settings, /id="(?:wifi|ble)-configure"/);
     for (const radio of ["wifi", "ble"])
-      assert.match(settings, new RegExp(`id="${radio}-configure"[^>]*[\\s\\S]*?aria-controls="${radio}-dialog"`));
+      assert.match(settings, new RegExp(`id="settings-${radio}"[^>]*>[\\s\\S]*?value="configure"[^>]*>Configure…`));
     const board = settings.split('<div class="settings-controls">')[1].split('<p id="wireless-summary"')[0];
     assert.deepEqual([...board.matchAll(/<label for="([^"]+)"/g)].map(match => match[1]),
       ["settings-clock", "settings-wifi", "settings-ble"]);
@@ -34,7 +34,12 @@ test("server dashboard keeps radio dialogs and confirmation controls without dro
     assert.match(footer, /id="status-message"[\s\S]*id="settings-note"/);
     assert.equal([...dashboard.matchAll(/id="settings-note"/g)].length, 1);
     assert.doesNotMatch(dashboard,
-      /id="(self-test[^"]*|msc-[^"]*|led-control|share-dialog|return-dialog|configuration-force-warning|cdc-state)"/);
-    assert.doesNotMatch(dashboard, /\/console|Start benchmark|Board LED|USB drive/);
+      /id="(self-test[^"]*|share-dialog|return-dialog|configuration-force-warning|cdc-state)"/);
+    assert.doesNotMatch(dashboard, /\/console/);
+    assert.match(dashboard, /id="led-colour"/);
+    assert.match(dashboard, /id="benchmark-start"/);
+    assert.match(dashboard, /id="benchmark-cancel"/);
+    assert.match(dashboard, /id="msc-enable"/);
+    assert.match(dashboard, /id="msc-return"/);
   }
 });

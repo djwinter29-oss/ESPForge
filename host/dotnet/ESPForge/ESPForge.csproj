@@ -9,12 +9,16 @@ Copyright (c) 2026 Ji Dong
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <Version>0.0.0-debug</Version>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <MinVerTagPrefix>v</MinVerTagPrefix>
+    <MinVerAutoIncrement>patch</MinVerAutoIncrement>
+    <MinVerDefaultPreReleaseIdentifiers>dev</MinVerDefaultPreReleaseIdentifiers>
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="ESPForge.Tests" />
     <PackageReference Include="HidSharp" Version="2.6.4" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.14" />
+    <PackageReference Include="MinVer" Version="8.0.0" PrivateAssets="All" />
     <Content Include="../../web/src/**/*" Exclude="../../web/src/**/__pycache__/**">
       <Link>wwwroot/%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

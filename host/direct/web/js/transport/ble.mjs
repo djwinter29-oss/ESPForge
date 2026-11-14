@@ -79,6 +79,7 @@ export class BleTransport extends EventTarget {
       if (signal.aborted || error.final || !this.device?.gatt.connected) throw error;
       throw Object.assign(new BoardError(REASON.BLE_UNLOCK_REJECTED), { final: true });
     }
+    return hardware;
   }
 
   async connect(key, signal) {
@@ -116,7 +117,9 @@ export class BleTransport extends EventTarget {
             this.characteristics.set(id, await service.getCharacteristic(characteristic(id)));
             signal.throwIfAborted();
           }
-          await this.unlock(signal);
+          const hardware = await this.unlock(signal);
+          if (hardware.memory_report_supported)
+            this.characteristics.set(13, await service.getCharacteristic(characteristic(13)));
           return true;
         } catch (error) {
           device.gatt.disconnect();

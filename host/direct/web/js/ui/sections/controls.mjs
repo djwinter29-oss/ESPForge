@@ -69,6 +69,12 @@ export function deriveControlsViewModel(state, ui, environment) {
     settingsDisabled: !eligibility.settingsReady || !state.settings_supported,
     titles: Object.fromEntries(Object.entries(reasons).map(([id, text]) => [id, text ?? ""])),
     disabled: {
+      "benchmark-start": ui.formBusy || !eligibility.benchmarkReady,
+      "benchmark-cancel": ui.formBusy || !eligibility.benchmarkCancelReady,
+      "benchmark-size": ui.formBusy || !eligibility.benchmarkReady,
+      "msc-enable": ui.formBusy || !eligibility.mscReady || state.memory?.msc?.enabled === true
+        || !state.memory?.initialized,
+      "msc-return": ui.formBusy || !eligibility.mscReady || state.memory?.msc?.enabled !== true,
       "usb-open": Boolean(state.busy || eligibility.connectionLocked && bluetooth),
       "bluetooth-open": Boolean(state.busy || eligibility.connectionLocked && !bluetooth),
       "usb-connect": Boolean(state.busy || bluetooth || usbUnsupported),
@@ -102,6 +108,11 @@ export function deriveControlsViewModel(state, ui, environment) {
  *   environment: Parameters<typeof deriveControlsViewModel>[2]) => void} */
 export function renderControls(state, ui, environment) {
   const model = deriveControlsViewModel(state, ui, environment);
+  element("led-control").hidden = !((state.hardware?.capabilities ?? 0) & 1);
+  queryElement("select#led-colour").value = state.freshness?.[3] === "fresh"
+    ? String(state.runtime?.led_colour ?? "") : "";
+  queryElement("select#led-colour").disabled = ui.formBusy || !ui.eligibility.ledReady;
+  element("msc-controls").hidden = !((state.settings?.board_flags ?? 0) & 64) || state.link === "ble";
   if (model.settingsValues) {
     queryElement("select#settings-clock").value = String(model.settingsValues.system_clock_mhz);
     ["direct-settings-wifi", "direct-settings-ble"].forEach((id, bit) => {
@@ -111,7 +122,7 @@ export function renderControls(state, ui, environment) {
   setText(model.text);
   queryElement("select#settings-clock").disabled = model.settingsDisabled;
   for (const [id, disabled] of Object.entries(model.disabled)) {
-    if (id === "direct-ble-control-key") queryElement(`input#${id}`).disabled = disabled;
+    if (id === "direct-ble-control-key" || id === "benchmark-size") queryElement(`input#${id}`).disabled = disabled;
     else queryElement(`button#${id}`).disabled = disabled;
   }
   for (const [id, title] of Object.entries(model.titles)) element(id).title = title;

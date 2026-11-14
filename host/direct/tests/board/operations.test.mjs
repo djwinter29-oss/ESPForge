@@ -3,9 +3,105 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { telemetry, storage, fakeConnection, emit, says } from "../support/fixtures.mjs";
+import { config, telemetry, storage, fakeConnection, emit, says } from "../support/fixtures.mjs";
 import { Operations } from "../../web/js/board/operations.mjs";
 import { BOARD, connected, radio } from "../support/wireless.mjs";
+
+test("LED commands use reported colour, ignore SD readiness and never replay uncertain writes", async () => {
+  const { client, device, sent, pendingStore } = fakeConnection({ capabilities: 0x97 });
+  await client.connect();
+  const status = telemetry(); status[21] |= 8;
+  emit(device, 3, status);
+  await client.setLedColour(4);
+  assert.deepEqual(sent[0].slice(0, 6), [20, 1, 1, 1, 0, 4]);
+  assert.equal(client.state.runtime, null);
+  await assert.rejects(client.setLedColour(2));
+  const receive = device.receiveFeatureReport;
+  device.receiveFeatureReport = async id => {
+    if (id === 20) throw new Error("lost LED acknowledgement");
+    return receive(id);
+  };
+  emit(device, 3, status);
+  await assert.rejects(client.setLedColour(6));
+  assert.equal(client.state.outcome_uncertain, true);
+  assert.equal(JSON.parse(pendingStore.getItem("espforge.direct.pending-operation")).request.led_colour, 6);
+  device.receiveFeatureReport = receive;
+  await client.disconnect();
+  await client.connect();
+  assert.equal(sent.length, 2, "Re-sync reads the original result without replay");
+  assert.equal(client.state.runtime, null);
+  await client.disconnect();
+});
+
+test("benchmark admission invalidates snapshots and uncertain starts are never replayed", async () => {
+  const { client, device, sent, pendingStore } = fakeConnection({ capabilities: 0xb6 });
+  await client.connect();
+  const idle = new Uint8Array(32); idle[0] = 1;
+  emit(device, 10, storage()); emit(device, 11, idle);
+  await assert.rejects(client.benchmark(true, 8, false));
+  assert.equal(sent.length, 0);
+  await client.benchmark(true, 8, true);
+  assert.deepEqual(sent[0].slice(0, 10), [20, 1, 1, 4, 0, 1, 8, 0, 0, 0]);
+  assert.equal(client.state.self_test, null);
+  assert.equal(client.state.memory, null);
+  const active = idle.slice(); active[2] = 3;
+  new DataView(active.buffer).setUint32(4, 8 * 1024 ** 2, true);
+  const busy = new Uint8Array(34); busy[0] = busy[2] = 1;
+  emit(device, 10, busy); emit(device, 11, active);
+  await client.benchmark(false, 0, false);
+  assert.deepEqual(sent[1].slice(0, 10), [20, 1, 2, 4, 0, 0, 0, 0, 0, 0]);
+  emit(device, 10, storage()); emit(device, 11, idle);
+  const receive = device.receiveFeatureReport;
+  device.receiveFeatureReport = async id => {
+    if (id === 20) throw new Error("Benchmark result lost");
+    return receive(id);
+  };
+  await assert.rejects(client.benchmark(true, 8, true));
+  const pending = JSON.parse(pendingStore.getItem("espforge.direct.pending-operation"));
+  assert.deepEqual(pending.request, { transaction_id: 3, opcode: 4,
+    benchmark_start: true, benchmark_size_mib: 8 });
+  await assert.rejects(client.benchmark(true, 8, true));
+  assert.equal(sent.length, 3);
+  await client.disconnect();
+});
+
+for (const spi of [false, true]) test(`MSC over ${spi ? "SPI" : "SDMMC"} requires eject and never replays writes`, async () => {
+  const { client, device, sent, pendingStore } = fakeConnection({ capabilities: spi ? 0x8e : 0x96 });
+  const receive = device.receiveFeatureReport;
+  device.receiveFeatureReport = async id => {
+    if (id !== 2) return receive(id);
+    const report = config(); report[13] = 0x45; report[16] = 8;
+    if (spi) report.set([12, 11, 13, 10, 255, 255], 7);
+    return report;
+  };
+  const mounted = storage(); mounted[4] = spi ? 2 : 3;
+  await client.connect();
+  emit(device, 10, mounted);
+  await client.setMsc(true);
+  assert.deepEqual(sent[0].slice(0, 6), [20, 1, 1, 3, 0, 1]);
+  assert.equal(client.state.memory, null);
+  await assert.rejects(client.reboot(true), says(/Fresh storage status/));
+  const owned = new Uint8Array(34);
+  owned[0] = owned[2] = owned[31] = 1;
+  emit(device, 10, owned);
+  await assert.rejects(client.setMsc(false), says(/Invalid/));
+  assert.equal(sent.length, 1);
+  await client.setMsc(true);
+  emit(device, 10, owned);
+  await client.setMsc(false, true);
+  assert.deepEqual(sent[2].slice(0, 6), [20, 1, 3, 3, 1, 0]);
+  emit(device, 10, mounted);
+  device.receiveFeatureReport = async id => {
+    if (id === 20) throw new Error("Result lost");
+    return receive(id);
+  };
+  await assert.rejects(client.setMsc(true));
+  const pending = JSON.parse(pendingStore.getItem("espforge.direct.pending-operation"));
+  assert.deepEqual(pending.request, { transaction_id: 4, opcode: 3, msc_enabled: true });
+  await assert.rejects(client.setMsc(true));
+  assert.equal(sent.length, 4);
+  await client.disconnect();
+});
 
 test("stale storage and capability gates stop reboot and settings writes", async () => {
   let now = 0;

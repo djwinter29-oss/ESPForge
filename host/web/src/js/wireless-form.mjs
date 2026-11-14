@@ -26,8 +26,9 @@ import { testedWireless } from "./dashboard-api.mjs";
  * @param {{wireless?: WirelessStatus | null, connected?: boolean, wireless_error?: string | null,
  * wireless_cleanup_required?: boolean, hardware?: {capabilities?: number,
  * serial_number?: string} | null}} snapshot
+ * @param {string | null} [consoleUrl]
  */
-export function renderWirelessStatus(snapshot) {
+export function renderWirelessStatus(snapshot, consoleUrl = null) {
   const wireless = snapshot.wireless;
   const unavailable = !snapshot.connected ? "--" : snapshot.wireless_error ? "Unavailable" : !wireless ? "--" : null;
   /** @param {string} name @param {() => string} text */
@@ -41,6 +42,17 @@ export function renderWirelessStatus(snapshot) {
   render("wifi", () => !wireless?.wifi_enabled || !wireless.ssid ? "Disabled"
     : `${wireless.ssid} (${wireless.wifi_state === "connected" ? wireless.ipv4
       : wireless.wifi_state === "connecting" ? "connecting" : "disconnected"})`);
+  if (!unavailable && !wireless?.stale && wireless?.wifi_enabled && wireless.wifi_state === "connected"
+      && wireless.ipv4 && wireless.ipv4 !== "0.0.0.0" && consoleUrl) {
+    const status = /** @type {HTMLElement} */ (document.querySelector("#wifi-state"));
+    const link = document.createElement("a");
+    link.href = consoleUrl;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = status.textContent;
+    link.title = "Open the unauthenticated Wi-Fi shell";
+    status.replaceChildren(link);
+  }
   render("ble", () => {
     if (!wireless?.ble_enabled) return "Disabled";
     if (!wireless.ble_key_configured && wireless.ble_state === "off") return "Off (no control key)";
@@ -154,8 +166,11 @@ export function bindWirelessForm({
   const refresh = () => {
     const available = supported();
     const wifiBlocked = busy || wifiCanceling || wifiCancelError !== null || cleanupRequired();
-    button("wifi-configure").disabled = !available || !ready() || busy || wifiCanceling;
-    button("ble-configure").disabled = !available || !ready() || busy || wifiCanceling || wifiCancelError !== null;
+    for (const radio of /** @type {const} */ (["wifi", "ble"])) {
+      const configure = option(`settings-${radio}`, "configure");
+      if (configure) configure.disabled = !available || !ready() || busy || wifiCanceling
+        || radio === "ble" && wifiCancelError !== null;
+    }
     el("wifi-settings").hidden = el("ble-settings").hidden = !available;
     // Wi-Fi needs a network and Bluetooth needs a control key before either can be enabled.
     const wifiOn = option("settings-wifi", "1");
@@ -319,11 +334,13 @@ export function bindWirelessForm({
   const radioDialogs = [["settings-wifi", openWifi], ["settings-ble", openBle]];
   for (const [id, open] of radioDialogs) {
     const radio = id === "settings-wifi" ? "wifi" : "ble";
-    button(`${radio}-configure`).addEventListener("click", () => {
-      if (!button(`${radio}-configure`).disabled) open();
-    });
     const changeRadio = () => {
       const value = select(id).value;
+      if (value === "configure") {
+        synchronize();
+        if (!select(id).disabled && !option(id, "configure")?.disabled) open();
+        return;
+      }
       if (value !== "0" && value !== "1") throw new Error(`Invalid radio value: ${value}`);
       editRadio(radio, value === "1");
       if (value === "0") {
@@ -530,11 +547,12 @@ export function bindWirelessForm({
       changed();
       return true;
     },
-    /** @param {boolean} completed */
-    cancelResolved(completed) {
+    /** @param {boolean} completed @param {string} [message] */
+    cancelResolved(completed, message) {
       wifiCancelRequiresReconnect = false;
       if (completed) testCleared();
       else { refresh(); changed(); }
+      if (message) setStatus("wifi-status", message);
     },
     dirty,
     radioEdited,

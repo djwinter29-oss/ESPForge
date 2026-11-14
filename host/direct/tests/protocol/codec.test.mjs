@@ -4,14 +4,49 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  decodeIdentityReport, decodeConfigReport, decodeTelemetryReport, decodeStorageReport,
-  decodeControlResult, buildControlRequest, decodeWireless, displaySsid, matchesEspForge, ssidBytes,
+  decodeIdentityReport, decodeConfigReport, decodeTelemetryReport, decodeStorageReport, decodeBenchmarkReport,
+  decodeControlResult, buildControlRequest, decodeWireless, displaySsid, matchesEspForge, ssidBytes, decodeMemoryInventory,
 } from "../../web/js/protocol/codec.mjs";
-import { identity, config, telemetry, storage, result } from "../support/fixtures.mjs";
+import { identity, config, telemetry, storage, result, memoryInventory } from "../support/fixtures.mjs";
 import { status } from "../support/wireless.mjs";
 
 /** @brief Report 12 vectors with the ESPForge SSID; byte 4 never carries the TCP CLI bit. */
 const ssid = Buffer.from("ESPForge").toString("hex");
+
+test("memory inventory validates physical capacities, reservations and unavailable values", () => {
+  const report = memoryInventory();
+  assert.deepEqual(decodeMemoryInventory(report),
+    { psram_total_bytes: 8 << 20, psram_reserved_bytes: 1 << 20, flash_total_bytes: 16 << 20 });
+  const unavailable = new Uint8Array(16); unavailable[0] = 1;
+  assert.deepEqual(decodeMemoryInventory(unavailable),
+    { psram_total_bytes: null, psram_reserved_bytes: null, flash_total_bytes: null });
+  for (const [offset, value] of [[0, 2], [1, 4], [2, 1], [11, 1], [15, 0]]) {
+    const bad = report.slice(); bad[offset] = value;
+    assert.throws(() => decodeMemoryInventory(bad));
+  }
+  assert.throws(() => decodeMemoryInventory(report.slice(1)));
+});
+
+test("benchmark counters, rates and terminal facts are validated", () => {
+  const report = new Uint8Array(32);
+  report.set([1, 9, 3, 3]);
+  const view = new DataView(report.buffer);
+  [1048576, 524288, 0, 500, 0, 0].forEach((value, index) => view.setUint32(4 + index * 4, value, true));
+  const status = decodeBenchmarkReport(report);
+  assert.equal(status.active, true);
+  assert.equal(status.progress_percent, 25);
+  assert.equal(status.write_bytes_per_second, 1048576);
+  assert.equal(status.read_bytes_per_second, null);
+  for (const [offset, value] of [[2, 9], [3, 4], [28, 7], [29, 1], [30, 1]]) {
+    const bad = report.slice(); bad[offset] = value;
+    assert.throws(() => decodeBenchmarkReport(bad));
+  }
+  report.set([6, 2], 2);
+  view.setUint32(8, 1048576, true); view.setUint32(12, 1048576, true);
+  assert.equal(decodeBenchmarkReport(report).progress_percent, 100);
+  report[3] |= 1;
+  assert.throws(() => decodeBenchmarkReport(report));
+});
 const vectors = {
   connected_with_key: `01020002032a2a2a2a08${ssid}${"00".repeat(30)}`,
   tested_candidate: `01050002b32a2a2a2a08${ssid}${"00".repeat(28)}0100`,
@@ -30,13 +65,13 @@ test("identity requires ESPForge product 3, the 0x96 capability set, ESP32-S3 an
   for (const bytes of [report.slice(0, 25), Uint8Array.from([1, ...report]), new Uint8Array(42)]) {
     assert.throws(() => decodeIdentityReport(bytes));
   }
-  for (const [offset, value] of [[0, 2], [1, 2], [1, 1], [17, 0], [17, 0x8f], [17, 0x9e], [17, 0xae],
+  for (const [offset, value] of [[0, 2], [1, 2], [1, 1], [17, 0], [17, 0xcf], [17, 0x9e], [17, 0xbe],
     [17, 0x86], [14, 1]]) {
     const bad = report.slice(); bad[offset] = value;
     assert.throws(() => decodeIdentityReport(bad), `${offset}: ${value}`);
   }
   assert.equal(decodeIdentityReport(identity(16 | 128)).capabilities, 0x90, "capabilities may be a subset");
-  assert.throws(() => decodeIdentityReport(identity(0x8e)), "legacy SPI firmware requires matching hosts");
+  assert.equal(decodeIdentityReport(identity(0x8e)).transport, "spi");
   const reserved = report.slice(); reserved[16] = 255;
   assert.equal(decodeIdentityReport(reserved).product_name, "ESPForge", "identity reserved byte is ignored");
   const unknown = report.slice(); unknown[14] = 99; unknown[15] = 99;
@@ -49,6 +84,20 @@ test("identity requires ESPForge product 3, the 0x96 capability set, ESP32-S3 an
   }
 });
 
+test("SPI identity selects four pins and matching storage samples", () => {
+  const spi = decodeIdentityReport(identity(0x8e));
+  const native = decodeIdentityReport(identity());
+  const pins = config();
+  pins.set([12, 11, 13, 10, 255, 255], 7);
+  assert.deepEqual(decodeConfigReport(pins, spi).storage_gpios, [12, 11, 13, 10, 255, 255]);
+  assert.throws(() => decodeConfigReport(pins, native));
+  assert.throws(() => decodeConfigReport(config(), spi));
+  const sample = storage(); sample[4] = 2;
+  assert.equal(decodeStorageReport(sample, spi).memory.mode, "spi");
+  assert.throws(() => decodeStorageReport(sample, native));
+  assert.throws(() => decodeStorageReport(storage(), spi));
+});
+
 test("WebHID matching needs the ESPForge VID:PID and the vendor collection", () => {
   const device = { vendorId: 0xcafe, productId: 0x4021, collections: [{ usagePage: 0xff00, usage: 1 }] };
   assert.ok(matchesEspForge(device));
@@ -57,14 +106,14 @@ test("WebHID matching needs the ESPForge VID:PID and the vendor collection", () 
   }
 });
 
-test("configuration validates ESPForge clocks, SD profile 0, SDMMC GPIOs, monitor UART and no LED/card detect", () => {
+test("configuration validates ESPForge clocks, SD profile 0, SDMMC GPIOs, monitor UART and optional card detect", () => {
   const id = decodeIdentityReport(identity());
   const decoded = decodeConfigReport(config(), id);
   assert.deepEqual([decoded.system_clock_mhz, decoded.sdcard_profile, decoded.radios], [240, 0, 0]);
   assert.deepEqual(decoded.storage_gpios, [12, 11, 13, 14, 15, 10]);
   assert.deepEqual([decoded.monitor_uart_index, decoded.monitor_uart_tx_gpio, decoded.monitor_uart_rx_gpio], [0, 43, 44]);
-  assert.equal(Object.hasOwn(decoded, "led_gpio"), false);
-  assert.equal(Object.hasOwn(decoded, "card_detect_gpio"), false);
+  assert.equal(decoded.led_gpio, 255);
+  assert.equal(decoded.card_detect_gpio, 255);
   for (const clock of [0, 80, 160]) {
     const report = config(); report[1] = clock;
     assert.equal(decodeConfigReport(report, id).system_clock_mhz, clock);
@@ -91,13 +140,15 @@ test("telemetry preserves 64-bit uptime, the core-0 load sentinel and temperatur
   const decoded = decodeTelemetryReport(report);
   assert.equal(decoded.uptime_ms, 2n ** 63n + 123n);
   assert.equal(decoded.cpu_usage_core0_basis_points, null);
+  assert.equal(decoded.cpu_usage_core1_basis_points, null);
   assert.equal(decoded.temperature_centidegrees, -1234);
-  for (const field of ["led_on", "led_mode", "cdc_open", "cpu_usage_core1_basis_points"]) {
+  assert.equal(decoded.led_colour, null);
+  for (const field of ["led_mode", "cdc_open"]) {
     assert.equal(Object.hasOwn(decoded, field), false, field);
   }
   for (const [offset, value] of [[1, 1], [1, 2], [21, 128], [21, 2 | 5], [21, 8 | 5]]) {
     const bad = report.slice(); bad[offset] = value;
-    assert.throws(() => decodeTelemetryReport(bad), `${offset}: ${value}`);
+    assert.throws(() => decodeTelemetryReport(bad, decodeIdentityReport(identity())), `${offset}: ${value}`);
   }
   for (const [offset, load] of [[12, 10001], [12, 65534], [14, 0], [14, 5000]]) {
     const bad = report.slice(); new DataView(bad.buffer).setUint16(offset, load, true);
@@ -109,7 +160,7 @@ test("telemetry preserves 64-bit uptime, the core-0 load sentinel and temperatur
   assert.equal(decodeTelemetryReport(absent).temperature_centidegrees, null);
 });
 
-test("storage validates native SDMMC samples, timing, capacity and CID with MSC bytes always zero", () => {
+test("storage validates native SDMMC samples, timing, capacity and CID with isolated MSC ownership", () => {
   const decoded = decodeStorageReport(storage());
   assert.equal(decoded.memory.mode, "sdmmc");
   assert.equal(decoded.memory.capacity_bytes, 512 * 100000);
@@ -121,8 +172,8 @@ test("storage validates native SDMMC samples, timing, capacity and CID with MSC 
   assert.equal(decodeStorageReport(cid).memory.manufacturer.product_name, "SD16G");
   assert.equal(decodeStorageReport(cid).memory.manufacturer.serial_number, 0x12345678);
   assert.equal(decodeStorageReport(cid).memory.manufacturer.manufacture_year, 2025);
-  for (const [offset, value] of [[2, 128], [2, 63], [2, 64], [2, 71], [4, 1], [4, 2], [3, 2], [9, 0], [9, 3],
-    [31, 1], [32, 1], [33, 1], [30, 5], [14, 1]]) {
+  for (const [offset, value] of [[2, 128], [2, 63], [2, 64], [2, 71], [4, 1], [4, 4], [3, 2], [9, 0], [9, 3],
+    [31, 1], [32, 1], [33, 2], [30, 5], [14, 1]]) {
     const bad = storage(); bad[offset] = value;
     assert.throws(() => decodeStorageReport(bad), `${offset}: ${value}`);
   }
@@ -153,7 +204,7 @@ test("control request builders encode exact 68-byte envelopes and reject malform
   for (const [opcode, options] of [[2, {}], [2, { flags: 3 }], [2, { flags: 1, args: [1] }],
     [5, { args: [200, 0, 0, 0] }], [5, { args: [240, 0, 1, 0] }], [5, { args: [240, 0, 0, 4] }],
     [5, { args: [240, 0, 0, 0, 1] }], [5, { flags: 1, args: [240, 0, 0, 0] }], [5, { flags: 4, args: [240, 0, 0, 0] }],
-    [6, { args: [33] }], [0, {}], [1, { args: [1] }], [3, { args: [1] }], [4, { args: [1, 0, 1, 0, 0] }],
+    [6, { args: [33] }], [0, {}], [1, { args: [8] }], [3, { args: [0] }], [4, { args: [1, 0, 0, 0, 0] }],
     [13, { args: Array(16).fill(1) }], [14, {}], [10, { flags: 1 }], [11, { args: [1] }]]) {
     assert.throws(() => buildControlRequest(1, opcode, options), `opcode ${opcode}`);
   }
@@ -163,7 +214,9 @@ test("control request builders encode exact 68-byte envelopes and reject malform
 test("control results enforce every opcode/status/error combination and zero result data", () => {
   const unsupported = [[4, 4]];
   const allowed = {
-    1: unsupported, 3: unsupported, 4: unsupported, 13: unsupported,
+    1: [[2, 0], [3, 1], [3, 3], [4, 4], [5, 5], [6, 6]], 13: unsupported,
+    4: [[2, 0], [3, 1], [3, 3], [4, 4], [5, 5], [6, 6]],
+    3: [[1, 0], [2, 0], [3, 1], [3, 2], [3, 3], [4, 4], [5, 5], [6, 6]],
     2: [[1, 0], [2, 0], [3, 1], [3, 2], [5, 5], [6, 6]],
     5: [[1, 0], [2, 0], [3, 1], [3, 3], [4, 4], [5, 5], [6, 6]],
     6: [[2, 0], [3, 1], [3, 3], [4, 4], [5, 5], [6, 6]],

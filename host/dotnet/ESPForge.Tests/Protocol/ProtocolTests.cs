@@ -16,6 +16,82 @@ namespace ESPForge.Tests;
 public sealed class ProtocolTests
 {
     [Fact]
+    public void MemoryInventoryDistinguishesCapacityFromReservationAndUnavailableComponents()
+    {
+        var identityReport = IdentityReport();
+        Assert.False(HidProtocol.ParseIdentityReport(identityReport).MemoryReportSupported);
+        identityReport[17] = 1;
+        var identity = HidProtocol.ParseIdentityReport(identityReport);
+        Assert.True(identity.MemoryReportSupported);
+        var report = new byte[17]; report[0] = 13; report[1] = 1; report[2] = 3;
+        BinaryPrimitives.WriteUInt32LittleEndian(report.AsSpan(5), 8 << 20);
+        BinaryPrimitives.WriteUInt32LittleEndian(report.AsSpan(9), 1 << 20);
+        BinaryPrimitives.WriteUInt32LittleEndian(report.AsSpan(13), 16 << 20);
+        var memory = HidProtocol.ParseMemoryInventory(report, identity);
+        Assert.Equal((uint)(8 << 20), memory.PsramTotalBytes);
+        Assert.Equal((uint)(1 << 20), memory.PsramReservedBytes);
+        Assert.Equal((uint)(16 << 20), memory.FlashTotalBytes);
+        foreach (var (offset, value) in new[] { (1, 2), (2, 4), (3, 1), (12, 1), (16, 0) })
+        {
+            var invalid = (byte[])report.Clone(); invalid[offset] = (byte)value;
+            Assert.Throws<InvalidDataException>(() => HidProtocol.ParseMemoryInventory(invalid, identity));
+        }
+        report.AsSpan(2).Clear();
+        Assert.Null(HidProtocol.ParseMemoryInventory(report, identity).PsramTotalBytes);
+        Assert.Null(HidProtocol.ParseMemoryInventory(report, identity).FlashTotalBytes);
+    }
+
+    [Fact]
+    public void RgbColoursAndUnavailableDriverAreValidated()
+    {
+        var report = new byte[23];
+        report[0] = 3; report[1] = 1; report[22] = 8;
+        BinaryPrimitives.WriteUInt32LittleEndian(report.AsSpan(17), 240000000);
+        for (byte colour = 0; colour <= 7; colour++)
+        {
+            report[2] = colour;
+            var runtime = HidProtocol.ParseTelemetryReport(report);
+            Assert.Equal(colour, runtime.LedColour);
+            Assert.Equal(colour != 0, runtime.LedOn);
+            var arguments = new byte[64]; arguments[0] = colour;
+            Assert.Equal(colour, HidProtocol.BuildControlRequest(7, Opcode.Led, 0, arguments)[5]);
+        }
+        report[2] = 0; report[22] = 0;
+        Assert.Null(HidProtocol.ParseTelemetryReport(report).LedColour);
+        report[2] = 4;
+        Assert.Throws<InvalidDataException>(() => HidProtocol.ParseTelemetryReport(report));
+        var invalid = new byte[64]; invalid[0] = 8;
+        Assert.Throws<ArgumentException>(() => HidProtocol.BuildControlRequest(7, Opcode.Led, 0, invalid));
+    }
+
+    [Fact]
+    public void BenchmarkCountersRatesAndTerminalFactsAreValidated()
+    {
+        var report = new byte[33];
+        report[0] = 11; report[1] = 1; report[2] = 9; report[3] = 3; report[4] = 3;
+        BinaryPrimitives.WriteUInt32LittleEndian(report.AsSpan(5), 1048576);
+        BinaryPrimitives.WriteUInt32LittleEndian(report.AsSpan(9), 524288);
+        BinaryPrimitives.WriteUInt32LittleEndian(report.AsSpan(17), 500);
+        var status = HidProtocol.ParseBenchmarkReport(report);
+        Assert.True(status.Active);
+        Assert.Equal(25, status.ProgressPercent);
+        Assert.Equal(1048576, status.WriteBytesPerSecond);
+        Assert.Null(status.ReadBytesPerSecond);
+        foreach (var (offset, value) in new[] { (3, 9), (4, 4), (29, 7), (30, 1), (31, 1) })
+        {
+            var bad = (byte[])report.Clone();
+            bad[offset] = (byte)value;
+            Assert.Throws<InvalidDataException>(() => HidProtocol.ParseBenchmarkReport(bad));
+        }
+        report[3] = 6; report[4] = 2;
+        BinaryPrimitives.WriteUInt32LittleEndian(report.AsSpan(9), 1048576);
+        BinaryPrimitives.WriteUInt32LittleEndian(report.AsSpan(13), 1048576);
+        Assert.Equal(100, HidProtocol.ParseBenchmarkReport(report).ProgressPercent);
+        report[4] |= 1;
+        Assert.Throws<InvalidDataException>(() => HidProtocol.ParseBenchmarkReport(report));
+    }
+
+    [Fact]
     public void ParsesIdentityAndBoardConfigurationReports()
     {
         var identity = HidProtocol.ParseIdentityReport(IdentityReport());
@@ -55,7 +131,6 @@ public sealed class ProtocolTests
     [InlineData(2, 0)]
     [InlineData(3, 1)]
     [InlineData(18, 0x9e)]
-    [InlineData(18, 0x8e)]
     [InlineData(18, 0x86)]
     [InlineData(19, 0)]
     public void RejectsIdentityOutsideTheEspForgeProfile(int index, byte value)
@@ -64,6 +139,28 @@ public sealed class ProtocolTests
         report[index] = value;
         if (index == 19) report[21] = 0;
         Assert.Throws<InvalidDataException>(() => HidProtocol.ParseIdentityReport(report));
+    }
+
+    [Fact]
+    public void SpiIdentityRequiresFourPinsAndMatchingStorageSamples()
+    {
+        var report = IdentityReport();
+        report[18] = 0x8e;
+        var spi = HidProtocol.ParseIdentityReport(report);
+        var native = HidProtocol.ParseIdentityReport(IdentityReport());
+        var config = ConfigurationReport();
+        new byte[] { 12, 11, 13, 10, 255, 255 }.CopyTo(config, 8);
+        Assert.Equal(new byte[] { 12, 11, 13, 10, 255, 255 },
+            HidProtocol.ParseConfigurationReport(config, spi).StorageGpios);
+        Assert.Throws<InvalidDataException>(() => HidProtocol.ParseConfigurationReport(config, native));
+        Assert.Throws<InvalidDataException>(() => HidProtocol.ParseConfigurationReport(ConfigurationReport(), spi));
+        var storage = new byte[35];
+        storage[0] = 10; storage[1] = 1; storage[3] = 0x4f; storage[4] = 1; storage[5] = 2; storage[10] = 1;
+        BinaryPrimitives.WriteUInt32LittleEndian(storage.AsSpan(6), 25000000);
+        Assert.Equal("spi", HidProtocol.ParseStorageReport(storage, spi).Memory!.Mode);
+        Assert.Throws<InvalidDataException>(() => HidProtocol.ParseStorageReport(storage, native));
+        storage[5] = 3;
+        Assert.Throws<InvalidDataException>(() => HidProtocol.ParseStorageReport(storage, spi));
     }
 
     [Fact]
@@ -156,7 +253,7 @@ public sealed class ProtocolTests
         Assert.Null(failed.Mode);
         Assert.Null(failed.BusClockHz);
 
-        foreach (var index in new[] { 32, 33, 34 })
+        foreach (var index in new[] { 32, 33 })
         {
             var msc = StorageReport();
             msc[index] = 1;
@@ -421,6 +518,34 @@ public sealed class ProtocolTests
         BinaryPrimitives.WriteUInt32LittleEndian(report.AsSpan(11), 4096);
         report[31] = 3;
         return report;
+    }
+
+    [Fact]
+    public void MscAvailabilityAndOwnershipPreserveTheReportLayout()
+    {
+        var hardware = HidProtocol.ParseIdentityReport(IdentityReport());
+        var config = ConfigurationReport();
+        config[14] = 0x45;
+        config[17] = 8;
+        Assert.Equal(8, HidProtocol.ParseConfigurationReport(config, hardware).CardDetectGpio);
+        var owned = new byte[HidProtocol.StoragePayloadSize + 1];
+        owned[0] = HidProtocol.StorageReportId;
+        owned[1] = owned[3] = owned[32] = 1;
+        var memory = HidProtocol.ParseStorageReport(owned, hardware).Memory!;
+        Assert.True(memory.Msc!.Enabled);
+        Assert.False(memory.SampleValid);
+        Assert.False(memory.Initialized);
+        Assert.Null(memory.CapacityBytes);
+        var invalid = StorageReport();
+        invalid[32] = 1;
+        Assert.Throws<InvalidDataException>(() => HidProtocol.ParseStorageReport(invalid, hardware));
+        var enable = new byte[64];
+        enable[0] = 1;
+        Assert.Equal(new byte[] { 20, 1, 9, 3, 0, 1 },
+            HidProtocol.BuildControlRequest(9, Opcode.Msc, 0, enable)[..6]);
+        Assert.Throws<ArgumentException>(() => HidProtocol.BuildControlRequest(9, Opcode.Msc, 0, new byte[64]));
+        Assert.All(HidProtocol.BuildControlRequest(10, Opcode.Msc, 1, new byte[64])[5..],
+            value => Assert.Equal(0, value));
     }
 
     private sealed class EndpointMonitor : TestMonitor

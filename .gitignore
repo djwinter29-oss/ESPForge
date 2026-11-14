@@ -63,6 +63,7 @@ __pycache__/
 .pytest_cache/
 host/dotnet/**/bin/
 host/dotnet/**/obj/
+host/python/src/espforge/web/
 firmware/secrets.conf
 .bundle/
 vendor/bundle/

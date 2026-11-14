@@ -4,7 +4,20 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { describe } from "../../web/js/ui/messages.mjs";
-import { identity, fakeConnection, emit, storage } from "../support/fixtures.mjs";
+import { identity, fakeConnection, emit, storage, memoryInventory } from "../support/fixtures.mjs";
+
+test("advertised memory inventory is required at connection and legacy firmware is not probed", async () => {
+  const { client, reads } = fakeConnection({ moduleMemory: memoryInventory() });
+  await client.connect();
+  assert.deepEqual(reads, [1, 2, 13]);
+  assert.equal(client.state.hardware.psram_total_bytes, 8 << 20);
+  assert.equal(client.state.hardware.flash_total_bytes, 16 << 20);
+  await client.disconnect();
+  const broken = fakeConnection({ moduleMemory: new Uint8Array(16) });
+  await broken.client.connect();
+  assert.equal(broken.client.state.connected, false);
+  assert.ok(broken.client.state.error);
+});
 
 test("mandatory connection reads reject malformed identity/config failures and ignore unknown input reports", async () => {
   const { client, device, reads } = fakeConnection({ capabilities: 2 | 4 | 16 });
@@ -12,8 +25,8 @@ test("mandatory connection reads reject malformed identity/config failures and i
   assert.deepEqual(reads, [1, 2]);
   assert.equal(client.state.connected, true);
   const before = client.state;
-  emit(device, 11, new Uint8Array(32));
-  assert.equal(client.state, before, "ESPForge has no report 11");
+  emit(device, 14, new Uint8Array(32));
+  assert.equal(client.state, before, "unknown reports do not mutate state");
   emit(device, 10, storage());
   assert.ok(client.state.memory);
   await client.disconnect();

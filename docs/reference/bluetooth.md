@@ -30,7 +30,7 @@ Software tests do not establish hardware qualification; see [Conformance](#confo
 BLE is present only when Report `1` capability bit 7 is set. At boot the firmware loads the saved Control key and
 then starts the controller only when the Report `2` Bluetooth switch is on **and** a key is saved. Enabling the
 switch without a key logs a warning and leaves the controller off. Saving or clearing the key takes effect at the
-next boot. ESPForge has no TCP CLI listener.
+next boot. The separate [diagnostic TCP shell](../guides/console.md) is not protected by the BLE Control key.
 
 Report `12` byte 3 (`ble_state`) publishes the controller state:
 
@@ -113,11 +113,16 @@ return ATT error `0x80`.
 | `0002` | Read | Denied (`0x80`) | 17 | [Report `2`](usb-hid.md#report-id-2-board-configuration) board configuration. |
 | `0003` | Read | Denied (`0x80`) | 22 | [Report `3`](usb-hid.md#report-id-3-board-telemetry) telemetry. |
 | `000a` | Read | Denied (`0x80`) | 34 | [Report `10`](usb-hid.md#report-id-10-storage-status) storage status. |
-| `000b` | Read | Denied (`0x80`) | 0 | Reserved benchmark mirror; always empty because ESPForge has no benchmark. |
+| `000b` | Read | Denied (`0x80`) | 32 or 0 | Report `11` benchmark snapshot when capability bit 5 is set; otherwise empty. |
 | `000c` | Read | Denied (`0x80`) | 48 | [Report `12`](usb-hid.md#report-id-12-wireless-status) wireless status, including saved SSID and IPv4 address. |
+| `000d` | Read | Denied (`0x80`) | 16 | [Report `13`](usb-hid.md#report-id-13-module-memory-inventory) boot-sampled module memory inventory, advertised by identity extension bit 0. |
 | `0014` | Read, Write | Denied (`0x80`) | 9 | [Control request/result](#control-characteristic). |
 | `0100` | Read | Read | 16 | Fresh challenge nonce; each read replaces the previous one. |
 | `0101` | Write Request | Write | 16 | Session or command proof. |
+
+Reports `0002` and `000a` mirror the USB card-detect/MSC flag and live ownership status.
+MSC opcode `3` remains USB-only and returns Unsupported/error `4` over BLE. Reboot/save return Busy/detail `1`
+while storage is busy or USB-owned; see [USB storage arbitration](usb-hid.md#cross-interface-resource-arbitration).
 
 `0014` is also Write Request only; Write Without Response is not advertised for `0014` or `0101`. Such commands
 are rejected by the stack before the application callback, and Write Without Response has no ATT response for a
@@ -162,8 +167,8 @@ challenge read, not a usable nonce; clients MUST validate its length before sign
 
 ## Command Proofs
 
-Opcode `1` has a proof exemption on an unlocked link, but returns Unsupported/error `4`
-because ESPForge has no LED control. It leaves any pending nonce, proof and rate limit untouched.
+Opcode `1` has a per-command proof exemption on an unlocked link. It leaves any pending nonce, proof and rate limit
+untouched; the session still requires Control-key authentication.
 Every other valid-envelope write to `0014`, including an unsupported opcode, consumes a fresh
 proof:
 
@@ -261,7 +266,9 @@ Writes to `0014` use a 9-byte form, not a truncated USB Feature `20` report. Sta
 | 3 | 1 | `flags` | Opcode `2` requires confirmation bit 0; opcode `5` requires zero (no forced save or wireless commit). |
 | 4 | 5 | `arguments` | Opcode arguments; unused bytes zero. |
 
-Opcode `1` returns Unsupported/error `4`; there is no LED to change. Opcode `2` has zero arguments and requires
+Opcode `1` uses argument byte 0 as an RGB mask `0`-`7`, with flags and other arguments zero, as specified in
+[USB HID](usb-hid.md). Completed means queued transmission, not physical verification.
+Opcode `2` has zero arguments and requires
 flag bit 0. For opcode `5`, bytes 4-5 are the system clock in MHz (little-endian): `0` (build default), `80`, `160`
 or `240`. Byte 6 MUST be `0` (Standard SD-card profile), byte 7 is the switch mask (bit 0 Wi-Fi, bit 1 BLE),
 and byte 8 MUST be zero. All opcode `5` flags MUST be zero.
@@ -296,7 +303,7 @@ prove which connection produced it.
 4. Opcodes `3`, `4` and `6`-`13` (assigned but USB-only): Unsupported/error `4` in the result slot.
    Unassigned opcodes: Unsupported/error `7`.
 5. Opcodes `1`, `2` and `5` follow the shared [error precedence](usb-hid.md#get-result) for their arguments and
-   state, with ESPForge's unsupported-feature restrictions. Opcode `1` returns Unsupported/error `4`.
+   state, with ESPForge's unsupported-feature restrictions.
    Valid save arguments are checked before USB staging conflicts: opcode `5` returns Busy/error `5` with
    detail `28` while unexpired USB-staged wireless values exist. Opcode `2` also returns Busy/error `5`,
    detail `28` in that case, after validating its arguments and confirmation flag.

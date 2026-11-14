@@ -21,6 +21,15 @@ internal static class StatusEndpoints
     public sealed record CommandResyncRequest(bool Confirm);
     /// <summary>Explicit acknowledgement that the device will reboot and disconnect.</summary>
     public sealed record RebootRequest(bool Confirm);
+    /// <summary>Export raw SD blocks, or confirm the OS has ejected before returning to firmware.</summary>
+    [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+    public sealed record MscRequest(bool? Enabled, bool ConfirmEjected = false);
+    /// <summary>Start authorized temporary-file writes or cancel the admitted run.</summary>
+    [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+    public sealed record BenchmarkRequest(bool? Start, int SizeMib = 0, bool Confirm = false);
+    /// <summary>An additive RGB colour bitmask, with zero meaning Off.</summary>
+    [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+    public sealed record LedRequest([property: JsonNumberHandling(JsonNumberHandling.Strict)] int? Colour);
     /// <summary>Every <c>/api</c> error body, matching the Python server.</summary>
     public sealed record ApiError(string Error);
     /// <summary>Empty success response.</summary>
@@ -142,6 +151,21 @@ internal static class StatusEndpoints
             .WithSummary("Confirm the result of an uncertain HID command")
             .Produces<CommandResyncResponse>(StatusCodes.Status200OK)
             .Errors(CommandErrors);
+        endpoints.MapPost("/api/msc", SetMsc)
+            .WithName("SetUsbStorageOwnership")
+            .WithSummary("Export the SD card or return it after confirmed OS eject")
+            .Produces<EmptyResponse>(StatusCodes.Status200OK)
+            .Errors(CommandErrors);
+        endpoints.MapPost("/api/benchmark", Benchmark)
+            .WithName("StorageBenchmark")
+            .WithSummary("Start or cancel the optional temporary-file benchmark")
+            .Produces<EmptyResponse>(StatusCodes.Status200OK)
+            .Errors(CommandErrors);
+        endpoints.MapPost("/api/led", Led)
+            .WithName("LedColour")
+            .WithSummary("Set the onboard RGB LED colour")
+            .Produces<EmptyResponse>(StatusCodes.Status200OK)
+            .Errors(CommandErrors);
         return endpoints;
     }
 
@@ -175,5 +199,34 @@ internal static class StatusEndpoints
     {
         if (!request.Confirm) throw new ApiInputException("Explicit confirm: true is required");
         return Results.Ok(dashboard.Monitor(board).ResyncCommand(true, cancel));
+    }
+
+    private static IResult Led(LedRequest request, string? board, IDashboardBoards dashboard, CancellationToken cancel)
+    {
+        if (request.Colour is not { } colour || colour is < 0 or > 7)
+            throw new ApiInputException("Expected colour as an RGB bitmask 0..7");
+        dashboard.Monitor(board).SetLedColour(colour, cancel);
+        return Results.Ok(new EmptyResponse());
+    }
+
+    private static IResult Benchmark(BenchmarkRequest request, string? board, IDashboardBoards dashboard,
+        CancellationToken cancel)
+    {
+        if (request.Start is not { } start || (start
+                ? !request.Confirm || request.SizeMib is < 1 or > 1024 : request.SizeMib != 0))
+            throw new ApiInputException("Confirm file writes with 1..1024 MiB, or cancel with zero size");
+        dashboard.Monitor(board).Benchmark(start, request.SizeMib, cancel);
+        return Results.Ok(new EmptyResponse());
+    }
+
+    private static IResult SetMsc(MscRequest request, string? board, IDashboardBoards dashboard,
+        CancellationToken cancel)
+    {
+        if (request.Enabled is not { } enabled)
+            throw new ApiInputException("enabled must be boolean");
+        if (!enabled && !request.ConfirmEjected)
+            throw new ApiInputException("Safely eject the USB drive and supply confirm_ejected: true");
+        dashboard.Monitor(board).SetMsc(enabled, request.ConfirmEjected, cancel);
+        return Results.Ok(new EmptyResponse());
     }
 }

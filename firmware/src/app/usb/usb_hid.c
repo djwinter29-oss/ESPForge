@@ -1,5 +1,5 @@
 /*
- * Vendor HID interface on the native USB OTG port: Feature 1, 2, 12 and 20, Input 3 and 10.
+ * Vendor HID management interface on the native USB OTG port.
  */
 #include "app/espforge.h"
 #include "app/control/control.h"
@@ -31,8 +31,12 @@ static const uint8_t report_descriptor[] = {
 	0x75, 0x08,
 	FEATURE(EF_REPORT_IDENTITY, EF_IDENTITY_SIZE),
 	FEATURE(EF_REPORT_CONFIG, EF_CONFIG_SIZE),
+	FEATURE(EF_REPORT_MEMORY, EF_MEMORY_SIZE),
 	INPUT(EF_REPORT_TELEMETRY, EF_TELEMETRY_SIZE),
 	INPUT(EF_REPORT_STORAGE, EF_STORAGE_SIZE),
+#if EF_ENABLE_STORAGE_BENCHMARK
+	INPUT(EF_REPORT_BENCHMARK, EF_BENCHMARK_SIZE),
+#endif
 	FEATURE(EF_REPORT_CONTROL, EF_CONTROL_SIZE),
 	FEATURE(EF_REPORT_WIRELESS, EF_WIRELESS_SIZE),
 	0xC0,
@@ -42,7 +46,7 @@ USBD_DEVICE_DEFINE(espforge_usbd, DEVICE_DT_GET(DT_NODELABEL(zephyr_udc0)), EF_U
 USBD_DESC_LANG_DEFINE(espforge_lang);
 USBD_DESC_MANUFACTURER_DEFINE(espforge_manufacturer, "djwinter29");
 USBD_DESC_PRODUCT_DEFINE(espforge_product, "ESPForge");
-USBD_DESC_CONFIG_DEFINE(espforge_config_name, "HID");
+USBD_DESC_CONFIG_DEFINE(espforge_config_name, "HID + SD storage");
 USBD_CONFIGURATION_DEFINE(espforge_config, 0, 100, &espforge_config_name);
 
 /* The serial is Report 1's 8-byte UID; Zephyr's hwinfo serial would carry only the 6-byte MAC. */
@@ -64,8 +68,10 @@ static atomic_t in_flight;
 static uint8_t input[1 + EF_STORAGE_SIZE] __aligned(4);
 static uint8_t telemetry_sequence;
 static uint8_t storage_sequence;
+static uint8_t benchmark_sequence;
 static int64_t telemetry_at;
 static int64_t storage_at;
+static int64_t benchmark_at;
 
 static void iface_ready(const struct device *dev, const bool is_ready)
 {
@@ -84,10 +90,16 @@ static int get_report(const struct device *dev, const uint8_t type, const uint8_
 	if (type == HID_REPORT_TYPE_FEATURE) {
 		size = id == EF_REPORT_IDENTITY ? EF_IDENTITY_SIZE :
 		       id == EF_REPORT_CONFIG	? EF_CONFIG_SIZE :
+		       id == EF_REPORT_MEMORY	? EF_MEMORY_SIZE :
 		       id == EF_REPORT_WIRELESS ? EF_WIRELESS_SIZE :
 		       id == EF_REPORT_CONTROL	? EF_CONTROL_SIZE : 0;
 	} else if (type == HID_REPORT_TYPE_INPUT) {
 		size = id == EF_REPORT_TELEMETRY ? EF_TELEMETRY_SIZE : id == EF_REPORT_STORAGE ? EF_STORAGE_SIZE : 0;
+#if EF_ENABLE_STORAGE_BENCHMARK
+		if (id == EF_REPORT_BENCHMARK) {
+			size = EF_BENCHMARK_SIZE;
+		}
+#endif
 	} else {
 		size = 0;
 	}
@@ -103,6 +115,9 @@ static int get_report(const struct device *dev, const uint8_t type, const uint8_
 	case EF_REPORT_CONFIG:
 		ef_config_report(buf + 1);
 		break;
+	case EF_REPORT_MEMORY:
+		ef_memory_report(buf + 1);
+		break;
 	case EF_REPORT_WIRELESS:
 		ef_wireless_report(buf + 1);
 		break;
@@ -110,10 +125,14 @@ static int get_report(const struct device *dev, const uint8_t type, const uint8_
 		ef_lock();
 		ef_control_usb_get(buf + 1);
 		ef_unlock();
+		ef_storage_result_read(buf[2]);
 		break;
 	case EF_REPORT_TELEMETRY:
 		/* GET_REPORT samples carry sequence 0; only published Input reports advance the sequence. */
 		ef_telemetry_report(0, buf + 1);
+		break;
+	case EF_REPORT_BENCHMARK:
+		ef_benchmark_report(0, buf + 1);
 		break;
 	default:
 		ef_storage_report(0, buf + 1);
@@ -164,6 +183,9 @@ static bool submit(uint8_t id)
 	if (id == EF_REPORT_TELEMETRY) {
 		ef_telemetry_report(++telemetry_sequence, input + 1);
 		size = 1 + EF_TELEMETRY_SIZE;
+	} else if (id == EF_REPORT_BENCHMARK) {
+		ef_benchmark_report(++benchmark_sequence, input + 1);
+		size = 1 + EF_BENCHMARK_SIZE;
 	} else {
 		ef_storage_report(++storage_sequence, input + 1);
 		size = 1 + EF_STORAGE_SIZE;
@@ -186,12 +208,28 @@ void ef_usb_poll(void)
 		telemetry_at = now;
 	} else if (now - storage_at >= STORAGE_PERIOD_MS && submit(EF_REPORT_STORAGE)) {
 		storage_at = now;
+	} else if (EF_ENABLE_STORAGE_BENCHMARK && now - benchmark_at >= STORAGE_PERIOD_MS && submit(EF_REPORT_BENCHMARK)) {
+		benchmark_at = now;
 	}
 }
 
 bool ef_usb_configured(void)
 {
 	return atomic_get(&ready) != 0;
+}
+
+int ef_storage_usb_refresh(void)
+{
+	int err = usbd_disable(&espforge_usbd);
+
+	if (err == 0) {
+		k_sleep(K_MSEC(250));
+		err = usbd_enable(&espforge_usbd);
+	}
+	if (err != 0) {
+		LOG_ERR("USB storage refresh failed: %d", err);
+	}
+	return err;
 }
 
 int ef_usb_init(void)

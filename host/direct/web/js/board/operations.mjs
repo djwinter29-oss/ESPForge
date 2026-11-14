@@ -74,6 +74,31 @@ export class Operations {
     return this.session.command(OP.REBOOT, { flags: 1 });
   }
 
+  async setMsc(enabled, confirmEjected = false) {
+    this.require("msc");
+    requireValid(typeof enabled === "boolean" && typeof confirmEjected === "boolean"
+      && (enabled || confirmEjected), "command-arguments");
+    if (enabled && !this.session.state.memory?.msc?.enabled && !this.session.state.memory?.initialized)
+      throw new BoardError(REASON.COMMAND_BLOCKED);
+    return this.session.command(OP.MSC, { flags: enabled ? 0 : 1, args: [Number(enabled)] });
+  }
+
+  async setLedColour(colour) {
+    requireValid(Number.isInteger(colour) && colour >= 0 && colour <= 7, "command-arguments");
+    this.require("led");
+    return this.session.command(OP.LED, { args: [colour] });
+  }
+
+  async benchmark(start, sizeMib = 0, confirmed = false) {
+    requireValid(typeof start === "boolean" && Number.isInteger(sizeMib)
+      && (start ? sizeMib >= 1 && sizeMib <= 1024 && confirmed === true : sizeMib === 0), "command-arguments");
+    this.require(start ? "benchmark" : "benchmark-cancel");
+    const args = new Uint8Array(5);
+    args[0] = Number(start);
+    new DataView(args.buffer).setUint32(1, sizeMib, true);
+    return this.session.command(OP.BENCHMARK, { args: [...args] });
+  }
+
   /** @brief Save next-boot settings; throws on refusal or failure, and marks the board as rebooting on success. */
   async saveSettings(settings) {
     requireValid(validSettings(settings), "boot-settings");

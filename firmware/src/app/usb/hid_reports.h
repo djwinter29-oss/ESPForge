@@ -9,6 +9,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "app/storage/benchmark.h"
 
 #define EF_REPORT_IDENTITY 1u
 #define EF_REPORT_CONFIG 2u
@@ -16,13 +17,21 @@
 #define EF_REPORT_STORAGE 10u
 #define EF_REPORT_BENCHMARK 11u
 #define EF_REPORT_WIRELESS 12u
+/** Read-only boot memory inventory Feature report. */
+#define EF_REPORT_MEMORY 13u
 #define EF_REPORT_CONTROL 20u
 
 #define EF_IDENTITY_SIZE 26u
 #define EF_CONFIG_SIZE 17u
 #define EF_TELEMETRY_SIZE 22u
 #define EF_STORAGE_SIZE 34u
+/** Benchmark Input payload size, excluding report ID. */
+#define EF_BENCHMARK_SIZE 32u
 #define EF_WIRELESS_SIZE 48u
+/** Memory inventory payload size, excluding report ID. */
+#define EF_MEMORY_SIZE 16u
+/** Identity extension flag: Report 13 memory inventory is available. */
+#define EF_EXT_MEMORY 0x01u
 #define EF_CONTROL_SIZE 68u
 #define EF_BLE_CONTROL_SIZE 9u
 
@@ -33,14 +42,27 @@
 #define EF_CAP_LED 0x01u
 #define EF_CAP_REBOOT 0x02u
 #define EF_CAP_SETTINGS 0x04u
+/** SD memory-card transport over SPI, mutually exclusive with native SDMMC. */
+#define EF_CAP_SPI 0x08u
 #define EF_CAP_SDMMC 0x10u
+/** Build-selected storage transport; portable tests default to native SDMMC. */
+#ifndef EF_STORAGE_SPI
+#define EF_STORAGE_SPI 0
+#endif
+/** Exactly one storage capability is advertised by each firmware image. */
+#define EF_CAP_STORAGE (EF_STORAGE_SPI ? EF_CAP_SPI : EF_CAP_SDMMC)
+/** Optional temporary-file benchmark capability. */
+#define EF_CAP_BENCHMARK 0x20u
 #define EF_CAP_WIRELESS 0x80u
-#define EF_CAPABILITIES (EF_CAP_REBOOT | EF_CAP_SETTINGS | EF_CAP_SDMMC | EF_CAP_WIRELESS)
+#define EF_CAPABILITIES (EF_CAP_LED | EF_CAP_REBOOT | EF_CAP_SETTINGS | EF_CAP_STORAGE | EF_CAP_WIRELESS | \
+			(EF_ENABLE_STORAGE_BENCHMARK ? EF_CAP_BENCHMARK : 0))
 
 #define EF_UID_SIZE 8u
 #define EF_SSID_MAX 32u
 #define EF_LOAD_UNAVAILABLE 0xFFFFu
 #define EF_GPIO_UNASSIGNED 0xFFu
+/** Report 2 board flag: native USB mass storage with explicit owner handoff is available. */
+#define EF_CONFIG_FLAG_MSC 0x40u
 
 typedef struct {
 	uint8_t uid[EF_UID_SIZE];
@@ -49,10 +71,26 @@ typedef struct {
 	uint32_t ram_reserved_bytes;
 } ef_identity_t;
 
+/** Boot-sampled physical capacities and linker-reserved external RAM, not live heap usage. */
 typedef struct {
-	uint16_t stored_clock_mhz;
+	bool psram_available; /**< PSRAM initialization succeeded. */
+	bool flash_available; /**< Module flash capacity was read successfully. */
+	uint32_t psram_total_bytes; /**< Detected PSRAM chip capacity. */
+	uint32_t psram_reserved_bytes; /**< Linked PSRAM regions, including permanent heap pools. */
+	uint32_t flash_total_bytes; /**< Detected module SPI flash capacity; not free filesystem space. */
+} ef_memory_inventory_t;
+
+/** Saved configuration and hardware pin allocation. */
+typedef struct {
+	uint16_t stored_clock_mhz; /**< Next-boot clock profile in MHz; zero selects the build default. */
 	uint8_t stored_radios; /**< EF_WIRELESS_WIFI / EF_WIRELESS_BLE bits. */
-	uint8_t reset_cause;
+	uint8_t reset_cause; /**< Boot-sampled reset reason in the management wire enum. */
+	bool card_detect_available; /**< A physical card-present GPIO is allocated. */
+	uint8_t card_detect_gpio; /**< Board card-present input, valid when allocated. */
+	bool msc_supported; /**< Native USB mass-storage class is enabled. */
+	bool led_available; /**< Addressable RGB LED is allocated in hardware configuration. */
+	uint8_t led_gpio; /**< LED data pin, valid when allocated. */
+	uint8_t storage_gpios[6]; /**< Native CLK/CMD/DAT0-DAT3 or SPI SCK/MOSI/MISO/CS/255/255. */
 } ef_config_t;
 
 typedef struct {
@@ -63,15 +101,26 @@ typedef struct {
 	uint32_t system_clock_hz;
 	uint8_t sequence;
 	bool usb_configured;
+	bool led_available; /**< Last LED transmission succeeded. */
+	uint8_t led_colour; /**< Last transmitted RGB bitmask: red=1, green=2, blue=4. */
 } ef_telemetry_t;
 
+/** Coherent storage snapshot; invalid samples carry no live SD fields on the wire. */
 typedef struct {
-	uint8_t sequence;
-	bool initialized;
-	bool capacity_valid;
-	uint32_t bus_clock_hz;
-	uint32_t block_count;
-	uint8_t filesystem_format;
+	uint8_t sequence; /**< Published Input sequence. */
+	bool configured; /**< Card detection and storage service are configured. */
+	bool presence_known; /**< Debounced presence is known. */
+	bool present; /**< Debounced card-present state. */
+	bool sample_valid; /**< Firmware-owned, non-busy SD sample is available. */
+	bool initialized; /**< The current medium was initialized successfully. */
+	bool capacity_valid; /**< Sector count belongs to the current medium. */
+	uint32_t bus_clock_hz; /**< Configured bus ceiling, not a measured clock. */
+	uint32_t block_count; /**< Whole-card capacity in 512-byte sectors. */
+	uint8_t filesystem_format; /**< Mounted FAT format, or zero when unknown. */
+	bool msc_enabled; /**< USB exclusively owns the raw medium. */
+	bool msc_transition_pending; /**< An admitted ownership handoff is pending. */
+	bool msc_request_rejected; /**< Last admitted handoff failed or was cancelled. */
+	bool busy; /**< Storage worker is manipulating the medium; not encoded separately. */
 } ef_storage_t;
 
 typedef struct {
@@ -90,9 +139,13 @@ typedef struct {
 } ef_wireless_t;
 
 void ef_report_identity(const ef_identity_t *identity, uint8_t out[EF_IDENTITY_SIZE]);
+/** Encode the boot memory inventory; unavailable components have zero wire values. */
+void ef_report_memory(const ef_memory_inventory_t *memory, uint8_t out[EF_MEMORY_SIZE]);
 void ef_report_config(const ef_config_t *config, uint8_t out[EF_CONFIG_SIZE]);
 void ef_report_telemetry(const ef_telemetry_t *telemetry, uint8_t out[EF_TELEMETRY_SIZE]);
 void ef_report_storage(const ef_storage_t *storage, uint8_t out[EF_STORAGE_SIZE]);
+/** Encode a coherent benchmark snapshot. */
+void ef_report_benchmark(const ef_benchmark_t *status, uint8_t out[EF_BENCHMARK_SIZE]);
 void ef_report_wireless(const ef_wireless_t *wireless, uint8_t out[EF_WIRELESS_SIZE]);
 
 /** Format the UID as the 16-character uppercase hex USB serial string, NUL-terminated. */

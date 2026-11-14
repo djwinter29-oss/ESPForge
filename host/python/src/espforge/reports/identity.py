@@ -9,7 +9,7 @@ import struct
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .models import BoardConfiguration, HardwareIdentity, SupportedHardwareIdentity
+    from .models import BoardConfiguration, HardwareIdentity, MemoryInventory, SupportedHardwareIdentity
 
 from .common import (
     BOARD_NAMES,
@@ -22,12 +22,16 @@ from .common import (
     CAP_REBOOT,
     CAP_SAVE_SETTINGS,
     CAP_SELF_TEST,
+    CAP_SPI,
+    CAP_SDMMC,
     CAP_WIRELESS,
     CONFIGURATION_PAYLOAD_SIZE,
     CONFIGURATION_REPORT_ID,
     IDENTITY_PAYLOAD_SIZE,
     IDENTITY_REPORT_ID,
     MCU_NAMES,
+    MEMORY_REPORT_ID,
+    MEMORY_PAYLOAD_SIZE,
     PRODUCT_NAMES,
     REPORT_VERSION,
 )
@@ -58,7 +62,10 @@ def parse_identity_report(report: bytes | bytearray | list[int]) -> HardwareIden
     firmware = tuple(payload[11:14])
     mcu_id, board_model, _, capabilities = payload[14:18]
     ram_total, ram_reserved = struct.unpack_from("<II", payload, 18)
-    if capabilities != ESPFORGE_CAPABILITIES:
+    transport = capabilities & (CAP_SPI | CAP_SDMMC)
+    if (transport not in (CAP_SPI, CAP_SDMMC)
+            or capabilities & ~(CAP_LED | CAP_SELF_TEST | CAP_SPI | CAP_SDMMC)
+            != ESPFORGE_CAPABILITIES & ~(CAP_SPI | CAP_SDMMC)):
         raise ValueError("HID identity capabilities do not match the ESPForge profile")
     if board_model == 1 and mcu_id != ESP32S3_MCU:
         raise ValueError("board model and MCU disagree in HID identity report")
@@ -83,11 +90,30 @@ def parse_identity_report(report: bytes | bytearray | list[int]) -> HardwareIden
         "led_available": bool(capabilities & CAP_LED),
         "reboot_available": bool(capabilities & CAP_REBOOT),
         "settings_supported": bool(capabilities & CAP_SAVE_SETTINGS),
-        "storage_transport": "sdmmc",
+        "storage_transport": "spi" if transport == CAP_SPI else "sdmmc",
         "self_test_supported": bool(capabilities & CAP_SELF_TEST),
         "wireless_supported": bool(capabilities & CAP_WIRELESS),
         "ram_total_bytes": ram_total,
         "ram_reserved_bytes": ram_reserved,
+        "memory_report_supported": bool(payload[16] & 1),
+        "psram_total_bytes": None,
+        "psram_reserved_bytes": None,
+        "flash_total_bytes": None,
+    }
+
+def parse_memory_inventory_report(report: bytes | bytearray | list[int]) -> MemoryInventory:
+    """Decode the advertised read-only Feature 13; unavailable components become None."""
+    payload = _feature_payload(report, MEMORY_REPORT_ID, MEMORY_PAYLOAD_SIZE)
+    flags = payload[1]
+    psram_total, psram_reserved, flash_total = struct.unpack_from("<III", payload, 4)
+    if (payload[0] != REPORT_VERSION or flags & ~3 or any(payload[2:4])
+            or (not psram_total or psram_reserved > psram_total if flags & 1 else psram_total or psram_reserved)
+            or (not flash_total if flags & 2 else flash_total)):
+        raise ValueError("invalid HID memory inventory")
+    return {
+        "psram_total_bytes": psram_total if flags & 1 else None,
+        "psram_reserved_bytes": psram_reserved if flags & 1 else None,
+        "flash_total_bytes": flash_total if flags & 2 else None,
     }
 
 def parse_configuration_report(
@@ -105,9 +131,9 @@ def parse_configuration_report(
         raise ValueError(f"unsupported HID board configuration report version {version}")
     if clock_profile not in CLOCK_PROFILES_MHZ or sd_profile != 0:
         raise ValueError("invalid stored board configuration profile")
-    if flags & ~0x3F:
+    if flags & ~0x7F:
         raise ValueError("unknown board configuration flags")
-    if flags & 0x23 or not flags & 0x04:
+    if flags & 0x20 or not flags & 0x04:
         raise ValueError("board configuration flags do not match the ESPForge profile")
     radios = flags >> 3 & 3
     if flags & 0x38 and not identity.get("wireless_supported"):
@@ -129,8 +155,10 @@ def parse_configuration_report(
     if flags & 0x04 and uart_index == 255:
         raise ValueError("enabled monitor UART is unavailable")
     transport = identity["storage_transport"]
-    if any(gpio == 255 for gpio in storage_gpios):
-        raise ValueError("invalid 4-bit SDMMC storage GPIO layout")
+    assigned_count = 4 if transport == "spi" else 6
+    if (any(gpio == 255 for gpio in storage_gpios[:assigned_count])
+            or any(gpio != 255 for gpio in storage_gpios[assigned_count:])):
+        raise ValueError("storage GPIO layout disagrees with the selected transport")
     board_model = identity["board_model_id"]
     mcu_id = identity["mcu_id"]
     if mcu_id == ESP32S3_MCU or board_model == 1:

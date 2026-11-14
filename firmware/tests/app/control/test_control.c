@@ -43,6 +43,7 @@ void setUp(void)
 	ef_control_init();
 	ef_wifi_test_active_IgnoreAndReturn(false);
 	ef_wifi_scan_active_IgnoreAndReturn(false);
+	ef_platform_storage_busy_IgnoreAndReturn(false);
 }
 
 void tearDown(void)
@@ -123,10 +124,76 @@ void test_unassigned_and_unsupported_opcodes(void)
 {
 	assert_result(usb(0, 0, NULL, 0, 0), EF_STATUS_UNSUPPORTED, EF_ERROR_OPCODE, 0);
 	assert_result(usb(14, 0, NULL, 0, 0), EF_STATUS_UNSUPPORTED, EF_ERROR_OPCODE, 0);
-	assert_result(usb(EF_OP_LED, 0, NULL, 0, 0), EF_STATUS_UNSUPPORTED, EF_ERROR_CAPABILITY, 0);
-	assert_result(usb(EF_OP_MSC, 0, NULL, 0, 0), EF_STATUS_UNSUPPORTED, EF_ERROR_CAPABILITY, 0);
+#if !EF_ENABLE_STORAGE_BENCHMARK
 	assert_result(usb(EF_OP_BENCHMARK, 0, NULL, 0, 0), EF_STATUS_UNSUPPORTED, EF_ERROR_CAPABILITY, 0);
+#endif
 	assert_result(usb(EF_OP_TCP_PROOF, 0, NULL, 0, 0), EF_STATUS_UNSUPPORTED, EF_ERROR_CAPABILITY, 0);
+}
+
+void test_led_admission_and_invalid_arguments(void)
+{
+	const uint8_t blue = 4;
+	const uint8_t invalid = 8;
+	const uint8_t tail[] = {1, 1};
+
+	ef_platform_led_request_ExpectAndReturn(blue, 0);
+	assert_result(usb(EF_OP_LED, 0, &blue, 1, 0), EF_STATUS_COMPLETED, EF_ERROR_NONE, 0);
+	ef_platform_led_request_ExpectAndReturn(blue, -EBUSY);
+	assert_result(usb(EF_OP_LED, 0, &blue, 1, 0), EF_STATUS_BUSY, EF_ERROR_BUSY, 0);
+	ef_platform_led_request_ExpectAndReturn(blue, -ENODEV);
+	assert_result(usb(EF_OP_LED, 0, &blue, 1, 0), EF_STATUS_FAILED, EF_ERROR_FAILED, 0);
+	assert_result(usb(EF_OP_LED, 0, &invalid, 1, 0), EF_STATUS_INVALID, EF_ERROR_ARGUMENT, 0);
+	assert_result(usb(EF_OP_LED, 1, &blue, 1, 0), EF_STATUS_INVALID, EF_ERROR_MALFORMED, 0);
+	assert_result(usb(EF_OP_LED, 0, tail, sizeof(tail), 0), EF_STATUS_INVALID, EF_ERROR_MALFORMED, 0);
+}
+
+void test_benchmark_admission_size_and_transport_rules(void)
+{
+#if EF_ENABLE_STORAGE_BENCHMARK
+	const uint8_t start[5] = {1, 32, 0, 0, 0};
+	const uint8_t invalid[5] = {1, 1, 4, 0, 0};
+
+	ef_platform_benchmark_request_ExpectAndReturn(true, 32, 0);
+	assert_result(usb(EF_OP_BENCHMARK, 0, start, sizeof(start), 0), EF_STATUS_COMPLETED, EF_ERROR_NONE, 0);
+	ef_platform_benchmark_request_ExpectAndReturn(false, 0, 0);
+	assert_result(usb(EF_OP_BENCHMARK, 0, NULL, 0, 0), EF_STATUS_COMPLETED, EF_ERROR_NONE, 0);
+	assert_result(usb(EF_OP_BENCHMARK, 0, invalid, sizeof(invalid), 0),
+		      EF_STATUS_INVALID, EF_ERROR_ARGUMENT, 3);
+	assert_result(usb(EF_OP_BENCHMARK, 1, start, sizeof(start), 0),
+		      EF_STATUS_INVALID, EF_ERROR_MALFORMED, 0);
+	ef_platform_benchmark_request_ExpectAndReturn(true, 32, 2);
+	assert_result(usb(EF_OP_BENCHMARK, 0, start, sizeof(start), 0), EF_STATUS_BUSY, EF_ERROR_BUSY, 2);
+	ef_platform_benchmark_request_ExpectAndReturn(true, 32, 4);
+	assert_result(usb(EF_OP_BENCHMARK, 0, start, sizeof(start), 0), EF_STATUS_FAILED, EF_ERROR_FAILED, 4);
+#endif
+	assert_result(ble(EF_OP_BENCHMARK, 0, NULL, 0), EF_STATUS_UNSUPPORTED, EF_ERROR_CAPABILITY, 0);
+}
+
+void test_msc_requires_confirmed_return_and_rejects_malformed_or_unsafe_actions(void)
+{
+	const uint8_t enable[1] = {1};
+	const uint8_t invalid[1] = {2};
+
+	assert_result(usb(EF_OP_MSC, 0, NULL, 0, 0), EF_STATUS_INVALID, EF_ERROR_CONFIRMATION, 0);
+	assert_result(usb(EF_OP_MSC, 1, enable, 1, 0), EF_STATUS_INVALID, EF_ERROR_MALFORMED, 0);
+	assert_result(usb(EF_OP_MSC, 1, invalid, 1, 0), EF_STATUS_INVALID, EF_ERROR_ARGUMENT, 0);
+	ef_platform_storage_request_ExpectAnyArgsAndReturn(0);
+	assert_result(usb(EF_OP_MSC, 0, enable, 1, 0), EF_STATUS_COMPLETED, EF_ERROR_NONE, 0);
+	ef_platform_storage_request_ExpectAnyArgsAndReturn(-EBUSY);
+	assert_result(usb(EF_OP_MSC, 1, NULL, 0, 0), EF_STATUS_BUSY, EF_ERROR_BUSY, 0);
+	assert_result(ble(EF_OP_MSC, 0, enable, 0), EF_STATUS_UNSUPPORTED, EF_ERROR_CAPABILITY, 0);
+}
+
+void test_reboot_and_save_do_not_run_while_storage_is_busy_or_usb_owned(void)
+{
+	const uint8_t settings[4] = {240, 0, 0, 3};
+
+	ef_platform_storage_busy_StopIgnore();
+	ef_platform_storage_busy_ExpectAndReturn(true);
+	ef_platform_storage_busy_ExpectAndReturn(true);
+	assert_result(usb(EF_OP_REBOOT, 1, NULL, 0, 0), EF_STATUS_BUSY, EF_ERROR_BUSY, 1);
+	assert_result(usb(EF_OP_SAVE, 0, settings, sizeof(settings), 0), EF_STATUS_BUSY, EF_ERROR_BUSY, 1);
+	TEST_ASSERT_EQUAL_INT(0, write_calls);
 }
 
 void test_reboot_requires_confirmation_and_clean_args(void)
@@ -357,7 +424,8 @@ void test_ble_rejects_usb_only_opcodes(void)
 {
 	assert_result(ble(EF_OP_STAGE_SSID, 0, NULL, 0), EF_STATUS_UNSUPPORTED, EF_ERROR_CAPABILITY, 0);
 	assert_result(ble(EF_OP_SCAN, 0, NULL, 0), EF_STATUS_UNSUPPORTED, EF_ERROR_CAPABILITY, 0);
-	assert_result(ble(EF_OP_LED, 0, NULL, 0), EF_STATUS_UNSUPPORTED, EF_ERROR_CAPABILITY, 0);
+	ef_platform_led_request_ExpectAndReturn(0, 0);
+	assert_result(ble(EF_OP_LED, 0, NULL, 0), EF_STATUS_COMPLETED, EF_ERROR_NONE, 0);
 	assert_result(ble(14, 0, NULL, 0), EF_STATUS_UNSUPPORTED, EF_ERROR_OPCODE, 0);
 }
 

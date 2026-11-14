@@ -84,6 +84,7 @@ test("Direct UI preserves unsaved profiles, and separates confirmed reboot", asy
   const commands = [];
   globalThis.document = document;
   globalThis.window = { confirm() { assert.fail("Use styled dialogs, not browser confirmations"); } };
+  globalThis.location = { hostname: "example.test" };
   Object.defineProperty(globalThis, "navigator", { configurable: true, value: { hid: new EventTarget() } });
   Object.defineProperty(globalThis, "isSecureContext", { configurable: true, value: true });
   Object.defineProperty(globalThis, "sessionStorage", { configurable: true, value: memorySessionStorage() });

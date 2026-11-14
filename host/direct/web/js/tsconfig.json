@@ -10,6 +10,7 @@
     "target": "ES2022"
   },
   "files": [
+    "ui/console-target.mjs", "ui/console-terminal.mjs", "ui/console-session.mjs", "console.mjs",
     "protocol/constants.mjs", "protocol/codec.mjs", "state/reducer.mjs", "state/selectors.mjs", "state/store.mjs",
     "timers.mjs", "transport/transport.mjs", "transport/hid.mjs", "transport/ble.mjs",
     "protocol/opcodes.mjs", "state/errors.mjs", "board/connection.mjs",

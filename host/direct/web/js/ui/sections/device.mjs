@@ -27,8 +27,17 @@ export function deriveDeviceViewModel(state, dashboard = deriveDashboardViewMode
   const config = state.settings;
   const ramUsed = hardware?.ram_reserved_bytes;
   const ramTotal = hardware?.ram_total_bytes;
-  const signals = ["CLK", "CMD", "DAT0", "DAT1", "DAT2", "DAT3"];
+  const psramTotal = hardware?.psram_total_bytes;
+  const psramReserved = hardware?.psram_reserved_bytes;
+  const flashTotal = hardware?.flash_total_bytes;
+  const transport = hardware?.transport === "spi" ? "SPI" : "SDMMC";
+  const signals = transport === "SPI" ? ["SCK", "MOSI", "MISO", "CS"] : ["CLK", "CMD", "DAT0", "DAT1", "DAT2", "DAT3"];
   const pin = value => !config ? "--" : value === 255 || value == null ? "Unassigned" : `GPIO${value}`;
+  const storagePins = signals.map((_, index) => pin(config?.storage_gpios?.[index]));
+  if (config?.card_detect_gpio != null && config.card_detect_gpio !== 255) {
+    signals.push("Card detect");
+    storagePins.push(pin(config.card_detect_gpio));
+  }
   return {
     ...dashboard,
     active: Boolean(state.connected && runtime),
@@ -37,30 +46,36 @@ export function deriveDeviceViewModel(state, dashboard = deriveDashboardViewMode
       label, hidden: state.freshness?.[id] === "fresh", text: `${label}: ${state.freshness?.[id] ?? "unavailable"}`,
     })),
     pins: {
-      signature: JSON.stringify([config?.monitor_uart_index, config?.monitor_uart_tx_gpio,
-        config?.monitor_uart_rx_gpio, config?.storage_gpios, config?.reset_cause]),
+      signature: JSON.stringify([transport, config?.monitor_uart_index, config?.monitor_uart_tx_gpio,
+        config?.monitor_uart_rx_gpio, config?.storage_gpios, config?.card_detect_gpio, config?.reset_cause]),
       uart: [["TX", "RX"], [pin(config?.monitor_uart_tx_gpio), pin(config?.monitor_uart_rx_gpio)]],
-      storage: [signals, signals.map((_, index) => pin(config?.storage_gpios?.[index]))],
+      storage: [signals, storagePins],
     },
     text: {
-      "product-name": hardware ? `${hardware.product_name} (SDMMC)` : "--",
+      "product-name": hardware ? `${hardware.product_name} (${transport})` : "--",
       "board-model": hardware ? `${hardware.board_name ?? unknown("board", hardware.board_model)} `
         + `(${hardware.mcu ?? unknown("MCU", hardware.mcu_id)})` : "--",
       "firmware-version": hardware?.firmware_version ?? "Unknown",
       "identity-clock": runtime
         ? `${(runtime.system_clock_hz / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: 3 })} MHz` : "--",
-      "cpu-usage-core0": runtime?.cpu_usage_core0_basis_points == null
-        ? "--" : `${(runtime.cpu_usage_core0_basis_points / 100).toFixed(1)}%`,
+      "cpu-usage-core0": [runtime?.cpu_usage_core0_basis_points, runtime?.cpu_usage_core1_basis_points]
+        .map(load => load == null ? "--" : `${(load / 100).toFixed(1)}%`).join(" / "),
       "ram-usage": Number.isSafeInteger(ramTotal) && ramTotal > 0 && Number.isSafeInteger(ramUsed)
         && ramUsed >= 0 && ramUsed <= ramTotal
         ? `${(ramUsed / 1024).toFixed(1)} / ${(ramTotal / 1024).toFixed(0)} KiB`
           + ` (${(ramUsed * 100 / ramTotal).toFixed(1)}%)` : "--",
       serial: hardware?.serial_number || "--",
+      "psram-usage": Number.isSafeInteger(psramTotal) && psramTotal > 0 && Number.isSafeInteger(psramReserved)
+        && psramReserved >= 0 && psramReserved <= psramTotal
+        ? `${(psramReserved / 1048576).toFixed(1)} / ${(psramTotal / 1048576).toFixed(1)} MiB`
+          + ` (${(psramReserved * 100 / psramTotal).toFixed(1)}%)` : "--",
+      "flash-capacity": Number.isSafeInteger(flashTotal) && flashTotal > 0
+        ? `${(flashTotal / 1048576).toFixed(1)} MiB` : "--",
       uptime: runtime ? uptimeLabel(runtime.uptime_ms) : "--",
       temperature: runtime?.temperature_valid ? `${(runtime.temperature_centidegrees / 100).toFixed(2)} °C` : "--",
       "board-uart-title": config && config.monitor_uart_index !== 255
         ? `Monitor UART${config.monitor_uart_index}` : "Monitor UART",
-      "board-storage-title": config ? "Storage (SDMMC)" : "Storage",
+      "board-storage-title": config ? `Storage (${transport})` : "Storage",
       "board-reset-cause": config
         ? ["Unknown", "Power-on", "Watchdog", "Software request"][config.reset_cause]
           ?? `Unassigned (${config.reset_cause})` : "--",

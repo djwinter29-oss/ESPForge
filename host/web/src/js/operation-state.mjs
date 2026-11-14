@@ -12,8 +12,14 @@
  * @property {boolean} [reboot_pending]
  * @property {boolean} [telemetry_stale]
  * @property {boolean} [storage_stale]
+ * @property {boolean} [telemetry_stale]
+ * @property {{led_available?: boolean, led_colour?: number | null} | null} [runtime]
+ * @property {boolean} [self_test_stale]
+ * @property {{active?: boolean} | null} [self_test]
  * @property {{capabilities?: number} | null} [hardware]
  * @property {{transition_pending?: boolean, enabled?: boolean} | null} [msc]
+ * @property {{board_flags?: number} | null} [board_configuration]
+ * @property {{sample_valid?: boolean, initialized?: boolean} | null} [memory]
  * @property {(import("./dashboard-api.mjs").BootSettings & {tcp_cli_enabled?: boolean}) | null} [settings]
  * @property {boolean} [settings_supported]
  * @property {string | null} [settings_message]
@@ -45,6 +51,7 @@ export const CAPABILITY_REBOOT = 2;
 export const CAPABILITY_SETTINGS = 4;
 export const CAPABILITY_SPI = 8;
 export const CAPABILITY_SDMMC = 16;
+export const CAPABILITY_BENCHMARK = 32;
 export const CAPABILITY_WIRELESS = 128;
 
 /** Fresh report evidence may settle readback-based uncertainty, but never a resync-only obligation.
@@ -90,7 +97,7 @@ export function observeCommandStatus(state, snapshot) {
   return settled;
 }
 
-/** Terminal acknowledgement for reboot (2), save (5) and Wi-Fi cancel (10); other opcodes are Unsupported.
+/** Terminal acknowledgement and lifecycle effects; MSC completion acknowledges admission, not settled ownership.
  * @param {import("./dashboard-api.mjs").ControlResult} result
  */
 export function commandEffects(result) {
@@ -119,13 +126,21 @@ export function operationState(snapshot, activity = {}) {
   const wirelessStatusReady = Boolean(snapshot?.wireless && !snapshot.wireless.stale && !snapshot.wireless_error);
   const wirelessBlockReason = snapshot?.connected && capabilities & CAPABILITY_WIRELESS
     && !wirelessStatusReady ? "Waiting for fresh wireless configuration before editing radios." : null;
-  // ESPForge has no USB drive, but both hosts still require fresh Report 10 before a reboot or save.
-  const storageStatusReady = Boolean(snapshot?.msc && !snapshot.storage_stale);
-  const storageCommandPending = !storageStatusReady || Boolean(snapshot?.msc?.enabled || snapshot?.msc?.transition_pending);
+  const storageStatusReady = Boolean(snapshot?.msc && !snapshot.storage_stale
+    && (snapshot.memory?.sample_valid !== false || snapshot.msc.enabled));
+  const benchmarkSupported = Boolean(capabilities & CAPABILITY_BENCHMARK);
+  const benchmarkFresh = Boolean(snapshot?.self_test && snapshot.self_test_stale === false);
+  const benchmarkPending = benchmarkSupported && (!benchmarkFresh || snapshot?.self_test?.active);
+  const storageCommandPending = !storageStatusReady || Boolean(snapshot?.msc?.enabled
+    || snapshot?.msc?.transition_pending || benchmarkPending);
   const storageBlockReason = !snapshot?.connected ? null
     : !snapshot.msc || snapshot.storage_stale ? "Waiting for fresh storage status."
-      : snapshot.msc.enabled || snapshot.msc.transition_pending ? "Storage reports an unexpected USB-drive state."
+      : snapshot.msc.enabled ? "Safely eject the USB drive, then return the card to firmware."
+        : snapshot.msc.transition_pending || !storageStatusReady ? "Waiting for storage to become idle."
+          : benchmarkPending ? benchmarkFresh ? "Waiting for the storage benchmark to finish."
+            : "Waiting for fresh benchmark status."
         : null;
+  const mscSupported = Boolean((snapshot?.board_configuration?.board_flags ?? 0) & 64);
   const busy = Boolean(activity.resyncing || activity.saving || activity.wirelessBusy || rebootPending
     || outcomeUncertain || cleanupRequired || activity.statusFailed || snapshot?.busy);
   /** @type {"resync" | "cleanup" | null} */
@@ -145,7 +160,11 @@ export function operationState(snapshot, activity = {}) {
               : !activity.settingsDirty && !activity.wirelessDirty ? "No unsaved settings changes." : null);
   const settingsBusy = Boolean(activity.resyncing || activity.saving || activity.wirelessInFlight || rebootPending
     || outcomeUncertain || cleanupRequired || activity.statusFailed);
+  const canManageMsc = Boolean(snapshot?.connected && mscSupported && storageStatusReady
+    && !snapshot.msc?.transition_pending && !benchmarkPending && !busy && !settingsBusy);
   return {
+    canSetLed: Boolean(snapshot?.connected && capabilities & 1 && snapshot.telemetry_stale === false
+      && snapshot.runtime?.led_available && Number.isInteger(snapshot.runtime.led_colour) && !busy && !settingsBusy),
     outcomeUncertain, rebootPending, storageCommandPending, storageStatusReady,
     storageBlockReason, wirelessStatusReady, wirelessBlockReason, busy,
     canProvisionWireless, canSaveSettings: saveBlockReason === null, saveBlockReason,
@@ -154,6 +173,14 @@ export function operationState(snapshot, activity = {}) {
     canRecover: Boolean(recovery && snapshot?.connected && !activity.resyncing && !activity.statusFailed
       && !activity.saving && !activity.wirelessInFlight),
     settingsBusy,
+    mscSupported,
+    benchmarkSupported,
+    canStartBenchmark: Boolean(snapshot?.connected && benchmarkSupported && benchmarkFresh && !settingsBusy
+      && !busy && !storageCommandPending && snapshot?.memory?.initialized),
+    canCancelBenchmark: Boolean(snapshot?.connected && benchmarkSupported && benchmarkFresh && !settingsBusy
+      && !busy && snapshot?.self_test?.active),
+    canEnableMsc: canManageMsc && !snapshot?.msc?.enabled && snapshot?.memory?.initialized === true,
+    canReturnMsc: canManageMsc && snapshot?.msc?.enabled === true,
     boardSelectionBusy: Boolean(activity.resyncing || activity.scanning || activity.saving || activity.wirelessBusy),
   };
 }

@@ -99,13 +99,13 @@ def check_native_drafts(page: Page, origin: str, host_name: str) -> None:
             page.wait_for_function(
                 "({radio, value}) => document.querySelector('#settings-' + radio).value === value",
                 arg={"radio": radio, "value": value})
-            configure = page.locator(f"#{radio}-configure")
+            configure = page.locator(f"#settings-{radio}")
             configure.focus()
-            configure.press("Enter")
+            configure.select_option("configure")
             assert page.locator(f"#{radio}-dialog").evaluate("(dialog) => dialog.open")
             page.keyboard.press("Escape")
             page.wait_for_function("(radio) => !document.querySelector('#' + radio + '-dialog').open", arg=radio)
-            assert configure.evaluate("(button) => button === document.activeElement")
+            assert configure.evaluate("(select) => select === document.activeElement")
             assert page.locator(f"#settings-{radio}").input_value() == value
             assert page.locator("#settings-save").is_disabled(), "Configure manufactured an edit"
             page.evaluate("document.dispatchEvent(new Event('visibilitychange'))")
@@ -163,14 +163,14 @@ def check_native_transitions(page: Page, origin: str, host_name: str) -> None:
 
     for conflicting in (False, True):
         page.goto(origin)
-        page.wait_for_function("!document.querySelector('#wifi-configure').disabled")
+        page.wait_for_function("!document.querySelector('#settings-wifi').disabled")
         page.select_option("#settings-clock", "80")
-        page.locator("#wifi-configure").click()
+        page.locator("#settings-wifi").select_option("configure")
         page.locator("#wifi-ssid").fill("temporary-network")
         page.locator("#wifi-connect").click()
         page.wait_for_function("!document.querySelector('#wifi-dialog').open")
         if conflicting:
-            page.locator("#ble-configure").click()
+            page.locator("#settings-ble").select_option("configure")
             page.locator("#ble-generate").click()
             page.locator("#ble-cancel").click()
             page.evaluate("""() => {
@@ -183,7 +183,7 @@ def check_native_transitions(page: Page, origin: str, host_name: str) -> None:
             assert page.locator("#settings-save").is_disabled()
             page.locator("#wireless-discard").click()
         else:
-            page.locator("#wifi-configure").click()
+            page.locator("#settings-wifi").select_option("configure")
             page.locator("#wifi-cancel").click()
         page.wait_for_function("document.querySelector('#wifi-cancel').textContent === 'Retry clearing test'")
         assert page.locator("#wifi-dialog").evaluate("(dialog) => dialog.open")
@@ -210,6 +210,45 @@ def check_native_transitions(page: Page, origin: str, host_name: str) -> None:
         assert page.evaluate("window.sharedBrowserState.wirelessRequests.length") == 0
         print(f"{host_name}: PASS native {'local conflict discard' if conflicting else 'dependent Wi-Fi cleanup'}"
               " preserves unrelated drafts")
+
+
+def check_diagnostic_rows(page: Page, origin: str, host_name: str) -> None:
+    """Each visible diagnostics row fills its container, including partial rows and hidden radios."""
+    page.goto(origin)
+    expect(page.locator("#connection-label")).to_have_text("Connected")
+    viewport = page.viewport_size
+    for width in (1440, 960, 720, 320):
+        page.set_viewport_size({"width": width, "height": 900})
+        for radios in (0, 1, 2):
+            rows = page.evaluate("""(radios) => {
+                const summary = document.querySelector('.runtime-summary');
+                const wireless = ['wifi-diagnostics', 'ble-diagnostics'].map(id => document.getElementById(id));
+                const hidden = wireless.map(element => element.hidden);
+                wireless.forEach((element, index) => { element.hidden = index >= radios; });
+                const bounds = summary.getBoundingClientRect();
+                const rows = new Map();
+                for (const element of summary.children) {
+                    if (element.hidden) continue;
+                    const rect = element.getBoundingClientRect();
+                    const row = rows.get(rect.top) ?? [];
+                    row.push({left: rect.left, right: rect.right});
+                    rows.set(rect.top, row);
+                }
+                const result = [...rows.values()].map(row => ({
+                    left: row[0].left - bounds.left, right: bounds.right - row.at(-1).right,
+                    count: row.length, gaps: row.slice(1).map((cell, index) => cell.left - row[index].right)
+                }));
+                wireless.forEach((element, index) => { element.hidden = hidden[index]; });
+                return result;
+            }""", radios)
+            for row in rows:
+                assert 0 <= row["left"] <= 3 and 0 <= row["right"] <= 3, (width, radios, row)
+                assert all(abs(gap - 1) < 0.5 for gap in row["gaps"]), (width, radios, row)
+            if width == 1440:
+                assert [row["count"] for row in rows] == ([5, radios] if radios else [5]), (width, radios, rows)
+            assert page.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth")
+    page.set_viewport_size(viewport)
+    print(f"{host_name}: PASS diagnostics fill every row at desktop and mobile widths")
 
 
 def check_accessibility_smoke(page: Page, origin: str, host_name: str) -> None:
@@ -272,7 +311,8 @@ def check_accessibility_smoke(page: Page, origin: str, host_name: str) -> None:
     page.evaluate("document.documentElement.style.zoom = ''")
     page.set_viewport_size({"width": 320, "height": 800})
     assert page.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth")
-    tab_to("#ble-configure")
+    tab_to("#settings-ble")
+    page.keyboard.press("End")
     page.keyboard.press("Enter")
     tab_to("#ble-generate")
     page.keyboard.press("Enter")
@@ -286,7 +326,7 @@ def check_accessibility_smoke(page: Page, origin: str, host_name: str) -> None:
     assert page.evaluate("document.querySelector('#ble-dialog').scrollWidth <= "
                          "document.querySelector('#ble-dialog').clientWidth")
     page.keyboard.press("Escape")
-    assert page.locator("#ble-configure").evaluate("(button) => button === document.activeElement")
+    assert page.locator("#settings-ble").evaluate("(select) => select === document.activeElement")
     check_focus()
     print(f"{host_name}: PASS 200-percent zoom, 320-pixel reflow and clipboard refusal feedback")
 
@@ -333,6 +373,49 @@ def check_partial_diagnostics(page: Page, origin: str, host_name: str) -> None:
     print(f"{host_name}: PASS unknown/false/sentinel diagnostics preserve valid commands and settings drafts")
 
 
+def check_msc_handoff(page: Page, origin: str, host_name: str) -> None:
+    """Exercise explicit ownership controls and detected-only storage using synthetic status snapshots."""
+    page.goto(origin)
+    page.evaluate("""() => {
+        const board = window.sharedBrowserState.connected;
+        board.board_configuration.board_flags = 0x45;
+        board.board_configuration.card_detect_gpio = 8;
+        Object.assign(board.memory, { configured: true, sample_valid: true, initialized: true,
+            presence_known: true, present: true, filesystem_format: 'fat32' });
+    }""")
+    enable = page.locator("#msc-enable")
+    returned = page.locator("#msc-return")
+    dialog = page.locator("#msc-dialog")
+    expect(enable).to_be_enabled()
+    enable.click()
+    expect(dialog).to_be_visible()
+    page.keyboard.press("Escape")
+    expect(dialog).not_to_be_visible()
+    assert page.evaluate("window.sharedBrowserState.mscRequests.length") == 0
+    enable.click()
+    page.locator("#confirm-msc").click()
+    expect(returned).to_be_enabled()
+    expect(enable).to_be_disabled()
+    returned.click()
+    expect(page.locator("#confirm-msc")).to_have_text("I have safely ejected")
+    page.locator("#confirm-msc").click()
+    expect(enable).to_be_enabled()
+    assert page.evaluate("window.sharedBrowserState.mscRequests") == [
+        {"enabled": True, "confirm_ejected": False},
+        {"enabled": False, "confirm_ejected": True},
+    ]
+    section = page.locator('section[aria-labelledby="memory-title"]')
+    page.evaluate("""() => Object.assign(window.sharedBrowserState.connected.memory,
+        { sample_valid: true, initialized: false, present: false })""")
+    expect(section).to_be_hidden()
+    page.evaluate("""() => Object.assign(window.sharedBrowserState.connected.memory,
+        { sample_valid: true, initialized: true, present: true })""")
+    expect(section).to_be_visible()
+    expect(enable).to_be_enabled()
+    assert page.evaluate("window.sharedBrowserState.mscRequests.length") == 2
+    print(f"{host_name}: PASS MSC confirmation, Escape, returned ownership and replacement without re-export")
+
+
 def main() -> None:
     """Fail on incomplete checks, assertion failures, page errors, or missing hosting assets."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -368,9 +451,13 @@ def main() -> None:
                         assert len(reports) == 15 and not any(report["error"] for report in reports) and not errors, errors
                         check_native_drafts(page, origin, label)
                         check_native_transitions(page, origin, label)
+                        check_diagnostic_rows(page, origin, label)
                         check_accessibility_smoke(page, origin, label)
                         check_partial_diagnostics(page, origin, label)
-                        assert page.request.get(f"{origin}/console").status == 404
+                        check_msc_handoff(page, origin, label)
+                        console = page.request.get(f"{origin}/console")
+                        assert console.status == 200
+                        assert "<h1>Wi-Fi shell</h1>" in console.text()
                         assert not errors, errors
             finally:
                 browser.close()

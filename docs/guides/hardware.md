@@ -18,11 +18,12 @@ The DevKitC has two USB-C connectors, and ESPForge uses both:
 | Connector | ESP32-S3 interface | Used for |
 | --- | --- | --- |
 | **USB** | Native USB OTG (GPIO19 D- / GPIO20 D+) | Management: USB HID, VID:PID `CAFE:4021`, read by the Python and .NET dashboards and by Direct over WebHID |
-| **UART** | USB-to-UART bridge to UART0 (GPIO43 TX / GPIO44 RX) | Flashing through the ROM bootloader, and the Zephyr console/log at 115200 baud, 8N1 |
+| **UART** | USB-to-UART bridge to UART0 (GPIO43 TX / GPIO44 RX) | ROM flashing and the Zephyr diagnostic shell/log at 115200 baud, 8N1 |
 
-Connect both when you flash and manage the board from one computer. The USB connector exposes only the HID
-interface: there is no CDC ACM console and no mass-storage gadget. After a Control key has been saved over USB,
+Connect both when you flash and manage the board from one computer. Native USB exposes HID management and a
+removable MSC drive with explicit SD ownership handoff; there is no CDC ACM console. After a Control key is saved over USB,
 Bluetooth LE management needs only power; see the [wireless guide](wireless.md).
+For UART or raw TCP diagnostics, see the [console guide](console.md).
 
 ## SD-card SDMMC wiring
 
@@ -31,19 +32,47 @@ short wires and adequate regulated power. A SPI-only breakout is insufficient fo
 Wire with power disconnected. Do not apply 5 V to ESP32 GPIOs or a bare SD card.
 This is proposed wiring, not electrically qualified hardware.
 
-Follow the [SD pin allocation](../reference/sdcard.md#pin-allocation) for all six SDMMC signals, supply and ground.
+The alternate SD-over-SPI image supports a 3.3 V SPI socket/module without DAT1/DAT2 wiring.
+Follow the [SD pin allocation](../reference/sdcard.md#pin-allocation) for the selected image, GPIO8 active-high
+card detection, supply and ground. An unwired detection input reads absent and prevents mounting.
 
-GPIO assignments use explicit native SDMMC slot-0 pinctrl in the project's overlay.
-SPI2 and SPI3 are disabled.
+GPIO assignments use explicit hardware pinctrl for native SDMMC slot 0 or SPI3.
+The ESP32-S3 has 512 KiB of internal SRAM and no on-chip flash. N16R8 specifies the module's 16 MiB SPI flash
+and 8 MiB octal PSRAM; both are external to the SoC. PSRAM is volatile RAM, not additional flash.
+The Module memory panel separates SRAM reservation, PSRAM reservation/capacity and detected module-flash
+capacity. Reservations include linked regions and permanent heap pools, not live usage. Unknown or unavailable
+inventory remains `--`; it is not inferred from the board name. No additional flash chip or interface is configured.
+
+SPI2 is dedicated to the onboard WS2812-compatible RGB LED, with only MOSI allocated.
+SPI3 is disabled in the native image and dedicated to the SD card in the SPI image.
+The MOSI pin has a pull-down configured. Startup sends Off twice, separated by the reset/latch interval, so the
+first SPI transfer's output configuration cannot leave a startup colour latched.
+The default LED data pin is GPIO48. This is unverified for the diymore dual-USB-C N16R8 clone; official DevKitC-1
+revisions use GPIO48 (v1.0) or GPIO38 (v1.1). For GPIO38, change the LED pinctrl selection from
+`SPIM2_MOSI_GPIO48` to `SPIM2_MOSI_GPIO38` in the hardware overlay and rebuild. Reported board facts derive from that
+selection. No SPI clock, MISO or chip-select pin is assigned. The driver uses a low fixed intensity, boots Off and
+transmits an eight-bit SPI waveform at up to 6.4 MHz with a 350-microsecond low reset/latch interval. SPI2 must use
+`line-idle-low`: the ESP32 SPI driver's default high idle level prevents that interval even when transmission succeeds.
+GPIO choice, waveform and optical colour still require physical qualification. A logged transmission failure disables
+LED control until reboot.
+
+Some YD-ESP32-S3-style clones have a solder link marked **RGB**, immediately beside the white RGB LED, between
+GPIO48 and the LED data input. An open link leaves the LED dark even when SPI transmissions succeed; inspect
+this before trying another GPIO. See the [board-family pinout](https://github.com/vcc-gnd/YD-ESP32-S3) and
+[RGB-link reference photo](https://github.com/HiraAbbas/Esp32-s3-Onboard-Leds-Rgb-Blinking/blob/main/rgb_solder_jumper.jpeg).
+Disconnect both USB cables and any external power before inspecting or modifying a verified RGB link.
+Do not confuse it with **IN-OUT** or **USB-OTG**, which change power connections. A matching product photo does
+not establish the link's condition on the actual board.
+
 Octal PSRAM occupies GPIO33-37, so those pins are not available on N16R8.
 Leave boot-strapping and onboard flash/PSRAM pins alone. Consult your exact board schematic.
-The requested SDMMC ceiling is 25 MHz; this is not a measured bus frequency or throughput claim.
+The requested SD bus ceiling is 25 MHz for either image; this is not a measured bus frequency or throughput claim.
 
 Prepare an existing FAT16/FAT32 volume on your computer and back up its data.
-Insert before boot: the starter mounts once at startup. Hot-plug, card-detect, power switching
-and automatic remount are not implemented. Power-cycle the card when switching from SPI mode;
+Cards may be inserted after startup or replaced; detection mounts them for firmware, not automatically for USB.
+Power switching is not implemented. Power-cycle the card when switching between native SDMMC and SPI images;
 a board-only reset may leave the card in SPI mode.
-Do not remove the card while powered/mounted. There is no host filesystem handoff.
+Physical unplugging during I/O may corrupt data. Safely eject the USB drive before confirming return to firmware.
 See the [SD contract](../reference/sdcard.md) for data-safety behavior.
 
 No board or SD card was attached during project setup. Wiring and radio operation await hardware.

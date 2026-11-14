@@ -40,6 +40,7 @@ jobs:
         with:
           ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || github.sha }}
           persist-credentials: false
+          fetch-depth: 0
 
       - name: Validate package version
         id: version
@@ -65,7 +66,7 @@ jobs:
           RID: ${{ matrix.rid }}
         run: >-
           dotnet publish host/dotnet/ESPForge/ESPForge.csproj -c Release -r "$RID" --self-contained true
-          -p:Version="$VERSION" -p:RestorePackagesPath="$PWD/build/nuget/"
+          -p:MinVerVersionOverride="$VERSION" -p:RestorePackagesPath="$PWD/build/nuget/"
           -p:PublishDir="$PWD/build/host-release/"
 
       - name: Archive and smoke-test extracted host without hardware
@@ -129,7 +130,9 @@ jobs:
                       assert process.poll() is None, "Standalone host exited before readiness"
                       try:
                           with urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=1) as response:
-                              assert b"ESPForge Dashboard | .NET" in response.read()
+                              page = response.read()
+                              assert b"ESPForge Dashboard | .NET" in page
+                              assert f"App v{version}<".encode() in page, "Dashboard version does not match release"
                           break
                       except urllib.error.URLError:
                           time.sleep(0.1)

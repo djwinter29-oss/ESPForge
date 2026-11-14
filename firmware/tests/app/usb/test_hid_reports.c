@@ -3,6 +3,23 @@
 
 #include <string.h>
 
+void test_benchmark_layout_and_nonterminal_error_suppression(void)
+{
+	ef_benchmark_t status = {.sequence = 9, .state = EF_BENCHMARK_FAILED, .flags = EF_BENCHMARK_FILE_REMAINS,
+				.target_bytes = 0x00100000, .written_bytes = 0x01020304,
+				.error = EF_BENCHMARK_ERROR_IO, .filesystem_result = 1};
+	const uint8_t expected[EF_BENCHMARK_SIZE] = {1, 9, 7, 1, 0, 0, 0x10, 0, 4, 3, 2, 1,
+						 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7, 1, 0, 0};
+	uint8_t out[EF_BENCHMARK_SIZE];
+
+	ef_report_benchmark(&status, out);
+	TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, out, sizeof(out));
+	status.state = EF_BENCHMARK_CLEANUP;
+	ef_report_benchmark(&status, out);
+	TEST_ASSERT_EQUAL_UINT8(0, out[28]);
+	TEST_ASSERT_EQUAL_UINT8(0, out[29]);
+}
+
 void test_identity_layout(void)
 {
 	ef_identity_t identity = {
@@ -11,18 +28,41 @@ void test_identity_layout(void)
 		.ram_total_bytes = 524288,
 		.ram_reserved_bytes = 0x01020304,
 	};
-	const uint8_t expected[EF_IDENTITY_SIZE] = {1, 0x03, 0x00, 0xA0, 0xB1, 0xC2, 0xD3, 0xE4, 0xF5, 0, 0, 0, 2, 1,
-						    3, 1, 0, 0x96, 0x00, 0x00, 0x08, 0x00, 0x04, 0x03, 0x02, 0x01};
+	uint8_t expected[EF_IDENTITY_SIZE] = {1, 0x03, 0x00, 0xA0, 0xB1, 0xC2, 0xD3, 0xE4, 0xF5, 0, 0, 0, 2, 1,
+						    3, 1, 1, 0x97, 0x00, 0x00, 0x08, 0x00, 0x04, 0x03, 0x02, 0x01};
 	uint8_t out[EF_IDENTITY_SIZE];
 
+#if EF_ENABLE_STORAGE_BENCHMARK
+	expected[17] = 0xB7;
+#endif
+#if EF_STORAGE_SPI
+	expected[17] = (expected[17] & ~EF_CAP_SDMMC) | EF_CAP_SPI;
+#endif
 	ef_report_identity(&identity, out);
 	TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, out, sizeof(out));
+}
+
+void test_memory_inventory_layout_and_unavailable_components(void)
+{
+	ef_memory_inventory_t memory = {.psram_available = true, .flash_available = true,
+		.psram_total_bytes = 8u * 1024u * 1024u, .psram_reserved_bytes = 1024u * 1024u,
+		.flash_total_bytes = 16u * 1024u * 1024u};
+	const uint8_t expected[EF_MEMORY_SIZE] = {1, 3, 0, 0, 0, 0, 128, 0, 0, 0, 16, 0, 0, 0, 0, 1};
+	uint8_t out[EF_MEMORY_SIZE];
+	uint8_t unavailable[EF_MEMORY_SIZE] = {1};
+
+	ef_report_memory(&memory, out);
+	TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, out, sizeof(out));
+	memory.psram_available = false;
+	memory.flash_available = false;
+	ef_report_memory(&memory, out);
+	TEST_ASSERT_EQUAL_UINT8_ARRAY(unavailable, out, sizeof(out));
 }
 
 void test_config_layout_reflects_saved_radios(void)
 {
 	ef_config_t config = {.stored_clock_mhz = 240, .stored_radios = 0x03,
-			      .reset_cause = 3};
+			      .reset_cause = 3, .storage_gpios = {12, 11, 13, 14, 15, 10}};
 	const uint8_t expected[EF_CONFIG_SIZE] = {1, 240, 0, 0, 0, 43, 44, 12, 11, 13, 14, 15, 10, 0x1C, 3, 255, 255};
 	uint8_t out[EF_CONFIG_SIZE];
 
@@ -31,6 +71,16 @@ void test_config_layout_reflects_saved_radios(void)
 	config.stored_radios = 0x02;
 	ef_report_config(&config, out);
 	TEST_ASSERT_EQUAL_HEX8(0x14, out[13]);
+}
+
+void test_config_preserves_spi_chip_select_and_unassigned_pin_slots(void)
+{
+	ef_config_t config = {.storage_gpios = {12, 11, 13, 10, 255, 255}};
+	uint8_t out[EF_CONFIG_SIZE];
+	const uint8_t expected[] = {12, 11, 13, 10, 255, 255};
+
+	ef_report_config(&config, out);
+	TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, out + 7, sizeof(expected));
 }
 
 void test_telemetry_layout(void)
@@ -65,11 +115,20 @@ void test_telemetry_layout(void)
 	TEST_ASSERT_EQUAL_HEX8(0, out[2]);
 	TEST_ASSERT_EQUAL_HEX8(0, out[3]);
 	TEST_ASSERT_EQUAL_HEX8(0, out[21]);
+	telemetry.led_available = true;
+	telemetry.led_colour = 6;
+	ef_report_telemetry(&telemetry, out);
+	TEST_ASSERT_EQUAL_HEX8(6, out[1]);
+	TEST_ASSERT_EQUAL_HEX8(8, out[21]);
+	telemetry.led_available = false;
+	ef_report_telemetry(&telemetry, out);
+	TEST_ASSERT_EQUAL_HEX8(0, out[1]);
+	TEST_ASSERT_EQUAL_HEX8(0, out[21]);
 }
 
 void test_storage_layout(void)
 {
-	ef_storage_t storage = {.sequence = 4};
+	ef_storage_t storage = {.sequence = 4, .configured = true, .sample_valid = true};
 	uint8_t out[EF_STORAGE_SIZE];
 
 	ef_report_storage(&storage, out);
@@ -79,6 +138,8 @@ void test_storage_layout(void)
 		TEST_ASSERT_EQUAL_UINT8(0, out[i]);
 	}
 	storage.initialized = true;
+	storage.presence_known = true;
+	storage.present = true;
 	storage.capacity_valid = true;
 	storage.bus_clock_hz = 25000000;
 	storage.block_count = 0x00F00000;
@@ -87,7 +148,7 @@ void test_storage_layout(void)
 	TEST_ASSERT_EQUAL_UINT8(4, out[1]);
 	TEST_ASSERT_EQUAL_HEX8(0x6F, out[2]);
 	TEST_ASSERT_EQUAL_UINT8(1, out[3]);
-	TEST_ASSERT_EQUAL_UINT8(3, out[4]);
+	TEST_ASSERT_EQUAL_UINT8(EF_STORAGE_SPI ? 2 : 3, out[4]);
 	TEST_ASSERT_EQUAL_HEX8(0x40, out[5]);
 	TEST_ASSERT_EQUAL_HEX8(0x78, out[6]);
 	TEST_ASSERT_EQUAL_HEX8(0x7D, out[7]);
@@ -98,10 +159,37 @@ void test_storage_layout(void)
 	storage.capacity_valid = false;
 	ef_report_storage(&storage, out);
 	TEST_ASSERT_EQUAL_HEX8(0x4F, out[2]);
-	TEST_ASSERT_EQUAL_UINT8(3, out[4]);
+	TEST_ASSERT_EQUAL_UINT8(EF_STORAGE_SPI ? 2 : 3, out[4]);
 	for (size_t i = 10; i < 14; ++i) {
 		TEST_ASSERT_EQUAL_UINT8(0, out[i]);
 	}
+}
+
+void test_card_detect_allocation_and_msc_availability_are_reported(void)
+{
+	ef_config_t config = {.card_detect_available = true, .card_detect_gpio = 8, .msc_supported = true};
+	uint8_t out[EF_CONFIG_SIZE];
+
+	ef_report_config(&config, out);
+	TEST_ASSERT_EQUAL_HEX8(0x45, out[13]);
+	TEST_ASSERT_EQUAL_UINT8(8, out[16]);
+}
+
+void test_usb_owned_storage_report_never_exposes_stale_card_fields(void)
+{
+	ef_storage_t storage = {
+		.configured = true, .sample_valid = true, .presence_known = true, .present = true,
+		.initialized = true, .capacity_valid = true, .block_count = 100,
+		.bus_clock_hz = 25000000, .msc_enabled = true,
+	};
+	uint8_t out[EF_STORAGE_SIZE];
+
+	ef_report_storage(&storage, out);
+	TEST_ASSERT_EQUAL_HEX8(1, out[2]);
+	for (size_t i = 3; i < 30; ++i) {
+		TEST_ASSERT_EQUAL_UINT8(0, out[i]);
+	}
+	TEST_ASSERT_EQUAL_UINT8(1, out[31]);
 }
 
 void test_wireless_layout_clears_reserved_flags(void)

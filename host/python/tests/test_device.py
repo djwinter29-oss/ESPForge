@@ -61,6 +61,42 @@ class HidEnumerationTests(unittest.TestCase):
 
 
 class HidDeviceTests(unittest.TestCase):
+    def test_identity_reads_only_advertised_memory_inventory_and_rejects_bad_reports(self):
+        from test_protocol import identity_report
+
+        client = self.connection()
+        client._expected_serial_number = None
+        report = bytearray(identity_report()); report[17] = 1
+        client._device.feature_reports = {
+            1: [report],
+            13: [bytes((13, 1, 3, 0, 0)) + struct.pack("<III", 8 << 20, 1 << 20, 16 << 20)],
+        }
+        self.assertEqual(client.read_info()["flash_total_bytes"], 16 << 20)
+        self.assertEqual(client._device.last_get, (13, 17))
+        client._device.feature_reports[1] = [identity_report()]
+        self.assertIsNone(client.read_info()["psram_total_bytes"])
+        self.assertEqual(client._device.last_get, (1, 27))
+        client._device.feature_reports = {1: [report], 13: [bytes(17)]}
+        with self.assertRaises(ProtocolError):
+            client.read_info()
+
+    def test_open_failure_reports_native_reason_not_just_permissions(self):
+        native = Mock()
+        native.open_path.side_effect = OSError("device or resource busy")
+        with patch("espforge.hid.device._select_device", return_value={"path": b"/hid/a"}), \
+                patch("espforge.hid.device._require_hid") as api:
+            api.return_value.device.return_value = native
+            with self.assertRaisesRegex(OSError, "device or resource busy.*another application"):
+                ESPForgeHid()
+
+    def test_open_makes_zero_timeout_input_reads_non_blocking(self):
+        native = Mock()
+        with patch("espforge.hid.device._select_device", return_value={"path": b"/hid/a"}), \
+                patch("espforge.hid.device._require_hid") as api:
+            api.return_value.device.return_value = native
+            ESPForgeHid()
+        native.set_nonblocking.assert_called_once_with(1)
+
     def test_close_waits_for_native_io_and_later_operations_reject_the_closed_handle(self):
         for operation in ("control", "input", "configuration", "identity", "wireless"):
             with self.subTest(operation=operation):
@@ -270,9 +306,27 @@ class HidDeviceTests(unittest.TestCase):
         with self.assertRaises(InvalidRequest):
             client.set_settings({"system_clock_mhz": 240, "sdcard_profile": 0, "radios": 0,
                                  "tcp_cli_enabled": True})
-        for name in ("set_led", "set_msc", "set_self_test", "tcp_cli_auth_proof", "_reopen_for_result"):
+        for name in ("set_led", "set_self_test", "tcp_cli_auth_proof", "_reopen_for_result"):
             self.assertFalse(hasattr(client, name), name)
         self.assertEqual(client._device.sent, [])
+
+    def test_msc_validates_confirmation_and_sends_exact_hid_requests(self):
+        client = self.connection()
+        client.configuration = None
+        config = bytearray(configuration())
+        config[14] = 0x45
+        config[17] = 8
+        client._device.feature_reports[2] = [bytes(config)]
+        client._device.feature_reports[20] = [control_result(opcode=3)]
+        self.assertEqual(client.set_msc(True)["status"], "completed")
+        self.assertEqual(client._device.sent, [bytes([20, 1, 1, 3, 0, 1]) + bytes(63)])
+        for enabled, confirmation in ((False, False), (1, False), (False, 1)):
+            with self.subTest(enabled=enabled, confirmation=confirmation), self.assertRaises(ValueError):
+                client.set_msc(enabled, confirmation)
+        self.assertEqual(len(client._device.sent), 1)
+        client._device.feature_reports[20] = [control_result(opcode=3, transaction=2)]
+        client.set_msc(False, True)
+        self.assertEqual(client._device.sent[1], bytes([20, 1, 2, 3, 1]) + bytes(64))
 
     def connection(self, reports=None):
         class FakeTransport:

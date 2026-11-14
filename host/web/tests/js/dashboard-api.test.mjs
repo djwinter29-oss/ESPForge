@@ -8,6 +8,18 @@ import {
   scannedNetworks, statusResponse, testedWireless,
 } from "../../src/js/dashboard-api.mjs";
 
+test("reset recovery is explicit and cannot masquerade as a successful control result", () => {
+  assert.equal(reconciledResult({
+    uncertain: false, control_result: null, wireless: {}, temporary_wifi_reset: true,
+  }), null);
+  for (const response of [
+    { uncertain: false, temporary_wifi_reset: "true" },
+    { uncertain: false, temporary_wifi_reset: true, wireless: null },
+    { uncertain: false, temporary_wifi_reset: true, wireless: {},
+      control_result: { opcode: 9, status: "completed" } },
+  ]) assert.throws(() => reconciledResult(response), { uncertain: true });
+});
+
 test("mutation boundary distinguishes refusals, malformed replies, and unknown delivery", async () => {
   for (const body of [null, [], true, "ok"]) {
     await assert.rejects(responseJson({ ok: true, json: async () => body }, "save", true),
@@ -56,13 +68,22 @@ test("status validates lifecycle and admission facts before allowing any transit
   for (const [field, section] of [
     ["hardware", { capabilities: "32" }], ["runtime", { led_on: "false" }],
     ["memory", { msc: { enabled: false, transition_pending: "false" } }],
+    ["memory", { initialized: true, sample_valid: "false" }],
     ["self_test", { active: false }], ["self_test", { active: "false", sequence: 1 }],
     ["self_test", { active: false, sequence: 256 }], ["board_configuration", {}],
+    ["board_configuration", { ...valid.board_configuration, board_flags: "64" }],
     ["wireless", {}], ["wireless", { ...valid.wireless, ssid_hex: "f" }],
     ["wireless", { ...valid.wireless, tcp_cli_enabled: "false" }],
     ["wireless", { ...valid.wireless, test_generation: "1" }],
     ["wireless", { ...valid.wireless, key_staged: "false" }],
   ]) assert.throws(() => statusResponse({ ...valid, [field]: section }), /Invalid status/);
+});
+
+test("MSC acknowledgements accept admission but never infer settled ownership", () => {
+  assert.deepEqual(acknowledge({}, 3), { opcode: 3, status: "completed" });
+  assert.equal(acknowledge({ control_result: { opcode: 3, status: "completed" } }, 3).status, "completed");
+  assert.throws(() => acknowledge({ control_result: { opcode: 2, status: "completed" } }, 3),
+    { uncertain: true });
 });
 
 test("successful Wi-Fi testing requires a validated generation and firmware lifetime", () => {
@@ -111,6 +132,36 @@ test("malformed optional diagnostics are explicitly isolated without changing co
     assert.equal(result.memory.manufacturer, null);
     assert.match(result.diagnostic_error, /memory.manufacturer/);
   }
+});
+
+test("unavailable telemetry and storage diagnostics accept null without manufacturing readings or warnings", () => {
+  const source = { connected: true, reboot_pending: false, command_outcome_uncertain: false,
+    settings_supported: true, telemetry_stale: false, storage_stale: false, self_test_stale: true,
+    hardware: { capabilities: 2 },
+    runtime: { cpu_usage_core0_basis_points: null, cpu_usage_core1_basis_points: null,
+      temperature_valid: false, temperature_centidegrees: null },
+    memory: { configured: true, sample_valid: true, presence_known: false, present: null,
+      initialized: false, bus_clock_hz: null, capacity_bytes: null,
+      msc: { enabled: false, transition_pending: false } },
+    board_configuration: { system_clock_mhz: 240, sdcard_profile: 0, radios: 0 } };
+  assert.equal(statusResponse(source), source);
+  for (const [section, field, valid] of [
+    ["runtime", "cpu_usage_core0_basis_points", 0], ["runtime", "cpu_usage_core1_basis_points", 0],
+    ["runtime", "temperature_centidegrees", 0], ["memory", "present", false],
+    ["memory", "bus_clock_hz", 25000000], ["memory", "capacity_bytes", 1048576],
+  ]) {
+    const observed = statusResponse({ ...source, [section]: { ...source[section], [field]: valid } });
+    assert.equal(observed[section][field], valid);
+    assert.equal(observed.diagnostic_error, undefined);
+    for (const invalid of ["unknown", {}, []]) {
+      const malformed = statusResponse({ ...source, [section]: { ...source[section], [field]: invalid } });
+      assert.equal(malformed[section][field], undefined);
+      assert.match(malformed.diagnostic_error, new RegExp(`${section}\\.${field}`));
+      assert.equal(malformed.connected, true);
+    }
+  }
+  const malformedClock = statusResponse({ ...source, runtime: { ...source.runtime, system_clock_hz: null } });
+  assert.match(malformedClock.diagnostic_error, /runtime.system_clock_hz/);
 });
 
 test("scan boundary validates each network without changing raw SSID bytes", () => {

@@ -13,7 +13,8 @@ import { describe } from "./messages.mjs";
 
 /**
  * @typedef {{secure: boolean, hid: boolean, ble: boolean, now: () => number,
- *   clipboard: Pick<Clipboard, "writeText"> | null}} DashboardEnvironment
+ *   clipboard: Pick<Clipboard, "writeText"> | null,
+ *   consoleUrl?: (state: import("../state/reducer.mjs").DashboardState) => string | null}} DashboardEnvironment
  * @typedef {{session: import("../board/session.mjs").BoardSession,
  *   selectTransport: (kind: "usb" | "ble") => import("../board/session.mjs").BoardSession,
  *   timers: ReturnType<typeof import("../timers.mjs").createTimerScope>,
@@ -34,7 +35,7 @@ export function mountDashboard({ session, selectTransport, timers, environment }
   const ui = createUiStore();
   /** @param {Partial<import("../state/reducer.mjs").UiState>} changes */
   const setUi = changes => ui.dispatch({ type: "patch", changes });
-  const renderStatus = createDashboardView();
+  const renderStatus = createDashboardView(environment.consoleUrl);
   const usbDialog = queryElement("dialog#usb-connection-dialog");
   const bluetoothDialog = queryElement("dialog#bluetooth-connection-dialog");
   const settingsSave = button("settings-save");
@@ -46,6 +47,9 @@ export function mountDashboard({ session, selectTransport, timers, environment }
     ? Number(settingsRadios[0].value) | Number(settingsRadios[1].value) << 1 : 0;
   const configurationDialog = queryElement("dialog#configuration-dialog");
   const rebootDialog = queryElement("dialog#reboot-dialog");
+  const mscDialog = queryElement("dialog#msc-dialog");
+  let mscTarget = false;
+  let mscUid = null;
   let wasConnected = client.state.connected;
   let refreshQueued = false;
   /** Coalesce bursts of client state changes into one render and side-effect pass per microtask. */
@@ -88,7 +92,7 @@ export function mountDashboard({ session, selectTransport, timers, environment }
     if (wasConnected && !board.connected) {
       wirelessForm.reset();
       ui.dispatch({ type: "replace", state: { ...UI_INITIAL, action_error: ui.getState().action_error } });
-      for (const dialog of [configurationDialog, rebootDialog]) dialog.close();
+      for (const dialog of [configurationDialog, rebootDialog, mscDialog]) dialog.close();
     }
     wasConnected = board.connected;
     render(board, ui.getState());
@@ -117,6 +121,50 @@ export function mountDashboard({ session, selectTransport, timers, environment }
     setUi({ action_error: null });
     try { await operation(); } catch (error) { setUi({ action_error: describe(error) }); }
   }
+
+  element("led-colour").addEventListener("change", () => run(async () => {
+    const control = /** @type {HTMLSelectElement} */ (element("led-colour"));
+    if (!control.disabled) await client.setLedColour(Number(control.value));
+  }));
+
+  element("benchmark-start").addEventListener("click", () => run(async () => {
+    if (button("benchmark-start").disabled) return;
+    const size = Number(/** @type {HTMLInputElement} */ (element("benchmark-size")).value);
+    const uid = client.state.hardware?.serial_number;
+    if (!window.confirm(`Write and verify ${size} MiB in EFTEST.BIN, then delete that file? Back up the card first. This causes card wear.`))
+      return;
+    if (uid !== client.state.hardware?.serial_number) throw new Error("Board changed; reopen the benchmark.");
+    await client.benchmark(true, size, true);
+  }));
+  element("benchmark-cancel").addEventListener("click", () => run(async () => {
+    if (!button("benchmark-cancel").disabled) await client.benchmark(false, 0, false);
+  }));
+
+  for (const [id, enabled] of /** @type {[string, boolean][]} */ (
+    [["msc-enable", true], ["msc-return", false]])) {
+    button(id).addEventListener("click", () => {
+      if (button(id).disabled) return;
+      mscTarget = enabled;
+      mscUid = client.state.hardware?.serial_number;
+      element("msc-dialog-title").textContent = enabled ? "Enable USB drive?" : "Return card to firmware?";
+      element("msc-warning").textContent = enabled
+        ? "Firmware will unmount the card and give Linux/Windows exclusive access. USB reconnects briefly; unsaved dashboard edits may be lost."
+        : "Safely eject the USB drive in Linux/Windows first. Confirm only after eject completes; firmware cannot verify the host cache is flushed.";
+      element("confirm-msc").textContent = enabled ? "Enable USB drive" : "I have safely ejected";
+      mscDialog.showModal();
+    });
+  }
+  element("cancel-msc").addEventListener("click", () => mscDialog.close());
+  element("confirm-msc").addEventListener("click", () => run(async () => {
+    if (!mscDialog.open) return;
+    const enabled = mscTarget;
+    mscDialog.close();
+    if (!client.state.connected || bluetoothLink() || client.state.hardware?.serial_number !== mscUid) {
+      setUi({ action_error: "Board changed; reopen the storage dialog." });
+      return;
+    }
+    await client.setMsc(enabled, !enabled);
+  }));
 
   for (const [id, dialog, bluetooth] of /** @type {[string, HTMLDialogElement, boolean][]} */ (
     [["usb-open", usbDialog, false], ["bluetooth-open", bluetoothDialog, true]])) {
@@ -226,7 +274,7 @@ export function mountDashboard({ session, selectTransport, timers, environment }
   }
   // ponytail: handle Escape on keydown instead of relying on the native cancel event, because a repeated Escape may
   // close a modal without a cancelable cancel event; connection dialogs stay open while a link is being set up.
-  for (const dialog of [usbDialog, bluetoothDialog, configurationDialog, rebootDialog]) {
+  for (const dialog of [usbDialog, bluetoothDialog, configurationDialog, rebootDialog, mscDialog]) {
     dialog.addEventListener("keydown", event => {
       if (event.key !== "Escape") return;
       event.preventDefault();

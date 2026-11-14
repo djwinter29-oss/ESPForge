@@ -13,6 +13,52 @@ const ready = {
   storage_stale: false, memory: { initialized: true },
 };
 
+test("RGB controls require fresh known colour and remain independent of storage", () => {
+  const state = { ...ready, hardware: { capabilities: 0xb7 }, telemetry_stale: false,
+    runtime: { led_available: true, led_colour: 4 }, storage_stale: true,
+    self_test: { active: true }, self_test_stale: false, msc: { enabled: true } };
+  assert.equal(operationState(state).canSetLed, true);
+  for (const changes of [{ telemetry_stale: true }, { telemetry_stale: undefined },
+    { runtime: { led_available: false, led_colour: null } }, { runtime: { led_available: true } },
+    { hardware: { capabilities: 0xb6 } }, { command_outcome_uncertain: true }])
+    assert.equal(operationState({ ...state, ...changes }).canSetLed, false);
+  assert.equal(operationState(state, { saving: true }).canSetLed, false);
+  assert.equal(operationState(state, { wirelessInFlight: true }).canSetLed, false);
+});
+
+test("MSC controls require advertised support, a mounted card, and settled ownership", () => {
+  const supported = { ...ready, board_configuration: { board_flags: 0x45 } };
+  assert.equal(operationState(ready).canEnableMsc, false);
+  assert.equal(operationState(supported).canEnableMsc, true);
+  assert.equal(operationState(supported).canReturnMsc, false);
+  const owned = { ...supported, memory: { initialized: false, sample_valid: false },
+    msc: { enabled: true, transition_pending: false } };
+  assert.equal(operationState(owned).canEnableMsc, false);
+  assert.equal(operationState(owned).canReturnMsc, true);
+  assert.equal(operationState(owned).canReboot, false);
+  for (const changes of [{ storage_stale: true }, { msc: { enabled: true, transition_pending: true } }])
+    assert.equal(operationState({ ...owned, ...changes }).canReturnMsc, false);
+});
+
+test("benchmark gates require capability and freshness, but cancel allows busy storage", () => {
+  const state = { ...ready, hardware: { capabilities: 0xb6 },
+    self_test: { active: false }, self_test_stale: false, settings_supported: true,
+    settings: { system_clock_mhz: 160, sdcard_profile: 0, radios: 0 } };
+  assert.equal(operationState(state).canStartBenchmark, true);
+  assert.equal(operationState(state, { settingsDirty: true }).canSaveSettings, true);
+  assert.equal(operationState({ ...state, self_test_stale: true },
+    { settingsDirty: true }).canSaveSettings, false);
+  assert.equal(operationState({ ...state, self_test_stale: true }).canStartBenchmark, false);
+  assert.equal(operationState(ready).canStartBenchmark, false);
+  const active = { ...state, self_test: { active: true }, memory: { sample_valid: false } };
+  assert.equal(operationState(active).canStartBenchmark, false);
+  assert.equal(operationState(active).canReboot, false);
+  assert.equal(operationState({ ...state, self_test: { active: true } },
+    { settingsDirty: true }).canSaveSettings, false);
+  assert.equal(operationState(active).canCancelBenchmark, true);
+  assert.equal(operationState(active, { uncertain: true }).canCancelBenchmark, false);
+});
+
 test("capability bits match the ESPForge profile", () => {
   assert.deepEqual([CAPABILITY_REBOOT, CAPABILITY_SETTINGS, CAPABILITY_SDMMC, CAPABILITY_WIRELESS], [2, 4, 16, 128]);
   assert.equal(CAPABILITY_REBOOT | CAPABILITY_SETTINGS | CAPABILITY_SDMMC | CAPABILITY_WIRELESS, 0x96);
@@ -34,8 +80,8 @@ test("one Save projection supplies eligibility and the same reason for all draft
     [{}, { rebootPending: true }, /pending operation/],
     [{ storage_stale: true }, {}, /fresh storage status/],
     [{ msc: null }, {}, /fresh storage status/],
-    [{ msc: { enabled: true } }, {}, /unexpected USB-drive state/],
-    [{ msc: { transition_pending: true } }, {}, /unexpected USB-drive state/],
+    [{ msc: { enabled: true } }, {}, /Safely eject/],
+    [{ msc: { transition_pending: true } }, {}, /storage to become idle/],
     [{ wireless: null }, { radiosDirty: true }, /fresh wireless/],
     [{}, { wirelessBlockReason: "Retest credentials." }, /Retest credentials/],
     [{ wireless: { stale: true } }, { wirelessDirty: true }, /fresh wireless and storage/],
@@ -106,7 +152,7 @@ test("one pure policy handles every local gate without changing board facts", ()
   assert.deepEqual(ready, facts);
 });
 
-test("storage admission projects its own blocking reason without a USB drive", () => {
+test("storage admission blocks reboot and save until USB ownership is returned", () => {
   assert.equal(operationState(ready).storageBlockReason, null);
   assert.equal(operationState(ready).storageStatusReady, true);
   assert.equal(operationState(ready).storageCommandPending, false);
@@ -114,8 +160,8 @@ test("storage admission projects its own blocking reason without a USB drive", (
   for (const [changes, reason] of [
     [{ storage_stale: true }, /Waiting for fresh storage status/],
     [{ msc: null }, /Waiting for fresh storage status/],
-    [{ msc: { enabled: true } }, /unexpected USB-drive state/],
-    [{ msc: { enabled: false, transition_pending: true } }, /unexpected USB-drive state/],
+    [{ msc: { enabled: true } }, /Safely eject/],
+    [{ msc: { enabled: false, transition_pending: true } }, /storage to become idle/],
   ]) {
     const projection = operationState({ ...ready, ...changes });
     assert.match(projection.storageBlockReason, reason);

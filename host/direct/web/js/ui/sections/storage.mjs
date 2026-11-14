@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Ji Dong
 
 import { queryElement, setText } from "../dom.mjs";
+import { CAP } from "../../protocol/constants.mjs";
 
 function formatBytes(bytes) {
   const gibibytes = bytes / 1024 ** 3;
@@ -21,8 +22,9 @@ function formatManufacturer(manufacturer) {
 export function deriveStorageViewModel(state, previous = {}) {
   let memory = state.memory;
   let filesystemFormat = state.filesystem_format;
-  const absent = memory?.presence_known === true ? memory.present === false
-    : state.connected ? previous.absent ?? false : false;
+  const detected = state.connected && memory && memory.sample_valid !== false
+    ? memory.presence_known === true ? memory.present === true : memory.initialized === true
+    : state.connected ? previous.detected ?? false : false;
   const busy = memory?.configured && memory.sample_valid === false;
   const details = memory?.sample_valid && memory.initialized
     ? { memory, filesystemFormat } : busy && state.connected ? previous.details : null;
@@ -30,18 +32,22 @@ export function deriveStorageViewModel(state, previous = {}) {
   const note = !memory ? "Waiting for fresh storage status."
     : !memory.sample_valid ? "" : !memory.configured ? "No SD-card transport configured"
       : memory.presence_known && !memory.present
-        ? "No card detected. Check card insertion and SDMMC wiring."
-        : memory.present && !memory.initialized ? "Card detected but not initialized; check UART logs and SDMMC wiring."
-          : memory.initialized ? "" : "No card mounted; check card insertion and SDMMC wiring.";
+        ? "No card detected. Check card insertion and SD-card wiring."
+        : memory.present && !memory.initialized ? "Card detected but not initialized; check UART logs and SD-card wiring."
+          : memory.initialized ? "" : "No card mounted; check card insertion and SD-card wiring.";
   if (busy && details) ({ memory, filesystemFormat } = details);
   const manufacturer = memory?.manufacturer;
   const filesystemLabels = { unknown: "Unknown", fat12: "FAT12", fat16: "FAT16", fat32: "FAT32", exfat: "exFAT" };
   return {
-    retained: { absent, details },
-    hidden: absent,
+    retained: { detected, details },
+    hidden: !(detected || state.memory?.msc?.enabled || state.memory?.msc?.transition_pending),
     text: {
-      "memory-state": label,
-      "memory-note": note,
+      "memory-state": state.memory?.msc?.transition_pending ? "Changing ownership"
+        : state.memory?.msc?.enabled ? "USB drive" : label,
+      "memory-note": state.memory?.msc?.transition_pending ? "Waiting for storage handoff."
+        : state.memory?.msc?.enabled ? "Safely eject in Linux/Windows before returning the card to firmware."
+          : state.memory?.msc?.request_rejected ? "Storage handoff failed or the card changed. Check UART logs and retry explicitly."
+            : note,
       "memory-speed": memory?.sample_valid !== false && memory?.initialized && memory?.bus_clock_hz
         ? `${(memory.bus_clock_hz / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: 3 })} MHz` : "--",
       "memory-size": memory?.capacity_bytes ? formatBytes(memory.capacity_bytes) : "--",
@@ -63,5 +69,16 @@ export function createStorageSection() {
     setText(model.text);
     queryElement("#memory-note").hidden = !model.text["memory-note"];
     queryElement('[aria-labelledby="memory-title"]').hidden = model.hidden;
+    const status = state.freshness?.[11] === "fresh" ? state.self_test : null;
+    queryElement("#benchmark-controls").hidden = !((state.hardware?.capabilities ?? 0) & CAP.SELF_TEST);
+    const rate = value => value == null ? "--" : `${(value / 1024 ** 2).toFixed(2)} MiB/s`;
+    setText({
+      "benchmark-state": status ? `${status.state} (${status.progress_percent.toFixed(1)}%)` : "Waiting for fresh status",
+      "benchmark-write": rate(status?.write_bytes_per_second),
+      "benchmark-read": rate(status?.read_bytes_per_second),
+      "benchmark-result": status?.error ? `Error ${status.error}; filesystem ${status.filesystem_result}`
+        + (status.file_remains ? "; EFTEST.BIN may remain" : "")
+        : status ? `${status.mismatch_count} mismatched bytes` : "--",
+    });
   };
 }

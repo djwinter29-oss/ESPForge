@@ -7,6 +7,7 @@ namespace ESPForge.Tests;
 internal class TestMonitor : IDeviceMonitor
 {
     public virtual StatusResponse Snapshot { get; set; } = new(false, null, null, null, null, null);
+    public virtual object? ConnectionIdentity { get; set; } = new object();
     public bool Disposed { get; private set; }
     public virtual void Start() { }
     public virtual bool TryRetire() => !Snapshot.CommandOutcomeUncertain;
@@ -22,6 +23,11 @@ internal class TestMonitor : IDeviceMonitor
     public virtual BootSettingsResponse SetSettings(BootSettingsResponse settings,
         CancellationToken cancel = default) => throw new NotSupportedException();
     public virtual void Reboot(CancellationToken cancel = default) => throw new NotSupportedException();
+    public virtual void SetMsc(bool enabled, bool confirmEjected, CancellationToken cancel = default) =>
+        throw new NotSupportedException();
+    public virtual void Benchmark(bool start, int sizeMib, CancellationToken cancel = default) =>
+        throw new NotSupportedException();
+    public virtual void SetLedColour(int colour, CancellationToken cancel = default) => throw new NotSupportedException();
     public virtual WirelessResponse SetWireless(WirelessRequest settings, CancellationToken cancel = default) =>
         throw new NotSupportedException();
     public virtual IReadOnlyList<WirelessNetworkResponse> ScanWireless(CancellationToken cancel = default) =>

@@ -31,6 +31,75 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
+test("fresh connected Wi-Fi links to the selected board and removes the link when stale", context => {
+  const previous = globalThis.document;
+  const fixture = domFixture();
+  globalThis.document = fixture.document;
+  context.after(() => { globalThis.document = previous; });
+  const state = { connected: true, hardware: { capabilities: 128 }, wireless: {
+    wifi_enabled: true, wifi_state: "connected", ssid: "<script>", ipv4: "192.168.1.9",
+  } };
+  renderWirelessStatus(state, "/console?board=selected");
+  const status = fixture.el("#wifi-state");
+  assert.equal(status.children.length, 1);
+  assert.equal(status.children[0].href, "/console?board=selected");
+  assert.equal(status.children[0].textContent, "<script> (192.168.1.9)");
+  assert.equal(status.children[0].target, "_blank");
+  for (const changed of [{ ...state, connected: false }, { ...state, wireless_error: "Stale" },
+    { ...state, wireless: { ...state.wireless, stale: true } },
+    { ...state, wireless: { ...state.wireless, wifi_state: "connecting" } }]) {
+    renderWirelessStatus(changed, "/console?board=selected");
+    assert.equal(status.children.length, 0);
+  }
+});
+
+test("Configure opens radio dialogs without changing saved or drafted radio choices", async context => {
+  let changes = 0;
+  const { form, el } = formFixture(context, { changed: () => { changes++; } });
+  form.initialize({ ssid: "saved", wifi_enabled: true, ble_enabled: false, ble_key_configured: true });
+  for (const [radio, saved, drafted] of [["wifi", "1", "0"], ["ble", "0", "1"]]) {
+    const select = el(`settings-${radio}`);
+    select.value = "configure";
+    await select.fire("change");
+    assert.equal(el(`${radio}-dialog`).open, true);
+    assert.equal(select.value, saved);
+    assert.equal(form.dirty(), false);
+    assert.equal(changes, 0);
+    el(`${radio}-dialog`).close();
+    select.value = drafted;
+    await select.fire("change");
+    const request = form.request();
+    const previousChanges = changes;
+    select.value = "configure";
+    await select.fire("change");
+    assert.equal(select.value, drafted);
+    assert.deepEqual(form.request(), request);
+    assert.equal(changes, previousChanges);
+    form.reset();
+    form.initialize({ ssid: "saved", wifi_enabled: true, ble_enabled: false, ble_key_configured: true });
+    changes = 0;
+  }
+});
+
+test("Configure respects readiness and disabled radio controls while restoring their value", async context => {
+  let ready = true, supported = true;
+  const { form, el } = formFixture(context, { ready: () => ready, supported: () => supported });
+  for (const gate of ["ready", "supported", "disabled"]) {
+    ready = gate !== "ready";
+    supported = gate !== "supported";
+    form.update();
+    for (const radio of ["wifi", "ble"]) {
+      const select = el(`settings-${radio}`);
+      select.disabled = gate === "disabled";
+      select.value = "configure";
+      await select.fire("change");
+      assert.equal(el(`${radio}-dialog`).open, false);
+      assert.equal(select.value, radio === "wifi" ? "1" : "0");
+      assert.equal(form.dirty(), false);
+    }
+  }
+});
+
 test("enabling a radio without saved or replacement credentials is blocked at serialization", async context => {
   const { form, el } = formFixture(context);
   form.initialize({ ssid: "", wifi_enabled: false, ble_enabled: false,
@@ -591,8 +660,9 @@ test("radio choices follow credentials and expired test credentials block saving
     form.update();
     supported = false;
     form.update();
-    assert.equal(el("wifi-configure").disabled, true, "non-wireless boards lock wireless configuration");
-    assert.equal(el("ble-configure").disabled, true);
+    for (const radio of ["wifi", "ble"])
+      assert.equal(el(`settings-${radio}`).options.find(option => option.value === "configure").disabled, true,
+        "non-wireless boards lock wireless configuration");
   } finally {
     globalThis.document = previous;
     if (previousCrypto) Object.defineProperty(globalThis, "crypto", previousCrypto);
@@ -739,7 +809,7 @@ test("failed temporary Wi-Fi cancellation retains the stage and permits a safe r
   }
 });
 
-test("Wi-Fi label stays plain text because ESPForge has no TCP CLI console", () => {
+test("Wi-Fi label stays plain text without a selected console URL", () => {
   const saved = globalThis.document;
   const elements = new Map();
   const element = selector => {

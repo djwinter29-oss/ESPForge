@@ -1,5 +1,15 @@
 #include <zephyr/dt-bindings/gpio/gpio.h>
 #include <zephyr/dt-bindings/pinctrl/esp32s3-pinctrl.h>
+#include <zephyr/dt-bindings/led/led.h>
+
+/ {
+	aliases {
+		espforge-sd = &sdhc0;
+	};
+	zephyr,user {
+		sd-detect-gpios = <&gpio0 8 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>;
+	};
+};
 
 /*
  * ESP32-S3-DevKitC-1 N16R8 (ESP32-S3-WROOM-1-N16R8): 16 MB quad flash and 8 MB octal PSRAM.
@@ -33,6 +43,12 @@
 };
 
 &pinctrl {
+	espforge_led_default: espforge_led_default {
+		mosi {
+			pinmux = <SPIM2_MOSI_GPIO48>;
+			bias-pull-down;
+		};
+	};
 	espforge_sd_default: espforge_sd_default {
 		clock {
 			pinmux = <SDHC0_CLKOUT_GPIO12>;
@@ -63,7 +79,20 @@ espforge_sd: &sdhc0 {
 };
 
 &spi2 {
-	status = "disabled";
+	status = "okay";
+	line-idle-low;
+	pinctrl-0 = <&espforge_led_default>;
+	pinctrl-names = "default";
+	espforge_led: led-strip@0 {
+		compatible = "worldsemi,ws2812-spi";
+		reg = <0>;
+		spi-max-frequency = <6400000>;
+		spi-zero-frame = <0xc0>;
+		spi-one-frame = <0xf0>;
+		chain-length = <1>;
+		color-mapping = <LED_COLOR_ID_GREEN LED_COLOR_ID_RED LED_COLOR_ID_BLUE>;
+		reset-delay = <350>;
+	};
 };
 
 /* SPI3's default pins overlap the module's internal flash/PSRAM signals (octal PSRAM uses GPIO33-37). */

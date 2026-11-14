@@ -32,6 +32,18 @@ class SupportedHardwareIdentity(TypedDict):
     wireless_supported: bool
     ram_total_bytes: int
     ram_reserved_bytes: int
+    memory_report_supported: bool
+    psram_total_bytes: int | None
+    psram_reserved_bytes: int | None
+    flash_total_bytes: int | None
+
+
+class MemoryInventory(TypedDict):
+    """Physical module capacities and linker reservations, not live allocation."""
+
+    psram_total_bytes: int | None
+    psram_reserved_bytes: int | None
+    flash_total_bytes: int | None
 
 
 class UnsupportedHardwareIdentity(TypedDict):
@@ -88,6 +100,7 @@ class RuntimeStatus(TypedDict):
     led_available: bool
     led_on: bool
     led_flags: int
+    led_colour: int | None
     espforge_flags: int
     cpu_usage_core0_basis_points: int | None
     cpu_usage_core1_basis_points: int | None
@@ -209,9 +222,34 @@ class RuntimeInputReport(TypedDict):
     data: RuntimeStatus
 
 
+class BenchmarkStatus(TypedDict):
+    sequence: int
+    state: str
+    state_id: int
+    active: bool
+    target_bytes: int
+    written_bytes: int
+    read_bytes: int
+    write_elapsed_ms: int
+    read_elapsed_ms: int
+    mismatch_count: int
+    error: int
+    filesystem_result: int
+    file_remains: bool
+    volume_mounted: bool
+    progress_percent: float
+    write_bytes_per_second: float | None
+    read_bytes_per_second: float | None
+
+
+class BenchmarkInputReport(TypedDict):
+    kind: Literal["self_test"]
+    data: BenchmarkStatus
+
+
 class MemoryInputReport(TypedDict):
     kind: Literal["memory"]
     data: MemoryStatus
 
 
-InputReport = RuntimeInputReport | MemoryInputReport
+InputReport = RuntimeInputReport | MemoryInputReport | BenchmarkInputReport

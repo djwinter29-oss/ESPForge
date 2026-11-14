@@ -5,7 +5,7 @@
  * @file Connection lifecycle state machine: connect, same-board reconnect, initialization, recovery hand-off and
  * disconnect. The only writer of `phase` and its projections `connected` and `reconnecting`.
  */
-import { decodeConfigReport, decodeIdentityReport } from "../protocol/codec.mjs";
+import { decodeConfigReport, decodeIdentityReport, decodeMemoryInventory } from "../protocol/codec.mjs";
 import { CAP, REPORT } from "../protocol/constants.mjs";
 import { BoardError, errorValue, REASON } from "../state/errors.mjs";
 import { commandPending } from "../state/selectors.mjs";
@@ -151,6 +151,8 @@ export class Connection {
         return;
       }
       const settings = decodeConfigReport(await read(REPORT.CONFIG), hardware);
+      if (hardware.memory_report_supported)
+        Object.assign(hardware, decodeMemoryInventory(await read(REPORT.MEMORY)));
       if (!current()) throw new BoardError(REASON.CONNECTION_CANCELLED);
       this.reconnectUid = hardware.serial_number;
       const recoveryError = s.commands.recoveryError;

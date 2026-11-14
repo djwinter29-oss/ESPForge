@@ -15,6 +15,7 @@ from ..reports.models import (
     MemoryStatus,
     RuntimeStatus,
     WirelessStatus,
+    BenchmarkStatus,
 )
 
 
@@ -28,8 +29,7 @@ class DashboardSnapshot(TypedDict):
     board_configuration: BoardConfiguration | None
     runtime: RuntimeStatus | None
     memory: MemoryStatus | None
-    # ESPForge has no benchmark; this reserved status field is always null.
-    self_test: None
+    self_test: BenchmarkStatus | None
     settings_supported: bool
     settings_message: str | None
     control_result: ControlResult | None
@@ -77,7 +77,11 @@ class SettingsResponse(TypedDict):
     control_result: ControlResult | None
 
 
-class ResyncResponse(TypedDict):
+class _ResyncReset(TypedDict, total=False):
+    temporary_wifi_reset: bool
+
+
+class ResyncResponse(_ResyncReset):
     uncertain: bool
     control_result: ControlResult | None
     wireless: WirelessStatus | None

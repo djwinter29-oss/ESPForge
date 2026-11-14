@@ -11,7 +11,7 @@ test("storage does not infer absence from an unavailable sample or mount from ca
   const state = snapshot();
   state.memory.sample_valid = false; state.memory.presence_known = false; state.memory.initialized = false;
   renderStatus(state);
-  assert.equal(el('[aria-labelledby="memory-title"]').hidden, false);
+  assert.equal(el('[aria-labelledby="memory-title"]').hidden, true);
   assert.equal(el("#memory-note").textContent, "");
   assert.equal(el("#memory-state").textContent, "Busy");
   state.memory.sample_valid = true; state.memory.presence_known = true; state.memory.present = false;
@@ -20,10 +20,10 @@ test("storage does not infer absence from an unavailable sample or mount from ca
   state.memory.present = true; state.memory.initialized = false;
   renderStatus(state);
   assert.equal(el('[aria-labelledby="memory-title"]').hidden, false);
-  assert.equal(el("#memory-note").textContent, "Card detected but not initialized; check UART logs and SDMMC wiring.");
+  assert.equal(el("#memory-note").textContent, "Card detected but not initialized; check UART logs and SD-card wiring.");
   state.memory.presence_known = false; state.memory.present = false;
   renderStatus(state);
-  assert.equal(el("#memory-note").textContent, "No card mounted; check card insertion and SDMMC wiring.");
+  assert.equal(el("#memory-note").textContent, "No card mounted; check card insertion and SD-card wiring.");
 }));
 
 test("Direct dashboard retains storage visibility through stale reports without showing cached readings", () =>
@@ -54,8 +54,33 @@ test("Direct dashboard retains storage visibility through stale reports without 
       assert.equal(el("#memory-size").textContent, "--", "Stale readings must not be presented as live");
 
       render({ connected: false });
-      assert.equal(el('[aria-labelledby="memory-title"]').hidden, false, "Disconnect must clear confirmed presence");
+      assert.equal(el('[aria-labelledby="memory-title"]').hidden, true, "Disconnect must clear confirmed presence");
     }
+  }));
+
+test("storage stays hidden until detected but keeps detected initialization failures visible", () =>
+  withDocument((el, renderStatus) => {
+    const section = el('[aria-labelledby="memory-title"]');
+    renderStatus({ connected: false });
+    assert.equal(section.hidden, true);
+    const state = snapshot();
+    state.memory = { configured: true, sample_valid: true, initialized: false, presence_known: false, present: null };
+    renderStatus(state);
+    assert.equal(section.hidden, true);
+    state.memory = { ...state.memory, presence_known: true, present: true };
+    renderStatus(state);
+    assert.equal(section.hidden, false);
+    assert.match(el("#memory-note").textContent, /not initialized/);
+    renderStatus({ ...state, memory: { configured: true, sample_valid: false } });
+    assert.equal(section.hidden, false);
+    renderStatus({ ...state, memory: null, freshness: { 10: "stale" } });
+    assert.equal(section.hidden, false);
+    state.memory = { ...state.memory, presence_known: false, present: null };
+    renderStatus(state);
+    assert.equal(section.hidden, true);
+    state.memory.initialized = true;
+    renderStatus(state);
+    assert.equal(section.hidden, false, "Successful initialization establishes card detection");
   }));
 
 test("busy storage retains card details without a message, but stale or replaced media clears them", () =>

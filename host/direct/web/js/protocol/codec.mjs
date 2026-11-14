@@ -48,7 +48,9 @@ export function decodeIdentityReport(report) {
   const capabilities = view.getUint8(17);
   const total = view.getUint32(18, true);
   const reserved = view.getUint32(22, true);
-  requireValid(Boolean(capabilities & CAP.SDMMC) && !(capabilities & ~ESPFORGE_CAPABILITIES)
+  const storage = capabilities & (CAP.SPI | CAP.SDMMC);
+  requireValid((storage === CAP.SPI || storage === CAP.SDMMC)
+    && !(capabilities & ~ESPFORGE_CAPABILITIES)
     && total > 0 && reserved <= total && (board !== 1 || mcu === 3), "identity");
   return {
     version: 1, product_id: product, product_name: "ESPForge",
@@ -56,9 +58,23 @@ export function decodeIdentityReport(report) {
     firmware_version: [11, 12, 13].map(offset => view.getUint8(offset)).join("."),
     mcu_id: mcu, mcu: ({ 3: "ESP32-S3" })[mcu] ?? null,
     board_model: board, board_name: ({ 0: "Unspecified", 1: "ESP32-S3-DevKitC-1" })[board] ?? null,
-    capabilities, transport: "sdmmc",
+    capabilities, transport: capabilities & CAP.SPI ? "spi" : "sdmmc",
     ram_total_bytes: total, ram_reserved_bytes: reserved,
+    memory_report_supported: Boolean(view.getUint8(16) & 1),
   };
+}
+
+export function decodeMemoryInventory(report) {
+  const view = payload(report, 16);
+  const flags = view.getUint8(1);
+  const total = view.getUint32(4, true);
+  const reserved = view.getUint32(8, true);
+  const flash = view.getUint32(12, true);
+  requireValid(!(flags & ~3) && view.getUint16(2, true) === 0
+    && (flags & 1 ? total > 0 && reserved <= total : total === 0 && reserved === 0)
+    && (flags & 2 ? flash > 0 : flash === 0), "memory-inventory");
+  return { psram_total_bytes: flags & 1 ? total : null, psram_reserved_bytes: flags & 1 ? reserved : null,
+    flash_total_bytes: flags & 2 ? flash : null };
 }
 
 export function decodeConfigReport(report, identity) {
@@ -70,32 +86,41 @@ export function decodeConfigReport(report, identity) {
   const rx = view.getUint8(6);
   const led = view.getUint8(15);
   const detect = view.getUint8(16);
+  const assignedCount = identity.capabilities & CAP.SPI ? 4 : 6;
   const settings = { system_clock_mhz: view.getUint16(1, true), sdcard_profile: view.getUint8(3),
     radios: (flags & CONFIG_FLAGS.RADIO_MASK) >> 3 };
   requireValid(validSettings(settings) && !(flags & ~CONFIG_FLAGS.VALID_MASK)
     && Boolean(flags & CONFIG_FLAGS.MONITOR_UART)
     && (identity.capabilities & CAP.WIRELESS || !(flags & CONFIG_FLAGS.RADIO_MASK))
-    && [0, 1].includes(uart) && tx !== 255 && rx !== 255 && led === 255 && detect === 255
-    && [tx, rx, ...gpios].every(pin => pin === 255 || pin <= MAX_GPIO)
-    && gpios.every(pin => pin !== 255),
+    && [0, 1].includes(uart) && tx !== 255 && rx !== 255
+    && Boolean(flags & CONFIG_FLAGS.LED) === (led !== 255)
+    && (led === 255 || Boolean(identity.capabilities & CAP.LED))
+    && Boolean(flags & CONFIG_FLAGS.CARD_DETECT) === (detect !== 255)
+    && [led, tx, rx, detect, ...gpios].every(pin => pin === 255 || pin <= MAX_GPIO)
+    && gpios.slice(0, assignedCount).every(pin => pin !== 255)
+    && gpios.slice(assignedCount).every(pin => pin === 255),
   "board-configuration");
   return { ...settings, monitor_uart_index: uart, monitor_uart_tx_gpio: tx, monitor_uart_rx_gpio: rx,
-    storage_gpios: gpios, board_flags: flags, reset_cause: view.getUint8(14) };
+    storage_gpios: gpios, board_flags: flags, reset_cause: view.getUint8(14), card_detect_gpio: detect, led_gpio: led };
 }
 
-export function decodeTelemetryReport(report) {
+export function decodeTelemetryReport(report, identity = null) {
   const view = payload(report, 22);
   const flags = view.getUint8(21);
   const loads = [view.getUint16(12, true), view.getUint16(14, true)];
   const temperature = view.getInt16(2, true);
   const clock = view.getUint32(16, true);
-  // No LED, no CDC: the LED byte and extension bits 1 and 3 stay clear; the APP CPU reports no load.
-  requireValid(view.getUint8(1) === 0 && !(flags & ~5) && (Boolean(flags & 4) || temperature === 0) && clock > 0
+  const colour = view.getUint8(1);
+  requireValid(colour <= 7 && !(flags & ~13) && (!colour || Boolean(flags & 8))
+    && (!identity || !(flags & 8) || Boolean(identity.capabilities & CAP.LED))
+    && (Boolean(flags & 4) || temperature === 0) && clock > 0
     && (loads[0] <= 10000 || loads[0] === 65535) && loads[1] === 65535, "telemetry");
   return { version: 1, sequence: view.getUint8(20), uptime_ms: view.getBigUint64(4, true),
     system_clock_hz: clock, usb_mounted: Boolean(flags & 1),
     temperature_valid: Boolean(flags & 4), temperature_centidegrees: flags & 4 ? temperature : null,
-    cpu_usage_core0_basis_points: loads[0] === 65535 ? null : loads[0] };
+    led_available: Boolean(flags & 8), led_on: colour !== 0, led_colour: flags & 8 ? colour : null,
+    cpu_usage_core0_basis_points: loads[0] === 65535 ? null : loads[0],
+    cpu_usage_core1_basis_points: loads[1] === 65535 ? null : loads[1] };
 }
 
 function decodeCid(cid) {
@@ -106,7 +131,7 @@ function decodeCid(cid) {
     manufacture_year: 2000 + ((cid[13] & 15) << 4) + (cid[14] >> 4), manufacture_month: cid[14] & 15 };
 }
 
-export function decodeStorageReport(report) {
+export function decodeStorageReport(report, identity = null) {
   const view = payload(report, 34);
   const flags = view.getUint8(2);
   const component = view.getUint8(3);
@@ -119,11 +144,14 @@ export function decodeStorageReport(report) {
   const configured = Boolean(flags & 1);
   const sampleValid = Boolean(flags & 64);
   const initialized = Boolean(flags & 8);
-  // ESPForge has no MSC: bytes 31-33 (enabled, transition pending, request rejected) are always zero.
-  requireValid(!(flags & 128) && format <= 4 && zero(bytesAt(view, 31, 3))
+  const msc = { enabled: view.getUint8(31) === 1, transition_pending: view.getUint8(32) === 1,
+    request_rejected: view.getUint8(33) === 1 };
+  requireValid(!(flags & 128) && format <= 4 && [...bytesAt(view, 31, 3)].every(value => value <= 1)
+    && (!(msc.enabled || msc.transition_pending) || configured && !sampleValid)
     && (!sampleValid || configured) && (configured || !(flags & 126))
     && (sampleValid || (!(flags & 62) && zero(bytesAt(view, 3, 27))))
-    && (!sampleValid || (initialized ? component === 1 && mode === 3 : component === 0 && mode === 0))
+    && (!sampleValid || (initialized ? component === 1 && [2, 3].includes(mode)
+      && (!identity || mode === (identity.capabilities & CAP.SPI ? 2 : 3)) : component === 0 && mode === 0))
     && (!initialized || (flags & 15) === 15)
     && (!(flags & 48) || (sampleValid && initialized))
     && (!(flags & 4) || Boolean(flags & 2))
@@ -133,11 +161,37 @@ export function decodeStorageReport(report) {
   return {
     memory: { version: 1, sequence: view.getUint8(1), configured, sample_valid: sampleValid,
       presence_known: sampleValid && Boolean(flags & 2), present: sampleValid && Boolean(flags & 4),
-      initialized, mode: initialized ? "sdmmc" : null, speed_mode: speed,
+      initialized, mode: mode === 2 ? "spi" : mode === 3 ? "sdmmc" : null, speed_mode: speed,
       bus_clock_hz: clock, capacity_bytes: flags & 32 ? blocks * 512 : null,
-      cid: [...cid], manufacturer: flags & 16 ? decodeCid(cid) : null },
+      cid: [...cid], manufacturer: flags & 16 ? decodeCid(cid) : null, msc },
     filesystem_format: ["unknown", "fat12", "fat16", "fat32", "exfat"][format],
   };
+}
+
+export function decodeBenchmarkReport(report) {
+  const view = payload(report, 32);
+  const state = view.getUint8(2);
+  const flags = view.getUint8(3);
+  const values = [4, 8, 12, 16, 20, 24].map(offset => view.getUint32(offset, true));
+  const [target, written, read, writeMs, readMs, mismatches] = values;
+  const error = view.getUint8(28);
+  const filesystem = view.getUint8(29);
+  requireValid(state <= 8 && !(flags & ~3) && error <= 10 && filesystem <= 19
+    && view.getUint16(30, true) === 0 && target <= 1024 ** 3 && target % 1024 ** 2 === 0
+    && written <= target && read <= written && mismatches <= read && (state === 7) === Boolean(error)
+    && (state === 7 || filesystem === 0)
+    && (state !== 0 || values.every(value => value === 0))
+    && (state !== 1 || values.slice(1).every(value => value === 0))
+    && (state !== 6 || target > 0 && written === target && read === target && !mismatches && !(flags & 1)),
+  "benchmark-status");
+  return { sequence: view.getUint8(1),
+    state: ["idle", "queued", "preparing", "writing", "reading", "cleanup", "passed", "failed", "cancelled"][state],
+    state_id: state, active: state >= 1 && state <= 5, target_bytes: target, written_bytes: written, read_bytes: read,
+    write_elapsed_ms: writeMs, read_elapsed_ms: readMs, mismatch_count: mismatches, error, filesystem_result: filesystem,
+    file_remains: Boolean(flags & 1), volume_mounted: Boolean(flags & 2),
+    progress_percent: target ? (written + read) * 50 / target : 0,
+    write_bytes_per_second: writeMs ? written * 1000 / writeMs : null,
+    read_bytes_per_second: readMs ? read * 1000 / readMs : null };
 }
 
 export function buildControlRequest(transaction, opcode, { flags = 0, args = [] } = {}) {

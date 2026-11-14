@@ -1,4 +1,5 @@
 #include "app/espforge.h"
+#include "platform/ef_platform.h"
 
 #include <zephyr/device.h>
 #include <zephyr/drivers/clock_control.h>
@@ -108,5 +109,6 @@ void ef_telemetry_report(uint8_t sequence, uint8_t out[EF_TELEMETRY_SIZE])
 	telemetry.temperature_centi_c = temperature_centi_c;
 	telemetry.core0_load = core0_load;
 	k_mutex_unlock(&telemetry_lock);
+	ef_platform_led_status(&telemetry.led_colour, &telemetry.led_available);
 	ef_report_telemetry(&telemetry, out);
 }

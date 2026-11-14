@@ -25,6 +25,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
@@ -45,10 +46,12 @@ jobs:
       - name: Verify installed Python wheel
         if: matrix.os == 'ubuntu-24.04' && matrix.python == '3.12'
         run: |
+          mkdir -p host/python/src/espforge/web
+          cp -R host/web/src/. host/python/src/espforge/web/
           python -m pip wheel --no-deps host/python --wheel-dir build/wheels
           python -m venv build/wheel-check
           build/wheel-check/bin/python -m pip install build/wheels/*.whl
-          build/wheel-check/bin/python -I tools/check_python_wheel.py 0.0.0.dev0
+          build/wheel-check/bin/python -I tools/check_python_wheel.py
 
       - name: Setup Node.js
         if: matrix.python == '3.12'
@@ -91,6 +94,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
@@ -131,7 +135,9 @@ jobs:
           bundler-cache: true
 
       - name: Run Ceedling
-        run: bundle exec ceedling test:all
+        run: |
+          bundle exec ceedling test:all
+          bundle exec ceedling --mixin '={project: {build_root: build/ceedling-sd-spi}, defines: {test: [EF_STORAGE_SPI=1, EF_ENABLE_STORAGE_BENCHMARK=1]}}' test:test_hid_reports
 
   docs:
     name: Documentation links

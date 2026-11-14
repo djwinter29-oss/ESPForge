@@ -12,6 +12,17 @@ const ui = (state, changes = {}) => ({ eligibility: deriveOperationEligibility(s
   ...changes });
 const environment = { secure: true, hid: true, ble: true };
 
+test("a local wireless workflow locks MSC controls as well as save and reboot", () => {
+  const state = { ...snapshot(), link: "usb" };
+  state.settings.board_flags = 0x45;
+  state.memory = { ...state.memory, initialized: false, sample_valid: false,
+    msc: { enabled: true, transition_pending: false } };
+  assert.equal(deriveControlsViewModel(state, ui(state), environment).disabled["msc-return"], false);
+  const busy = deriveControlsViewModel(state, ui(state, { formBusy: true }), environment);
+  assert.equal(busy.disabled["msc-return"], true);
+  assert.equal(busy.disabled["msc-enable"], true);
+});
+
 test("ESP32-S3 clock choices are Default, 80, 160 and 240 MHz and keep an unsupported saved value visible", () => {
   assert.deepEqual(deriveClockOptions("ESP32-S3", 240).choices.map(([value]) => value), [0, 80, 160, 240]);
   assert.equal(deriveClockOptions("ESP32-S3", 0).choices[0][1], "Default (240 MHz)");

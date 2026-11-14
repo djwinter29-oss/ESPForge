@@ -7,11 +7,48 @@ import unittest
 from unittest.mock import Mock, patch
 
 from helpers import make_monitor
-from espforge.dashboard.monitor import CommandOutcomeUncertain, DeviceMonitor, _empty_snapshot
+from espforge.dashboard.monitor import BoardConflict, CommandOutcomeUncertain, DeviceMonitor, _empty_snapshot
 from espforge.reports import ProtocolError
 
 
 class MonitorCommandTests(unittest.TestCase):
+    def test_led_requires_capability_and_fresh_driver_status_then_invalidates_telemetry(self):
+        client = Mock()
+        monitor = make_monitor(client, {"connected": True, "hardware": {"capabilities": 0x97},
+            "runtime": {"led_available": True, "led_colour": 0}, "memory": {"sample_valid": False}})
+        monitor._input_received_at["runtime"] = float("inf")
+        result = {"status": "completed", "opcode": 1, "error": "none"}
+        client.set_led_colour.return_value = result
+        self.assertEqual(monitor.set_led_colour(4), {"control_result": result})
+        client.set_led_colour.assert_called_once_with(4)
+        self.assertTrue(monitor.snapshot()["telemetry_stale"])
+        with self.assertRaises(BoardConflict):
+            monitor.set_led_colour(2)
+        monitor._input_received_at["runtime"] = float("inf")
+        monitor._snapshot["hardware"]["capabilities"] = 0x96
+        with self.assertRaises(BoardConflict):
+            monitor.set_led_colour(2)
+        client.set_led_colour.assert_called_once()
+
+    def test_benchmark_start_cancel_and_confirmed_admission_invalidate_snapshots(self):
+        client = Mock()
+        monitor = make_monitor(client, {"connected": True, "hardware": {"self_test_supported": True},
+            "memory": {"sample_valid": True, "initialized": True,
+                       "msc": {"enabled": False, "transition_pending": False}},
+            "self_test": {"active": False}})
+        monitor._input_received_at["self_test"] = float("inf")
+        result = {"status": "completed", "opcode": 4, "error": "none"}
+        client.benchmark.return_value = result
+        self.assertEqual(monitor.benchmark(True, 32), {"control_result": result})
+        client.benchmark.assert_called_once_with(True, 32)
+        self.assertTrue(monitor.snapshot()["self_test_stale"])
+        self.assertTrue(monitor.snapshot()["storage_stale"])
+        monitor._snapshot["self_test"] = {"active": True}
+        monitor._snapshot["memory"] = {"sample_valid": False}
+        monitor._input_received_at["self_test"] = float("inf")
+        self.assertEqual(monitor.benchmark(False), {"control_result": result})
+        client.benchmark.assert_called_with(False, 0)
+
     def setUp(self):
         self.client = Mock()
         self.monitor = make_monitor(self.client, {
@@ -40,12 +77,36 @@ class MonitorCommandTests(unittest.TestCase):
             self.client.set_settings.assert_not_called()
 
     def test_removed_feature_commands_are_not_exposed(self):
-        for name in ("set_led", "set_msc", "set_self_test", "tcp_cli_auth_proof"):
+        for name in ("set_led", "set_self_test", "tcp_cli_auth_proof"):
             self.assertFalse(hasattr(self.monitor, name), name)
         snapshot = self.monitor.snapshot()
         self.assertIsNone(snapshot["self_test"])
         self.assertTrue(snapshot["self_test_stale"])
         self.assertFalse(snapshot["reconnecting"])
+
+    def test_msc_handoff_invalidates_receipts_and_requires_idle_ownership_before_reboot(self):
+        self.monitor._snapshot.update({
+            "board_configuration": {"board_flags": 0x45},
+            "memory": {"sample_valid": True, "initialized": True,
+                       "msc": {"enabled": False, "transition_pending": False}},
+        })
+        self.client.set_msc.return_value = {"status": "completed", "opcode": 3}
+        self.monitor.set_msc(True)
+        self.assertTrue(self.monitor.snapshot()["storage_stale"])
+        with self.assertRaises(BoardConflict):
+            self.monitor.set_msc(True)
+        self.client.set_msc.assert_called_once_with(True, False)
+        self.monitor._snapshot["memory"] = {
+            "sample_valid": False, "initialized": False,
+            "msc": {"enabled": True, "transition_pending": False},
+        }
+        self.monitor._input_received_at["memory"] = float("inf")
+        with self.assertRaises(BoardConflict):
+            self.monitor.reboot()
+        self.client.reboot.assert_not_called()
+        self.monitor.set_msc(False, True)
+        self.client.set_msc.assert_called_with(False, True)
+        self.assertTrue(self.monitor.snapshot()["storage_stale"])
 
     def test_disconnect_after_command_preserves_disconnected_snapshot(self):
         self.monitor._snapshot = {**_empty_snapshot(), "connected": True}
@@ -121,6 +182,23 @@ class MonitorCommandTests(unittest.TestCase):
             self.assertEqual(monitor._wireless_received_at, 100.0)
         with patch("espforge.dashboard.monitor.time.monotonic", return_value=106.0):
             self.assertTrue(monitor.snapshot()["wireless"]["stale"])
+
+    def test_resync_after_wifi_reset_releases_cleanup_without_reporting_test_success(self):
+        client = Mock(command_uncertain=True)
+        monitor = make_monitor(client, {"connected": True})
+        monitor._command_outcome_uncertain = True
+        monitor._uncertain_command = (7, 9)
+        monitor._wireless_cleanup_required = True
+        wireless = {"test_generation": 0, "scan_generation": 0}
+        client.reconcile_outcome.return_value = None, wireless
+        with self.assertLogs("espforge.dashboard.monitor", "WARNING"):
+            response = monitor.resync_command()
+        self.assertEqual(response, {
+            "uncertain": False, "control_result": None, "wireless": wireless, "temporary_wifi_reset": True,
+        })
+        self.assertFalse(monitor.snapshot()["command_outcome_uncertain"])
+        self.assertFalse(monitor.snapshot()["wireless_cleanup_required"])
+        client.cancel_wireless_test.assert_not_called()
 
     def test_malformed_input_report_does_not_abort_wireless_poll_drain(self):
         client = Mock(command_uncertain=False)

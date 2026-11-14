@@ -3,6 +3,7 @@
 
 using System.Net;
 using System.Net.Http.Json;
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
@@ -22,7 +23,7 @@ public sealed class DashboardApplicationTests
         await using var app = await Build(boards);
         await app.StartAsync();
         using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
-        foreach (var route in new[] { "/", "/js/app.mjs", "/favicon.svg" })
+        foreach (var route in new[] { "/", "/console", "/js/app.mjs", "/favicon.svg" })
         {
             using var response = await client.GetAsync(route);
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -31,14 +32,18 @@ public sealed class DashboardApplicationTests
             Assert.Contains("frame-ancestors 'none'",
                 response.Headers.GetValues("Content-Security-Policy").Single());
             Assert.True(response.Headers.CacheControl?.NoStore);
-            if (route is "/")
+            if (route is "/" or "/console")
             {
                 var page = await response.Content.ReadAsStringAsync();
                 Assert.Contains("| .NET", page);
                 Assert.DoesNotContain("{{", page);
+                var version = typeof(DashboardApplication).Assembly
+                    .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+                Assert.NotNull(version);
+                Assert.Contains($"App v{version}<", page);
             }
         }
-        foreach (var route in new[] { "/index.html", "/console.html", "/console", "/src/js/app.mjs" })
+        foreach (var route in new[] { "/index.html", "/console.html", "/src/js/app.mjs" })
             Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync(route)).StatusCode);
         using (var foreign = new HttpRequestMessage(HttpMethod.Post, "/api/reboot?board=a"))
         {
@@ -79,6 +84,20 @@ public sealed class DashboardApplicationTests
         using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
         using var shared = JsonDocument.Parse(File.ReadAllText(
             Path.Combine(AppContext.BaseDirectory, "host-invalid-requests.json")));
+        foreach (var body in new[]
+        {
+            "{\"start\":true,\"size_mib\":32}",
+            "{\"start\":true,\"size_mib\":0,\"confirm\":true}",
+            "{\"start\":true,\"size_mib\":1025,\"confirm\":true}",
+            "{\"start\":false,\"size_mib\":1}",
+            "{\"start\":false,\"confirm\":\"false\"}",
+            "{\"start\":true,\"size_mib\":true,\"confirm\":true}",
+            "{\"start\":false,\"force\":true}"
+        })
+        {
+            using var request = new StringContent(body, Encoding.UTF8, "application/json");
+            Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsync("/api/benchmark", request)).StatusCode);
+        }
         foreach (var state in new Exception?[]
         {
             new BoardNotFoundException("unknown"), new IOException("disconnected"),

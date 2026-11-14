@@ -65,7 +65,8 @@ const mock = `<script>
     savedWireless: structuredClone(connected.wireless), testId: null,
     mismatch: false, cleanupFailure: false, cleanups: 0,
     scanInvalid: false, wirelessScans: 0, resyncs: 0, failedCommand: null, noResultCommand: null,
-    statusReads: 0, malformedStatus: null, rebootUncertain: false, wirelessRequests: [], settingsRequests: []};
+    statusReads: 0, malformedStatus: null, rebootUncertain: false, wirelessRequests: [], settingsRequests: [],
+    mscRequests: []};
   window.fetch = async (input, options = {}) => {
     const url = new URL(input, document.baseURI);
     const state = window.sharedBrowserState;
@@ -91,6 +92,13 @@ const mock = `<script>
         return response({uncertain: false, control_result: {opcode, status: "failed", error: "storage_busy"}});
       }
       return response({uncertain: false});
+    }
+    if (url.pathname === "/api/msc") {
+      const payload = JSON.parse(options.body);
+      state.mscRequests.push(payload);
+      connected.memory = { ...connected.memory, sample_valid: !payload.enabled, initialized: !payload.enabled,
+        present: payload.enabled ? null : true, msc: { enabled: payload.enabled, transition_pending: false } };
+      return response({control_result: {opcode: 3, status: "completed"}});
     }
     if (url.pathname === "/api/reboot") {
       state.reboots++;
@@ -181,9 +189,9 @@ await waitFor(() => page.querySelector("#connection-label").textContent === "Con
   "mock board did not connect");
 
 const configureRadio = radio => {
-  const button = page.querySelector(`#${radio.id === "settings-wifi" ? "wifi" : "ble"}-configure`);
-  button.focus();
-  button.click();
+  radio.focus();
+  radio.value = "configure";
+  radio.dispatchEvent(new Event("change", { bubbles: true }));
 };
 
 await run("command lifecycle gates, restart recovery, and confirmation focus", async () => {
@@ -281,7 +289,7 @@ await run("Wi-Fi cancellation failure remains open and retry succeeds", async ()
   ssid.dispatchEvent(new Event("input", { bubbles: true }));
   page.querySelector("#wifi-connect").click();
   await waitFor(() => !dialog.open, "Wi-Fi test did not finish and close the dialog");
-  check(page.activeElement === page.querySelector("#wifi-configure"), "focus was not restored after a successful test");
+  check(page.activeElement === page.querySelector("#settings-wifi"), "focus was not restored after a successful test");
 
   configureRadio(radio);
   const cancel = new Event("cancel", { cancelable: true });
@@ -292,7 +300,7 @@ await run("Wi-Fi cancellation failure remains open and retry succeeds", async ()
   check(page.querySelector("#wifi-cancel").textContent === "Retry clearing test", "retry is not offered");
   page.querySelector("#wifi-cancel").click();
   await waitFor(() => !dialog.open, "cancellation retry did not close the dialog");
-  check(page.activeElement === page.querySelector("#wifi-configure"), "focus was not restored after cancellation retry");
+  check(page.activeElement === page.querySelector("#settings-wifi"), "focus was not restored after cancellation retry");
 });
 
 await run("browser-only uncertainty is recoverable inside the Wi-Fi dialog without replay", async () => {

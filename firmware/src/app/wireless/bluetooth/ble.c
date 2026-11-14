@@ -27,6 +27,7 @@ LOG_MODULE_REGISTER(ef_ble, LOG_LEVEL_INF);
 #define CHR_TELEMETRY 0x0003u
 #define CHR_STORAGE 0x000Au
 #define CHR_BENCHMARK 0x000Bu
+#define CHR_MEMORY 0x000Du
 #define CHR_WIRELESS 0x000Cu
 #define CHR_CONTROL 0x0014u
 #define CHR_NONCE 0x0100u
@@ -143,6 +144,9 @@ static uint16_t build(uint16_t chr, uint8_t *out)
 	case CHR_CONFIG:
 		ef_config_report(out);
 		return EF_CONFIG_SIZE;
+	case CHR_MEMORY:
+		ef_memory_report(out);
+		return EF_MEMORY_SIZE;
 	case CHR_TELEMETRY:
 		ef_telemetry_report(++sequence, out);
 		return EF_TELEMETRY_SIZE;
@@ -150,9 +154,13 @@ static uint16_t build(uint16_t chr, uint8_t *out)
 		ef_storage_report(++sequence, out);
 		return EF_STORAGE_SIZE;
 	case CHR_BENCHMARK:
-		/* No benchmark: the value is empty, but the read still advances the BLE sequence. */
+#if EF_ENABLE_STORAGE_BENCHMARK
+		ef_benchmark_report(++sequence, out);
+		return EF_BENCHMARK_SIZE;
+#else
 		++sequence;
 		return 0;
+#endif
 	case CHR_WIRELESS:
 		ef_wireless_report(out);
 		return EF_WIRELESS_SIZE;
@@ -262,6 +270,7 @@ BT_GATT_SERVICE_DEFINE(espforge_service,
 	BT_GATT_PRIMARY_SERVICE(EF_UUID_DECLARE(0x0000u)),
 	REPORT_CHR(CHR_IDENTITY),
 	REPORT_CHR(CHR_CONFIG),
+	REPORT_CHR(CHR_MEMORY),
 	REPORT_CHR(CHR_TELEMETRY),
 	REPORT_CHR(CHR_STORAGE),
 	REPORT_CHR(CHR_BENCHMARK),

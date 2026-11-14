@@ -32,6 +32,8 @@ const uint8_t *ef_board_uid(void);
 const char *ef_board_serial(void);
 
 void ef_identity_report(uint8_t out[EF_IDENTITY_SIZE]);
+/** Read the immutable boot-sampled module memory inventory. */
+void ef_memory_report(uint8_t out[EF_MEMORY_SIZE]);
 void ef_config_report(uint8_t out[EF_CONFIG_SIZE]);
 void ef_telemetry_report(uint8_t sequence, uint8_t out[EF_TELEMETRY_SIZE]);
 void ef_storage_report(uint8_t sequence, uint8_t out[EF_STORAGE_SIZE]);
@@ -45,6 +47,12 @@ void ef_telemetry_init(void);
 void ef_telemetry_poll(void);
 
 void ef_storage_init(void);
+/** Read retained benchmark progress without acquiring the media lock. */
+void ef_benchmark_report(uint8_t sequence, uint8_t out[EF_BENCHMARK_SIZE]);
+/** Let the storage worker change owners after this Feature 20 result has left the control path. */
+void ef_storage_result_read(uint8_t transaction);
+/** Refresh native USB after confirmed handoff; called only by the storage worker. */
+int ef_storage_usb_refresh(void);
 
 void ef_wifi_init(bool enabled);
 /** Advance connects, tests and scans; call from the main loop. */

@@ -49,6 +49,8 @@
 ## Validation
 
 - Run the smallest existing checks that cover the change; add regression tests for non-trivial behavior.
+- Keep `tools/` for human-operated utilities; do not put test scripts or test suites anywhere under it.
+  Place tests in the relevant component's test directory instead.
 - Portable firmware: `bundle exec ceedling test:all`; use a focused suite when appropriate.
 - Target firmware: from an initialized Zephyr workspace, run `bash espforge/tools/firmware/build.sh`, then
   `python espforge/tools/check_firmware_config.py`. Native tests do not validate Zephyr driver integration.

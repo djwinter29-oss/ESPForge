@@ -7,6 +7,21 @@ import { withDocument, snapshot } from "../../support/view.mjs";
 import { deriveDashboardViewModel } from "../../../web/js/ui/sections/status-model.mjs";
 import { deriveDeviceViewModel } from "../../../web/js/ui/sections/device.mjs";
 
+test("module memory keeps PSRAM separate from SRAM and unavailable flash unknown", () => withDocument((el, renderStatus) => {
+  const state = snapshot();
+  state.hardware = { ...state.hardware, psram_total_bytes: 8 << 20, psram_reserved_bytes: 1 << 20,
+    flash_total_bytes: 16 << 20 };
+  renderStatus(state);
+  assert.equal(el("#ram-usage").textContent, "64.0 / 512 KiB (12.5%)");
+  assert.equal(el("#psram-usage").textContent, "1.0 / 8.0 MiB (12.5%)");
+  assert.equal(el("#flash-capacity").textContent, "16.0 MiB");
+  state.hardware.psram_reserved_bytes = 16 << 20;
+  state.hardware.flash_total_bytes = null;
+  renderStatus(state);
+  assert.equal(el("#psram-usage").textContent, "--");
+  assert.equal(el("#flash-capacity").textContent, "--");
+}));
+
 test("board pin tables are reused until the displayed configuration changes", () => withDocument((el, renderStatus) => {
   const state = snapshot();
   renderStatus(state);
@@ -24,6 +39,24 @@ test("board pin tables are reused until the displayed configuration changes", ()
   renderStatus(state);
   assert.equal(el("#board-uart").replaceCount, 2);
   assert.equal(el("#board-storage-pins").replaceCount, 2);
+  state.settings = { ...state.settings, board_flags: 0x45, card_detect_gpio: 8 };
+  renderStatus(state);
+  assert.equal(el("#board-storage-pins").replaceCount, 3);
+  assert.equal(el("#board-storage-pins").children[0].children.at(-1).textContent, "Card detect");
+  assert.equal(el("#board-storage-pins").children[1].children.at(-1).textContent, "GPIO8");
+}));
+
+test("SPI boards show four bus signals and retain card detection", () => withDocument((el, renderStatus) => {
+  const state = snapshot();
+  renderStatus(state);
+  state.hardware = { ...state.hardware, transport: "spi", capabilities: 0x8e };
+  state.settings = { ...state.settings, storage_gpios: [12, 11, 13, 10, 255, 255],
+    board_flags: 0x45, card_detect_gpio: 8 };
+  renderStatus(state);
+  assert.equal(el("#product-name").textContent, "ESPForge (SPI)");
+  assert.equal(el("#board-storage-title").textContent, "Storage (SPI)");
+  assert.deepEqual(el("#board-storage-pins").children.map(row => row.children.map(cell => cell.textContent)),
+    [["SCK", "MOSI", "MISO", "CS", "Card detect"], ["GPIO12", "GPIO11", "GPIO13", "GPIO10", "GPIO8"]]);
 }));
 
 test("identity RAM stays build accounting while stale inputs show no current values", () =>
@@ -36,7 +69,7 @@ test("identity RAM stays build accounting while stale inputs show no current val
   assert.equal(el("#board-model").textContent, "ESP32-S3-DevKitC-1 (ESP32-S3)");
   assert.equal(el("#product-name").textContent, "ESPForge (SDMMC)");
   assert.equal(el("#identity-clock").textContent, "240 MHz");
-  assert.equal(el("#cpu-usage-core0").textContent, "12.3%");
+  assert.equal(el("#cpu-usage-core0").textContent, "12.3% / --");
   assert.match(el("#uptime").textContent, /104249991d/);
   assert.equal(el("#board-reset-cause").textContent, "Power-on");
   const rows = id => el(id).children.map(row => row.children.map(cell => cell.textContent));
@@ -51,11 +84,22 @@ test("identity RAM stays build accounting while stale inputs show no current val
   state.freshness = { 3: "stale", 10: "stale" };
   renderStatus(state);
   assert.equal(el("#identity-clock").textContent, "--");
-  assert.equal(el("#cpu-usage-core0").textContent, "--");
+  assert.equal(el("#cpu-usage-core0").textContent, "-- / --");
   assert.equal(el("#ram-usage").textContent, "64.0 / 512 KiB (12.5%)");
   assert.equal(el("#telemetry-freshness").textContent, "telemetry: stale");
   assert.equal(el("#storage-freshness").textContent, "storage: stale");
 }));
+
+test("service load shows each core without replacing unavailable values with zero", () => {
+  for (const [core0, core1, expected] of [
+    [310, null, "3.1% / --"], [0, null, "0.0% / --"], [null, 1234, "-- / 12.3%"],
+    [310, 0, "3.1% / 0.0%"], [null, null, "-- / --"], [undefined, undefined, "-- / --"],
+  ]) {
+    const model = deriveDeviceViewModel({ ...snapshot(),
+      runtime: { cpu_usage_core0_basis_points: core0, cpu_usage_core1_basis_points: core1 } });
+    assert.equal(model.text["cpu-usage-core0"], expected);
+  }
+});
 
 test("device rendering reuses the supplied dashboard presentation snapshot", () => {
   const state = { connected: true };

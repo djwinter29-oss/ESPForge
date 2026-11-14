@@ -44,29 +44,37 @@ test("standalone dashboard labels profiles, active measurements, controls and ac
     assert.match(footer, /role="status" aria-live="polite"/);
     assert.match(footer, /id="status-message"[\s\S]*id="settings-note"/);
     assert.equal([...dashboard.matchAll(/id="settings-note"/g)].length, 1);
-    assert.doesNotMatch(dashboard, /self-test|benchmark|Benchmark|led-control|msc-control|console/);
+    assert.doesNotMatch(dashboard, /self-test|console/);
+    assert.match(dashboard, /id="led-colour"/);
+    assert.match(dashboard, /id="benchmark-start"/);
+    assert.match(dashboard, /id="benchmark-cancel"/);
+    assert.match(dashboard, /id="msc-controls"/);
   }
   assert.doesNotMatch(html, /25 MHz|50 MHz|Core 1 \/ Core 2|PicoForge|RP2350/);
-  assert.match(html, /Firmware RAM reserved \/ total/);
-  assert.match(html, /CPU load \(Core 0\)/);
+  assert.match(html, /Internal SRAM reserved \/ total/);
+  assert.match(html, /External PSRAM reserved \/ total/);
+  assert.match(html, /Module SPI flash capacity/);
+  assert.match(html, /Service load \(Core 0 \/ Core 1\)/);
   assert.match(html, /<dt>Filesystem<\/dt>/);
   assert.doesNotMatch(html, /class="eyebrow"|id="mcu"|id="memory-timing"|id="board-config"/);
   assert.doesNotMatch(html, /metric-product/);
   assert.match(html, /id="settings-title">Board configuration/);
   const identity = html.split('aria-label="Hardware identity"')[1].split("</section>")[0];
   assert.deepEqual([...identity.matchAll(/<strong id="([^"]+)"/g)].map(match => match[1]),
-    ["product-name", "board-model", "serial", "identity-clock", "ram-usage", "firmware-version"]);
+    ["product-name", "board-model", "serial", "identity-clock", "firmware-version"]);
   const runtime = html.split('<dl class="runtime-grid runtime-summary">')[1].split("</dl>")[0];
   assert.deepEqual([...runtime.matchAll(/<dt>([^<]+)<\/dt>/g)].map(match => match[1]),
-    ["Uptime", "Reset cause", "CPU load (Core 0)", "Board temperature", "Storage bus speed", "Wi-Fi", "Bluetooth"]);
+    ["Uptime", "Reset cause", "Service load (Core 0 / Core 1)", "Board temperature", "Storage bus speed",
+      "Wi-Fi", "Bluetooth"]);
   const storage = html.split('aria-labelledby="memory-title"')[1].split("</section>")[0];
   assert.deepEqual([...storage.matchAll(/<dt>([^<]+)<\/dt>/g)].map(match => match[1]),
-    ["Memory state", "Capacity", "Filesystem", "Manufacturer", "Product", "Serial"]);
+    ["Memory state", "Capacity", "Filesystem", "Manufacturer", "Product", "Serial",
+      "Benchmark state", "Write throughput", "Read/verify throughput", "Result"]);
   assert.doesNotMatch(html, /id="memory-mode"/);
   assert.match(html, /<details class="pin-map-disclosure">/);
   assert.match(html, /id="board-uart"[\s\S]*id="board-storage-pins"/);
   assert.deepEqual([...html.matchAll(/<dialog class="confirmation-dialog" id="([^"]+)-dialog"/g)].map(match => match[1]),
-    ["configuration", "reboot", "usb-connection"]);
+    ["msc", "configuration", "reboot", "usb-connection"]);
   for (const name of ["telemetry", "storage"]) {
     assert.match(html, new RegExp(`id="${name}-freshness" role="status"`));
   }

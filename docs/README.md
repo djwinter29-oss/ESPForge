@@ -20,6 +20,7 @@ Keep each topic in one document; other documents link rather than duplicate its 
 | Target, connectors, electrical constraints and board pin restrictions | [Hardware](guides/hardware.md) |
 | Workspace creation, build, flash, first dashboard | [Getting started](guides/getting-started.md) |
 | Wi-Fi network requirements, provisioning and radio troubleshooting | [Wireless](guides/wireless.md) |
+| UART and raw TCP diagnostic shells, commands and network exposure | [Console](guides/console.md) |
 | Layer responsibilities and service lifecycle | [Architecture](reference/architecture.md) |
 | Project overview and entry points | [Repository README](../README.md) |
 | Platform integration and measurement limits | [ESPForge implementation](reference/espforge-implementation.md) |

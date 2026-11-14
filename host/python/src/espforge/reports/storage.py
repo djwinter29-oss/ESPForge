@@ -16,6 +16,35 @@ from .common import (
     STORAGE_REPORT_ID,
 )
 from .common import _input_payload
+from .common import SELF_TEST_PAYLOAD_SIZE, SELF_TEST_REPORT_ID
+from .models import BenchmarkStatus
+
+
+def parse_benchmark_report(report: bytes | bytearray | list[int]) -> BenchmarkStatus:
+    """Decode bounded counters and trustworthy lifecycle facts from Input report 11."""
+    payload = _input_payload(report, SELF_TEST_REPORT_ID, SELF_TEST_PAYLOAD_SIZE)
+    version, sequence, state, flags = payload[:4]
+    values = [int.from_bytes(payload[offset:offset + 4], "little") for offset in range(4, 28, 4)]
+    target, written, read, write_ms, read_ms, mismatches = values
+    error, filesystem_result, *reserved = payload[28:]
+    if (version != 1 or state > 8 or flags & ~3 or error > 10 or filesystem_result > 19 or any(reserved)
+            or target > 1024 ** 3 or target % 1024 ** 2 or written > target or read > written
+            or mismatches > read or (state == 7) != bool(error) or state != 7 and filesystem_result != 0
+            or state == 0 and any(values)
+            or state == 1 and any(values[1:])
+            or state == 6 and (not target or written != target or read != target or mismatches or flags & 1)):
+        raise ValueError("invalid HID benchmark lifecycle or counters")
+    states = ("idle", "queued", "preparing", "writing", "reading", "cleanup", "passed", "failed", "cancelled")
+    return {
+        "sequence": sequence, "state": states[state], "state_id": state, "active": 1 <= state <= 5,
+        "target_bytes": target, "written_bytes": written, "read_bytes": read,
+        "write_elapsed_ms": write_ms, "read_elapsed_ms": read_ms, "mismatch_count": mismatches,
+        "error": error, "filesystem_result": filesystem_result, "file_remains": bool(flags & 1),
+        "volume_mounted": bool(flags & 2),
+        "progress_percent": (written + read) * 50 / target if target else 0,
+        "write_bytes_per_second": written * 1000 / write_ms if write_ms else None,
+        "read_bytes_per_second": read * 1000 / read_ms if read_ms else None,
+    }
 
 
 def parse_memory_report(
@@ -34,11 +63,11 @@ def parse_memory_report(
         raise ValueError(f"unsupported HID storage report version {version}")
     if flags & ~0x7F:
         raise ValueError("unknown HID storage flags")
-    if component_type not in (0, 1) or bus_mode not in (0, 3) or speed_mode not in (0, 1, 2):
+    if component_type not in (0, 1) or bus_mode not in (0, 2, 3) or speed_mode not in (0, 1, 2):
         raise ValueError("unknown HID storage type, bus mode, or speed mode")
     if filesystem_id not in range(5) or any(value not in (0, 1) for value in (msc_enabled, msc_pending, msc_rejected)):
         raise ValueError("invalid HID storage filesystem or MSC state")
-    if msc_enabled or msc_pending or msc_rejected or flags & 0x10 or speed_mode == 2:
+    if flags & 0x10 or speed_mode == 2:
         raise ValueError("HID storage report does not match the ESPForge profile")
     configured, presence_known, present, initialized, cid_valid, capacity_valid, sample_valid = (
         bool(flags & (1 << bit)) for bit in range(7)
@@ -51,8 +80,10 @@ def parse_memory_report(
         if not configured:
             raise ValueError("valid SD sample requires configured storage")
         if initialized:
-            if component_type != 1 or bus_mode != 3:
-                raise ValueError("storage bus mode disagrees with the ESPForge SDMMC transport")
+            if (component_type != 1 or bus_mode not in (2, 3)
+                    or identity is not None
+                    and bus_mode != (2 if identity["storage_transport"] == "spi" else 3)):
+                raise ValueError("storage bus mode disagrees with the selected transport")
             if not (configured and presence_known and present) or not clock_hz or speed_mode == 0:
                 raise ValueError("initialized SD sample has inconsistent state or clock")
         elif component_type or bus_mode or speed_mode or clock_hz:
@@ -101,7 +132,7 @@ def parse_memory_report(
         "present": present if sample_valid and presence_known else None,
         "initialized": initialized if sample_valid else False,
         "component_type": "sd-card" if component_type == 1 else None,
-        "mode": {0: None, 3: "sdmmc"}[bus_mode],
+        "mode": {0: None, 2: "spi", 3: "sdmmc"}[bus_mode],
         "bus_clock_hz": clock_hz if sample_valid and initialized else None,
         "speed_mode": {0: None, 1: "standard", 2: "high-speed"}[speed_mode],
         "block_count": block_count if capacity_valid else None,

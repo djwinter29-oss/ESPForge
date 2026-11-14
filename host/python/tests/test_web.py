@@ -105,6 +105,13 @@ class FalseyBoards(FakeBoards):
 
 # Malformed requests every ESPForge host must reject with 400 before any board lookup.
 INVALID_REQUESTS = [
+    {"route": "/api/benchmark", "body": {"start": True, "size_mib": 32}},
+    {"route": "/api/benchmark", "body": {"start": True, "size_mib": 0, "confirm": True}},
+    {"route": "/api/benchmark", "body": {"start": True, "size_mib": 1025, "confirm": True}},
+    {"route": "/api/benchmark", "body": {"start": False, "size_mib": 1}},
+    {"route": "/api/benchmark", "body": {"start": False, "confirm": "false"}},
+    {"route": "/api/benchmark", "body": {"start": True, "size_mib": True, "confirm": True}},
+    {"route": "/api/benchmark", "body": {"start": False, "force": True}},
     {"route": "/api/wireless/test", "body": {"ssid": "ESP32", "password": None}},
     {"route": "/api/wireless/test", "body": {"ssid": "ESP32", "passwrod": "password"}},
     {"route": "/api/wireless/test", "body": {"ssid": "ESP32", "password": "password", "unknown": True}},
@@ -122,8 +129,7 @@ INVALID_REQUESTS = [
 ]
 
 DROPPED_ROUTES = [
-    ("GET", "/console"), ("GET", "/api/console"), ("POST", "/api/console"), ("PUT", "/api/console"),
-    ("POST", "/api/led"), ("POST", "/api/msc"), ("POST", "/api/msc/force-return"), ("POST", "/api/self-test"),
+    ("POST", "/api/msc/force-return"), ("POST", "/api/self-test"),
 ]
 
 
@@ -186,6 +192,17 @@ class WebTests(unittest.TestCase):
         self.assertEqual(response.status_code, 409)
         self.assertEqual(response.json, {"error": "device monitor is shutting down"})
 
+    def test_led_route_accepts_only_a_colour_bitmask(self):
+        boards = Mock()
+        boards.monitor.return_value.set_led_colour.return_value = {"control_result": {"opcode": 1}}
+        client = create_app(boards).test_client()
+        self.assertEqual(client.post("/api/led", json={"colour": 4}).status_code, 200)
+        boards.monitor.return_value.set_led_colour.assert_called_once_with(4)
+        for payload in ({}, {"colour": True}, {"colour": "4"}, {"colour": 4.0}, {"colour": 8},
+                        {"colour": -1}, {"colour": None}, {"colour": 4, "extra": 1}):
+            with self.subTest(payload=payload):
+                self.assertEqual(client.post("/api/led", json=payload).status_code, 400)
+
     def test_write_body_limits_are_json_errors_before_any_board_operation(self):
         boards = FakeBoards()
         client = create_app(boards).test_client()
@@ -229,11 +246,10 @@ class WebTests(unittest.TestCase):
         self.assertEqual(client.get("/ble/js/app.mjs").status_code, 404)
         page = client.get("/").get_data(as_text=True)
         self.assertNotIn("/ble/", page)
-        self.assertNotIn('<option value="configure">', page)
+        self.assertIn('<option value="configure">', page)
         for radio in ("wifi", "ble"):
-            self.assertIn(f'id="{radio}-configure"', page)
-            self.assertIn(f'aria-controls="{radio}-dialog"', page)
-        self.assertIn('id="wifi-dialog"', page)
+            self.assertNotIn(f'id="{radio}-configure"', page)
+            self.assertIn(f'id="{radio}-dialog"', page)
 
     def test_forced_save_is_refused_and_false_confirmation_is_a_normal_save(self):
         monitor = FakeMonitor()
@@ -261,8 +277,29 @@ class WebTests(unittest.TestCase):
                                        base_url="http://127.0.0.1")
                 self.assertEqual(response.status_code, 404)
         page = client.get("/").get_data(as_text=True)
-        for marker in ('id="led-control"', 'id="msc-control"', 'id="self-test', "/console"):
+        for marker in ('id="msc-control"', 'id="self-test', "/console"):
             self.assertNotIn(marker, page)
+
+    def test_msc_route_requires_boolean_intent_and_explicit_eject_confirmation(self):
+        monitor = FakeMonitor()
+        result = {"control_result": {"opcode": 3, "status": "completed"}}
+        monitor.set_msc = Mock(return_value=result)
+        client = create_app(FakeBoards(monitor)).test_client()
+        for payload in ({}, {"enabled": None}, {"enabled": 1}, {"enabled": "true"},
+                        {"enabled": False}, {"enabled": False, "confirm_ejected": 1},
+                        {"enabled": True, "extra": True}):
+            with self.subTest(payload=payload):
+                response = client.post("/api/msc?board=board-a", json=payload, base_url="http://127.0.0.1")
+                self.assertEqual(response.status_code, 400)
+        monitor.set_msc.assert_not_called()
+        for enabled in (True, False):
+            payload = {"enabled": enabled}
+            if not enabled:
+                payload["confirm_ejected"] = True
+            response = client.post("/api/msc?board=board-a", json=payload, base_url="http://127.0.0.1")
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json, result)
+            monitor.set_msc.assert_called_with(enabled, not enabled)
 
     def test_dashboard_port_defaults_to_8001_and_can_be_overridden(self):
         self.assertEqual(parse_args(["web"]).port, 8001)

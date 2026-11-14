@@ -3,6 +3,7 @@
 
 using System.Net;
 using System.Net.Http.Json;
+using System.Net.Sockets;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -14,6 +15,43 @@ namespace ESPForge.Tests;
 
 public sealed class MonitorLifecycleTests
 {
+    [Fact]
+    public async Task ConsoleAloneKeepsWirelessFreshWithoutStatusEndpointRequests()
+    {
+        using var server = new TcpListener(IPAddress.Loopback, 0);
+        server.Start();
+        var time = new ManualTime();
+        var wirelessReads = 0;
+        var client = new Client { Wireless = () =>
+        {
+            Interlocked.Increment(ref wirelessReads);
+            return new()
+            {
+                WifiEnabled = true, WifiState = WifiState.Connected, Ipv4 = "127.0.0.1", TcpCliStarted = true
+            };
+        } };
+        var monitor = new DeviceMonitor(() => client, time: time);
+        await using var boards = new DashboardBoards(null, null,
+            () => [new("/hid/a", "board-A", "ESPForge")], (_, _) => monitor);
+        var id = boards.Boards().Boards.Single().Id;
+        boards.Monitor(id);
+        await WaitUntil(() => monitor.Snapshot.Wireless is not null);
+        using var bridge = new ConsoleBridge(boards, time, ((IPEndPoint)server.LocalEndpoint).Port, true);
+        var opening = bridge.OpenAsync(id, default);
+        using var peer = await server.AcceptSocketAsync();
+        var (token, _) = await opening;
+        await ConsoleTests.EchoSetup(peer);
+        for (var index = 0; index < 2; index++)
+        {
+            var previousReads = Volatile.Read(ref wirelessReads);
+            time.Advance(TimeSpan.FromSeconds(6));
+            await WaitUntil(() => Volatile.Read(ref wirelessReads) > previousReads &&
+                monitor.Snapshot.WirelessError is null);
+            Assert.Equal(1, await bridge.WriteAsync(token, [1], default));
+            Assert.Equal(1, await peer.ReceiveAsync(new byte[1], SocketFlags.None));
+        }
+    }
+
     [Fact]
     public async Task ProductionStatusContractIncludesRegistryConflicts()
     {
@@ -532,6 +570,9 @@ public sealed class MonitorLifecycleTests
             LastCommandResult = new(1, Opcode.Reboot, ControlStatus.Completed, ControlError.None, []);
         }
         public WirelessStatusResponse ReadWireless() => Wireless?.Invoke() ?? new();
+        public void SetMsc(bool enabled, bool confirmEjected) => throw new NotSupportedException();
+        public void Benchmark(bool start, int sizeMib) => throw new NotSupportedException();
+        public void SetLedColour(int colour) => throw new NotSupportedException();
         public CommandResyncResult? ReconcileOutcome(ControlCommandReference? command,
             WirelessOperationReference? operation) => Reconciled ?? throw new NotSupportedException();
         public WirelessStatusResponse SetWireless(WirelessRequest settings) => throw new NotSupportedException();

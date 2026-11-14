@@ -331,7 +331,42 @@ public sealed class MonitorCommandTests
             new { system_clock_mhz = 80, sdcard_profile = 0, radios = 0, confirm_data_loss = false });
         Assert.Equal(HttpStatusCode.OK, unconfirmed.StatusCode);
         Assert.Equal(2, commands.Saves);
-        foreach (var removed in new[] { "/api/led", "/api/msc", "/api/msc/force-return", "/api/self-test" })
+        foreach (var payload in new object[] { new { }, new { colour = true }, new { colour = "4" },
+                     new { colour = 8 }, new { colour = -1 }, new { colour = 4, extra = 1 } })
+        {
+            var response = await client.PostAsJsonAsync("/api/led?board=board-a", payload);
+            Assert.True(response.StatusCode == HttpStatusCode.BadRequest,
+                $"LED input {JsonSerializer.Serialize(payload)} returned {response.StatusCode}: "
+                + await response.Content.ReadAsStringAsync());
+        }
+        Assert.Equal(HttpStatusCode.Conflict,
+            (await client.PostAsJsonAsync("/api/led?board=board-a", new { colour = 4 })).StatusCode);
+        foreach (var payload in new object[] { new { }, new { enabled = 1 }, new { enabled = false },
+                     new { enabled = true, extra = true } })
+            Assert.Equal(HttpStatusCode.BadRequest,
+                (await client.PostAsJsonAsync("/api/msc?board=board-a", payload)).StatusCode);
+        Assert.Empty(commands.MscRequests);
+        var mscReady = Ready() with
+        {
+            BoardConfiguration = Configuration with { BoardFlags = 0x45, CardDetectGpio = 8 },
+            Memory = Ready().Memory! with { Initialized = true, Present = true }
+        };
+        monitor.Attach(commands, mscReady);
+        Assert.Equal(HttpStatusCode.OK,
+            (await client.PostAsJsonAsync("/api/msc?board=board-a", new { enabled = true })).StatusCode);
+        Assert.True(monitor.Snapshot.StorageStale);
+        monitor.Attach(commands, mscReady with
+        {
+            Memory = mscReady.Memory! with { SampleValid = false, Initialized = false, Msc = new(true, false, false) }
+        });
+        Assert.Equal(HttpStatusCode.Conflict,
+            (await client.PostAsJsonAsync("/api/reboot?board=board-a", new { confirm = true })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK,
+            (await client.PostAsJsonAsync("/api/msc?board=board-a", new { enabled = false, confirm_ejected = true }))
+            .StatusCode);
+        Assert.Equal(new[] { (true, false), (false, true) }, commands.MscRequests);
+        Assert.True(monitor.Snapshot.StorageStale);
+        foreach (var removed in new[] { "/api/msc/force-return", "/api/self-test" })
         {
             var response = await client.PostAsJsonAsync(removed + "?board=board-a", new { });
             Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
@@ -363,6 +398,7 @@ public sealed class MonitorCommandTests
         public int Saves { get; private set; }
         public int Reboots { get; private set; }
         public int Cancels { get; private set; }
+        public List<(bool Enabled, bool ConfirmEjected)> MscRequests { get; } = [];
         public bool TestFinishesBeforeCancelCheck { get; init; }
         public ManualResetEventSlim TestStarted { get; } = new();
         public bool CommandOutcomeUncertain => Failure is not null || CancelUncertain;
@@ -387,6 +423,13 @@ public sealed class MonitorCommandTests
             LastCommandResult = new(1, Opcode.Reboot, ControlStatus.Completed, ControlError.None, []);
         }
         public WirelessStatusResponse ReadWireless() => throw new NotSupportedException();
+        public void Benchmark(bool start, int sizeMib) => throw new NotSupportedException();
+        public void SetLedColour(int colour) => throw new NotSupportedException();
+        public void SetMsc(bool enabled, bool confirmEjected)
+        {
+            MscRequests.Add((enabled, confirmEjected));
+            LastCommandResult = new(1, Opcode.Msc, ControlStatus.Completed, ControlError.None, []);
+        }
         public WirelessStatusResponse SetWireless(WirelessRequest settings) => throw new NotSupportedException();
         public IReadOnlyList<WirelessNetworkResponse> ScanWireless(Action? onPoll = null) =>
             throw new NotSupportedException();

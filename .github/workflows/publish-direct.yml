@@ -71,7 +71,13 @@ jobs:
           test -f site/web/index.html
           test -f site/web/favicon.svg
           test -f site/web/js/app.mjs
-          grep -Fq "App v$version<" site/web/index.html
+          VERSION="$version" TAG_SHA="$tag_sha" python - <<'PY'
+          import os
+          from pathlib import Path
+          from host.direct.server import verify_site
+          metadata = verify_site(Path("site/web"), os.environ["VERSION"])
+          assert metadata["commit"] == os.environ["TAG_SHA"], "Direct build identity differs from published tag"
+          PY
           if ! grep -Fxq "ESPForge $version" site/RELEASE.txt ||
              ! grep -Fxq "Source: $tag_sha" site/RELEASE.txt; then
             printf 'Error: Direct archive version/source metadata does not match the published tag.\n' >&2

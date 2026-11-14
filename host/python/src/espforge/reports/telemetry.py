@@ -36,9 +36,9 @@ def parse_status_report(
     sequence, flags = payload[20:22]
     if version != REPORT_VERSION:
         raise ValueError(f"unsupported HID telemetry report version {version}")
-    if led_flags & ~1 or flags & ~0x0F:
+    if led_flags & ~7 or flags & ~0x0F:
         raise ValueError("unknown HID telemetry flags")
-    if led_flags or flags & (TELEMETRY_CDC_OPEN | TELEMETRY_LED_AVAILABLE) or core1 != 0xFFFF:
+    if flags & TELEMETRY_CDC_OPEN or core1 != 0xFFFF:
         raise ValueError("HID telemetry does not match the ESPForge profile")
     if system_clock_hz == 0:
         raise ValueError("invalid system clock in HID telemetry report")
@@ -46,7 +46,7 @@ def parse_status_report(
         raise ValueError("invalid per-core CPU usage in HID telemetry report")
     temperature_valid = bool(flags & TELEMETRY_TEMPERATURE_VALID)
     led_available = bool(flags & TELEMETRY_LED_AVAILABLE)
-    led_on = bool(led_flags & 1)
+    led_on = bool(led_flags)
     if flags & TELEMETRY_CDC_OPEN and not (flags & TELEMETRY_USB_MOUNTED):
         raise ValueError("CDC DTR cannot be open when USB is unmounted")
     if not temperature_valid and temperature:
@@ -54,7 +54,7 @@ def parse_status_report(
     if led_on and not led_available:
         raise ValueError("LED state reported without an available LED")
     if identity is not None:
-        if led_available != bool(identity["led_available"]):
+        if led_available and not identity["led_available"]:
             raise ValueError("telemetry and identity LED availability disagree")
     return {
         "version": version,
@@ -67,6 +67,7 @@ def parse_status_report(
         "temperature_centidegrees": temperature if temperature_valid else None,
         "led_available": led_available,
         "led_on": led_on,
+        "led_colour": led_flags if led_available else None,
         "led_flags": led_flags,
         "espforge_flags": flags,
         "cpu_usage_core0_basis_points": None if core0 == 0xFFFF else core0,

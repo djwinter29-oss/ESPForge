@@ -8,7 +8,7 @@ import { describe } from "../../web/js/ui/messages.mjs";
 import { BleTransport, BLE_SERVICE } from "../../web/js/transport/ble.mjs";
 import { BoardSession } from "../../web/js/board/session.mjs";
 import {
-  fakeConnection, storage, identity, config, telemetry, result, patchState, says,
+  fakeConnection, storage, identity, config, telemetry, result, patchState, says, memoryInventory,
 } from "../support/fixtures.mjs";
 import { status } from "../support/wireless.mjs";
 
@@ -24,7 +24,8 @@ test("BLE maps normalized68byte control to restricted9byte wire form and HMACs t
   console.warn = (...args) => warnings.push(args);
   const nonce = Uint8Array.from({ length: 16 }, (_, index) => index);
   const ble = new EventTarget();
-  const values = { 1: identity(), 2: config(), 3: telemetry(), 10: storage(), 12: status(), 256: nonce };
+  const values = { 1: identity(), 2: config(), 3: telemetry(), 10: storage(), 12: status(), 13: memoryInventory(), 256: nonce };
+  values[1][16] = 1;
   ble.gatt = { connected: false,
     async connect() {
       this.connected = true;
@@ -73,7 +74,9 @@ test("BLE maps normalized68byte control to restricted9byte wire form and HMACs t
     assert.ok(requestedServices.includes(0x1801));
     assert.equal(notificationStarts, 1);
     assert.deepEqual(discoveryOrder.slice(0, 2), ["service_changed_subscription", "espforge_service_discovery"]);
-    assert.deepEqual(requested, [1, 2, 3, 10, 12, 20, 256, 257], "000b (report 11) is never discovered");
+    assert.deepEqual(requested, [1, 2, 3, 10, 12, 20, 256, 257, 13]);
+    assert.equal(client.state.hardware.psram_total_bytes, 8 << 20);
+    assert.equal(client.state.hardware.flash_total_bytes, 16 << 20);
     const sign = request => [...createHmac("sha256", Buffer.from("ab".repeat(32), "hex"))
       .update(Buffer.concat([nonce, Buffer.from("0102030405060708", "hex"), Buffer.from("PFBLECTL1"),
         Buffer.from(request)])).digest().subarray(0, 16)];
@@ -89,7 +92,8 @@ test("BLE maps normalized68byte control to restricted9byte wire form and HMACs t
     assert.deepEqual(writes[0], [257, sign(writes[1][1])]);
     patchState(client, { reboot_pending: false });
     await assert.rejects(client.command(5, { flags: 2, args: [160, 0, 0, 3] }), says(/requires USB/));
-    for (const opcode of [1, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13]) {
+    await assert.rejects(client.command(1), says(/Unavailable capability/));
+    for (const opcode of [3, 4, 6, 7, 8, 9, 10, 11, 12, 13]) {
       await assert.rejects(client.command(opcode), says(/requires USB/));
     }
     await client.readWireless();

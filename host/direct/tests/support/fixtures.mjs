@@ -42,7 +42,14 @@ export function result(transaction, opcode, status = 2, error = 0) {
 export function emit(device, reportId, data) {
   device.dispatchEvent(Object.assign(new Event("inputreport"), { device, reportId, data: new DataView(data.buffer) }));
 }
-export function fakeConnection({ capabilities, ...options } = {}) {
+export function memoryInventory() {
+  const report = new Uint8Array(16); report[0] = 1; report[1] = 3;
+  const view = new DataView(report.buffer);
+  view.setUint32(4, 8 << 20, true); view.setUint32(8, 1 << 20, true); view.setUint32(12, 16 << 20, true);
+  return report;
+}
+
+export function fakeConnection({ capabilities, moduleMemory, ...options } = {}) {
   const reads = [];
   const sent = [];
   const saved = new Map();
@@ -58,7 +65,12 @@ export function fakeConnection({ capabilities, ...options } = {}) {
     async sendFeatureReport(id, report) { sent.push([id, ...report]); },
     async receiveFeatureReport(id) {
       reads.push(id);
-      if (id === 1) return identity(capabilities);
+      if (id === 1) {
+        const report = identity(capabilities);
+        if (moduleMemory) report[16] = 1;
+        return report;
+      }
+      if (id === 13) return moduleMemory;
       if (id === 2) return config();
       if (id === 12) { const status = new Uint8Array(48); status[0] = 1; return status; }
       const request = sent.at(-1);

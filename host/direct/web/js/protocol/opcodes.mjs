@@ -58,8 +58,28 @@ const UNSUPPORTED = Object.freeze({ capability: 0, ble: null, unsupported: true,
 /** @type {Readonly<Record<number, OpcodeDescriptor>>} */
 export const OPCODES = Object.freeze({
   ...Object.fromEntries(UNSUPPORTED_OPCODES.map(opcode => [opcode, UNSUPPORTED])),
+  [OP.LED]: { capability: CAP.LED, ble: { proof: false, flags: false }, excluded: [1],
+    request: (r, unused) => r[3] === 0 && r[4] <= 7 && unused(5),
+    facts: { keys: ["led_colour"], read: r => ({ led_colour: r[4] }),
+      valid: facts => inRange(facts.led_colour, 0, 7) } },
   [OP.REBOOT]: { capability: CAP.REBOOT, ble: { proof: true, flags: true }, reboots: true, excluded: [4],
     rejections: [1, 2], details: { 1: 5, 2: 5, 28: 5 }, request: (r, unused) => r[3] === 1 && unused(4) },
+  [OP.MSC]: { capability: CAP.SPI | CAP.SDMMC, ble: null, rejections: [1, 2, 3], details: { 1: 5, 2: 5 },
+    request: (r, unused) => [0, 1].includes(r[4]) && r[3] === (r[4] === 0 ? 1 : 0) && unused(5),
+    facts: { keys: ["msc_enabled"], read: r => ({ msc_enabled: r[4] === 1 }),
+      valid: facts => typeof facts.msc_enabled === "boolean" } },
+  [OP.BENCHMARK]: { capability: CAP.SELF_TEST, ble: null, excluded: [1],
+    details: { 1: 5, 2: 5, 3: 3, 4: 6, 10: 6 },
+    request: (r, unused) => {
+      const size = new DataView(r.buffer, r.byteOffset, r.byteLength).getUint32(5, true);
+      return r[3] === 0 && [0, 1].includes(r[4]) && unused(9)
+        && (r[4] ? size >= 1 && size <= 1024 : size === 0);
+    },
+    facts: { keys: ["benchmark_start", "benchmark_size_mib"],
+      read: r => ({ benchmark_start: r[4] === 1,
+        benchmark_size_mib: new DataView(r.buffer, r.byteOffset, r.byteLength).getUint32(5, true) }),
+      valid: facts => typeof facts.benchmark_start === "boolean" && (facts.benchmark_start
+        ? inRange(facts.benchmark_size_mib, 1, 1024) : facts.benchmark_size_mib === 0) } },
   [OP.SAVE_SETTINGS]: { capability: CAP.SETTINGS, ble: { proof: true, flags: false }, reboots: true,
     details: { 1: 5, 2: 5, 19: 3, 20: 3, 21: 3, 25: 5, 26: 5, 27: 3, 28: 5 }, returnsSettings: true,
     request: (r, unused) => (r[3] & ~SAVE_SETTINGS_COMMIT) === 0 && CLOCKS_MHZ.includes(r[4] | r[5] << 8)

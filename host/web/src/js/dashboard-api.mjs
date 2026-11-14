@@ -5,22 +5,25 @@
 /** @typedef {{system_clock_mhz: number, sdcard_profile: number, radios: number}} BootSettings */
 /**
  * @typedef {{product_name?: string, capabilities?: number, board_model?: string | number, mcu?: string,
- * firmware_version?: string, serial_number?: string, ram_reserved_bytes?: number, ram_total_bytes?: number}} Hardware
+ * firmware_version?: string, serial_number?: string, ram_reserved_bytes?: number, ram_total_bytes?: number,
+ * psram_total_bytes?: number | null, psram_reserved_bytes?: number | null, flash_total_bytes?: number | null}} Hardware
  * @typedef {{led_available?: boolean, led_on?: boolean, system_clock_hz?: number, uptime_milliseconds?: number,
- * uptime_ms?: number, cpu_usage_core0_basis_points?: number, cpu_usage_core1_basis_points?: number,
- * cdc_open?: boolean, temperature_valid?: boolean, temperature_centidegrees?: number}} Runtime
+ * uptime_ms?: number, cpu_usage_core0_basis_points?: number | null, cpu_usage_core1_basis_points?: number | null,
+ * led_colour?: number | null, cdc_open?: boolean, temperature_valid?: boolean,
+ * temperature_centidegrees?: number | null}} Runtime
  * @typedef {{enabled?: boolean, transition_pending?: boolean, request_rejected?: boolean}} Msc
  * @typedef {{id?: number, manufacturer_id?: number, product_name?: string, product_revision?: string | number,
  * manufacture_year?: number, manufacture_month?: number, serial_number?: number}} Manufacturer
  * @typedef {{initialized?: boolean, configured?: boolean, sample_valid?: boolean, presence_known?: boolean,
- * present?: boolean, bus_clock_hz?: number, capacity_bytes?: number, manufacturer?: Manufacturer | null,
+ * present?: boolean | null, bus_clock_hz?: number | null, capacity_bytes?: number | null, manufacturer?: Manufacturer | null,
  * msc?: Msc | null, filesystem_format?: string | null}} Memory
  * @typedef {{active?: boolean, state?: string, sequence?: number, progress_percent?: number,
- * write_bytes_per_second?: number, read_bytes_per_second?: number, written_bytes?: number, target_bytes?: number,
+ * write_bytes_per_second?: number | null, read_bytes_per_second?: number | null, written_bytes?: number, target_bytes?: number,
  * read_bytes?: number, write_elapsed_ms?: number, read_elapsed_ms?: number, request_error?: number, error?: number,
  * filesystem_result?: number, file_remains?: boolean, mismatch_count?: number}} SelfTest
  * @typedef {BootSettings & {tcp_cli_enabled?: boolean, monitor_uart_index?: number, monitor_uart_tx_gpio?: number,
- * monitor_uart_rx_gpio?: number, storage_gpios?: number[], card_detect_gpio?: number, reset_cause?: number}} BoardConfiguration
+ * monitor_uart_rx_gpio?: number, storage_gpios?: number[], card_detect_gpio?: number, reset_cause?: number,
+ * board_flags?: number}} BoardConfiguration
  * @typedef {Omit<import("./operation-state.mjs").OperationSnapshot, "hardware" | "msc" | "wireless"> & {
  * hardware?: Hardware | null, runtime?: Runtime | null, memory?: Memory | null, msc?: Msc | null,
  * self_test?: SelfTest | null, wireless?: import("./wireless-form.mjs").WirelessStatus | null,
@@ -93,7 +96,7 @@ export function statusResponse(result) {
   /** @type {Array<[unknown, string[]]>} */
   const booleanSections = [
     [result.runtime, ["led_available", "led_on"]],
-    [result.memory, ["initialized"]],
+    [result.memory, ["initialized", "configured", "sample_valid", "presence_known"]],
     [isObject(result.memory) ? result.memory.msc : null, ["enabled", "transition_pending", "request_rejected"]],
     [result.self_test, ["active"]],
     [result.wireless, ["stale", "wifi_enabled", "ble_enabled", "ble_key_configured", "tcp_cli_enabled",
@@ -115,6 +118,11 @@ export function statusResponse(result) {
     && (!isObject(result.memory.msc) || typeof result.memory.msc.enabled !== "boolean"
       || typeof result.memory.msc.transition_pending !== "boolean"))
     throw new DashboardError("Invalid status storage ownership");
+  if (isObject(result.board_configuration) && result.board_configuration.board_flags !== undefined
+    && (typeof result.board_configuration.board_flags !== "number"
+      || !Number.isInteger(result.board_configuration.board_flags)
+      || result.board_configuration.board_flags < 0 || result.board_configuration.board_flags > 255))
+    throw new DashboardError("Invalid status board flags");
   if (result.board_configuration != null && !isSettings(result.board_configuration))
     throw new DashboardError("Invalid status board configuration");
   if (result.wireless != null) wirelessConfiguration(result.wireless);
@@ -151,16 +159,22 @@ function diagnosticFields(result) {
   const hardware = clean(result.hardware, "hardware", [
     ...fields("product_name mcu firmware_version serial_number", text),
     ...fields("ram_reserved_bytes ram_total_bytes", numeric),
+    ...fields("psram_total_bytes psram_reserved_bytes flash_total_bytes", value => value === null || numeric(value)),
     ["board_model", value => text(value) || numeric(value)],
   ]);
   const runtime = clean(result.runtime, "runtime", [
-    ...fields("system_clock_hz uptime_milliseconds uptime_ms cpu_usage_core0_basis_points "
-      + "cpu_usage_core1_basis_points temperature_centidegrees", numeric),
+    ["led_colour", value => value === null || Number.isInteger(value) && Number(value) >= 0 && Number(value) <= 7],
+    ...fields("led_available led_on", flag),
+    ...fields("system_clock_hz uptime_milliseconds uptime_ms", numeric),
+    ...fields("cpu_usage_core0_basis_points cpu_usage_core1_basis_points temperature_centidegrees",
+      value => value === null || numeric(value)),
     ...fields("cdc_open temperature_valid", flag),
   ]);
   const memory = clean(result.memory, "memory", [
-    ...fields("configured sample_valid presence_known present", flag),
-    ...fields("bus_clock_hz capacity_bytes", numeric), ["filesystem_format", value => value === null || text(value)],
+    ...fields("configured sample_valid presence_known", flag),
+    ["present", value => value === null || flag(value)],
+    ...fields("bus_clock_hz capacity_bytes", value => value === null || numeric(value)),
+    ["filesystem_format", value => value === null || text(value)],
   ]);
   if (isObject(memory) && memory.manufacturer != null) {
     if (!isObject(memory.manufacturer)) {
@@ -179,7 +193,8 @@ function diagnosticFields(result) {
   }
   const selfTest = clean(result.self_test, "self_test", [
     ["state", text], ["file_remains", flag],
-    ...fields("progress_percent write_bytes_per_second read_bytes_per_second written_bytes target_bytes read_bytes "
+    ...fields("write_bytes_per_second read_bytes_per_second", value => value === null || numeric(value)),
+    ...fields("progress_percent written_bytes target_bytes read_bytes "
       + "write_elapsed_ms read_elapsed_ms request_error error filesystem_result mismatch_count", numeric),
   ]);
   const configuration = clean(result.board_configuration, "board_configuration", [
@@ -298,7 +313,9 @@ function isControlResult(value) {
  * @param {Record<string, unknown>} result @returns {ControlResult | null}
  */
 export function reconciledResult(result) {
-  if (result.uncertain !== false || result.control_result != null && !isControlResult(result.control_result))
+  if (result.uncertain !== false || result.control_result != null && !isControlResult(result.control_result)
+    || result.temporary_wifi_reset !== undefined && typeof result.temporary_wifi_reset !== "boolean"
+    || result.temporary_wifi_reset === true && (result.control_result != null || !isObject(result.wireless)))
     throw new DashboardError("Re-sync did not establish the command outcome", undefined, true);
   return result.control_result == null ? null : result.control_result;
 }

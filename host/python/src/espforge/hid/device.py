@@ -26,6 +26,7 @@ from ..reports.models import (
     WirelessTestResult,
 )
 from ..reports import (
+    CAP_LED,
     CAP_WIRELESS,
     ControlOpcode,
     ProtocolError,
@@ -55,7 +56,11 @@ from ..reports import (
     parse_control_result_report,
     parse_status_report,
 )
+from ..reports.common import MEMORY_PAYLOAD_SIZE, MEMORY_REPORT_ID
+from ..reports.identity import parse_memory_inventory_report
 from ..reports.common import SELF_TEST_REPORT_ID, BoardConflict, _validate_settings
+from ..reports.common import CAP_SELF_TEST
+from ..reports.storage import parse_benchmark_report
 from ..reports.wireless import display_ssid, request_ssid
 
 VENDOR_ID = 0xCAFE
@@ -165,9 +170,11 @@ class ESPForgeHid:
             device.open_path(info["path"])
         except OSError as error:
             raise OSError(
-                "failed to open ESPForge HID interface; check device permissions "
-                "(Linux setup: see host/python/README.md)"
+                f"failed to open ESPForge HID interface: {error}; check device permissions, "
+                "the USB connection, and whether another application owns the interface"
             ) from error
+        # hidapi read(n, 0) blocks until a report arrives unless the handle is non-blocking; timed reads are unaffected.
+        device.set_nonblocking(1)
         self._device = device
         self.closed = False
         self._close_error: Exception | None = None
@@ -208,6 +215,10 @@ class ESPForgeHid:
         self._require_open()
         report = self._device.get_feature_report(IDENTITY_REPORT_ID, IDENTITY_FEATURE_SIZE)
         identity = _parse_report(parse_identity_report, report)
+        if identity["supported"] and identity["memory_report_supported"]:
+            memory_report = self._device.get_feature_report(MEMORY_REPORT_ID, MEMORY_PAYLOAD_SIZE + 1)
+            inventory = _parse_report(parse_memory_inventory_report, memory_report)
+            identity.update(inventory)
         self.identity = identity
         if self._expected_serial_number and identity.get("supported"):
             serial_number = identity.get("serial_number")
@@ -239,7 +250,9 @@ class ESPForgeHid:
             data = _parse_report(parse_memory_report, report, identity)
             return {"kind": "memory", "data": data}
         if report[0] == SELF_TEST_REPORT_ID:
-            raise ProtocolError("ESPForge must not publish benchmark Input report 11")
+            if not self.identity or not self.identity["capabilities"] & CAP_SELF_TEST:
+                raise ProtocolError("Unexpected benchmark report 11 without its capability")
+            return {"kind": "self_test", "data": _parse_report(parse_benchmark_report, report)}
         if report[0] == TELEMETRY_REPORT_ID:
             return {"kind": "runtime", "data": _parse_report(parse_status_report, report, identity)}
         raise ProtocolError(f"unexpected HID Input report ID {report[0]}")
@@ -275,11 +288,52 @@ class ESPForgeHid:
         return {**settings, "tcp_cli_enabled": False}
 
     @_serialized
+    def set_led_colour(self, colour: int) -> ControlResult:
+        self._require_open()
+        self._require(CAP_LED, "RGB LED control is unavailable on this firmware")
+        if type(colour) is not int or not 0 <= colour <= 7:
+            raise ValueError("LED colour must be an RGB bitmask 0..7")
+        command = build_control_command_report(
+            self._next_transaction_id(), ControlOpcode.LED, arguments=bytes((colour,)),
+        )
+        return self._execute_control(command, ControlOpcode.LED)
+
+    @_serialized
     def reboot(self) -> ControlResult:
         self._require_open()
         self._require(CAP_REBOOT, "standalone reboot is unavailable on this firmware")
         command = build_control_command_report(self._next_transaction_id(), ControlOpcode.REBOOT, flags=1)
         return self._execute_control(command, ControlOpcode.REBOOT)
+
+    @_serialized
+    def set_msc(self, enabled: bool, confirm_ejected: bool = False) -> ControlResult:
+        self._require_open()
+        if type(enabled) is not bool or type(confirm_ejected) is not bool:
+            raise ValueError("MSC ownership and confirmation must be boolean")
+        configuration = self.configuration or self.read_configuration()
+        if not configuration["board_flags"] & 0x40:
+            raise BoardConflict("USB mass storage is unavailable on this firmware")
+        if not enabled and not confirm_ejected:
+            raise ValueError("Safely eject the USB drive before confirming return to firmware")
+        command = build_control_command_report(
+            self._next_transaction_id(), ControlOpcode.MSC,
+            flags=0 if enabled else 1, arguments=bytes((int(enabled),)),
+        )
+        return self._execute_control(command, ControlOpcode.MSC)
+
+    @_serialized
+    def benchmark(self, start: bool, size_mib: int = 0) -> ControlResult:
+        self._require_open()
+        self._require(CAP_SELF_TEST, "Storage benchmark is unavailable on this firmware")
+        if type(start) is not bool or type(size_mib) is not int:
+            raise ValueError("Benchmark action and size must be boolean and integer")
+        if (start and not 1 <= size_mib <= 1024) or (not start and size_mib != 0):
+            raise ValueError("Benchmark size must be 1..1024 MiB for start, zero for cancel")
+        command = build_control_command_report(
+            self._next_transaction_id(), ControlOpcode.SELF_TEST,
+            arguments=bytes((int(start),)) + size_mib.to_bytes(4, "little"),
+        )
+        return self._execute_control(command, ControlOpcode.SELF_TEST)
 
     @_serialized
     def read_wireless(self) -> WirelessStatus:
@@ -502,7 +556,9 @@ class ESPForgeHid:
                     self._uncertain_command = None
                     self._uncertain_wireless_operation = None
                     if failed:
-                        raise BoardConflict(f"Wireless {kind} failed: {status['phase'] or 'Timed out'}")
+                        raise BoardConflict(
+                            f"Wireless {kind} failed: {status['phase'] or 'driver did not report a reason'}"
+                        )
                     return status
                 if on_progress is not None:
                     on_progress(status["phase"] or "Connecting to Wi-Fi")
@@ -535,7 +591,7 @@ class ESPForgeHid:
         command_reference: tuple[int, int] | None,
         wireless_reference: tuple[str, int] | None,
     ) -> tuple[ControlResult | None, WirelessStatus | None] | None:
-        """Read the result slots and confirm only the exact pending command and operation."""
+        """Confirm a pending result, or inspect reset slots to discard a lost RAM-only Wi-Fi operation."""
         self._require_open()
         if command_reference is None and wireless_reference is None:
             return None
@@ -546,6 +602,26 @@ class ESPForgeHid:
             control_result = _parse_report(
                 parse_control_result_report, report, self._supported_identity(),
             )
+            if (control_result["status"] == "idle" and control_result["transaction_id"] == 0
+                    and control_result["opcode"] == 0
+                    and command_reference[1] in (
+                        ControlOpcode.STAGE_SSID, ControlOpcode.STAGE_PASSWORD, ControlOpcode.WIFI_TEST,
+                        ControlOpcode.WIFI_CANCEL, ControlOpcode.WIFI_SCAN, ControlOpcode.WIFI_ENTRY,
+                    )):
+                wireless_status = self.read_wireless()
+                if (wireless_status["scan_generation"] == 0 and wireless_status["test_generation"] == 0
+                        and wireless_status["scan_state"] == "idle"
+                        and wireless_status["wifi_state_id"] < WifiState.TESTING
+                        and not any(wireless_status[key] for key in (
+                            "ssid_staged", "password_staged", "key_staged", "pair_tested", "staged_state",
+                        ))):
+                    self._command_uncertain = False
+                    self._uncertain_command = None
+                    self._uncertain_wireless_operation = None
+                    self._tested_id = None
+                    self._tested_generation = None
+                    self._tested_at = None
+                    return None, wireless_status
             if ((control_result["transaction_id"], control_result["opcode"]) != command_reference
                     or control_result["status"] in ("idle", "pending")):
                 return None

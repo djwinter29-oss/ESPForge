@@ -20,11 +20,23 @@ can publish release assets, and only Pages and PyPI deployment get OIDC write pe
 PR checks cancel superseded runs; release/publication runs are not cancelled mid-flight.
 No workflow flashes hardware, tests an SD card or runs a dedicated manual-tool test suite.
 
-Python is packaged like PicoForge: [pyproject.toml](../../host/python/pyproject.toml) builds the
-`espforge` wheel, which bundles `host/web/src` as `espforge/web`. The release stamps the tag version
-into the package metadata and source fallback, installs the wheel in a clean environment and runs
+Python uses Hatchling and hatch-vcs: [pyproject.toml](../../host/python/pyproject.toml) builds the
+`espforge` wheel. CI explicitly copies `host/web/src` into the package before building; the wheel bundles it as
+`espforge/web` without a custom build hook. For local builds, follow the
+[asset-staging procedure](../development/host-tools.md#python-host-design). Git tags determine ordinary package versions;
+release builds explicitly supply the validated version through `SETUPTOOLS_SCM_PRETEND_VERSION`.
+The release installs the wheel in a clean environment and runs
 [the installed-wheel check](../../tools/check_python_wheel.py) outside the checkout. Browser checks
 run in Host Validation; the extracted Direct and installed Python packages are smoke-tested over HTTP.
+
+.NET uses MinVer to derive ordinary build versions from Git tags. Release publication uses the validated version
+through `MinVerVersionOverride`, including manual preflight builds that have no tag yet. The extracted-host check
+verifies both the package metadata and the dashboard display against that version.
+
+Direct packages stamp a static copy with the validated release version and record its source commit and dirty
+state in `web/build.json`. The extracted server preserves that identity without consulting Git. Pages verifies
+the page and build identity against the published tag before deploying the same released files.
+See [Direct startup](../../host/direct/README.md#choose-how-to-run-it) for checkout development versions.
 
 ## Before the first release
 
@@ -61,13 +73,14 @@ The release publishes:
 
 | Asset | Contents/use |
 | --- | --- |
-| `espforge-firmware-vVERSION-esp32s3-devkitc.zip` | Simple-boot `zephyr.bin`, ELF, hidden `.config`, DTS, runner provenance, frozen west manifest, dependency licenses, docs and flashing instructions |
+| `espforge-firmware-vVERSION-esp32s3-devkitc-sdmmc.zip` | Native four-bit SDMMC simple-boot image, ELF, hidden `.config`, DTS, runner provenance, frozen west manifest, dependency licenses, docs and flashing instructions |
+| `espforge-firmware-vVERSION-esp32s3-devkitc-sd-spi.zip` | SD-over-SPI image with the same package contents, card detection, FAT and USB drive handoff |
 | `espforge-direct-vVERSION.zip` | Independent Direct `web/` app, `server.py`, project license and `RELEASE.txt` source metadata; run `python3 server.py` |
 | `espforge-VERSION-py3-none-any.whl` | Python host package with the `espforge` command, bundled `host/web/src` bridge dashboard and license; also published to PyPI |
 | `espforge-host-vVERSION-linux-x64.tar.gz` | Self-contained Linux .NET host, dashboard assets and dependency notices |
 | `espforge-host-vVERSION-win-x64.zip` | Self-contained Windows .NET host |
 | `espforge-host-vVERSION-osx-arm64.tar.gz` | Self-contained Apple Silicon .NET host |
-| `SHA256SUMS.txt` | SHA-256 of all six packages |
+| `SHA256SUMS.txt` | SHA-256 of all seven packages |
 
 Install the wheel with `python -m pip install espforge-VERSION-py3-none-any.whl` and run `espforge web`.
 Standalone .NET hosts do not require an installed .NET runtime. Their smoke tests start the extracted host without
@@ -75,11 +88,13 @@ hardware, verify every deployed dashboard asset and confirm that `/api/boards` a
 Windows/macOS packages are not publisher-signed or notarized; local OS security policy may
 require explicit approval. No signing credentials are configured by these workflows.
 
-The firmware ZIP is not a relocatable west build directory. Its `FLASHING.txt` gives the
+Each firmware ZIP is not a relocatable west build directory. Its `FLASHING.txt` gives the
 esptool 5 command for the selected simple-boot N16R8 image at `0x0`, with DIO/80 MHz/16 MB flash
 parameters. `runners.yaml` records how it was built; do not feed its CI paths to a local west
 runner. The [source-build flash wrapper](../guides/getting-started.md#2-build-now-flash-later)
 remains the supported west-based path.
+Choose the archive matching the [SD wiring](../reference/sdcard.md#pin-allocation) and power-cycle the card
+before switching buses. Neither image has automatic bus fallback.
 
 ## Direct Pages, PyPI and retries
 

@@ -21,7 +21,8 @@
     - -:firmware/src/platform/boot_flash.c
     - -:firmware/src/platform/system_clock.c
     - -:firmware/src/app/telemetry.c
-    - -:firmware/src/app/storage/storage.c
+    - -:firmware/src/platform/storage.c
+    - -:firmware/src/platform/led.c
     - -:firmware/src/app/usb/usb_hid.c
     - -:firmware/src/app/wireless/bluetooth/ble.c
     - -:firmware/src/app/wireless/wifi/wifi.c

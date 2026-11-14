@@ -39,6 +39,19 @@ Copyright (c) 2026 Ji Dong
       <div class="section-heading">
         <h2 id="identity-title">Device information</h2>
         <div class="actions" aria-label="Board identification and controls">
+          <label id="led-control" hidden>Board LED
+            <select id="led-colour" aria-label="Board LED colour" disabled>
+              <option value="" disabled>--</option>
+              <option value="0">Off</option>
+              <option value="4">Blue</option>
+              <option value="2">Green</option>
+              <option value="3">Yellow</option>
+              <option value="1">Red</option>
+              <option value="6">Cyan</option>
+              <option value="5">Purple</option>
+              <option value="7">White</option>
+            </select>
+          </label>
           <button class="button button-led" id="rescan-boards" type="button">Rescan</button>
           <select id="board-select" aria-label="Board attached to this server" title="Select the board managed by this host" disabled>
             <option value="">Scanning boards...</option>
@@ -50,12 +63,20 @@ Copyright (c) 2026 Ji Dong
         <div class="metric"><span>Board model</span><strong id="board-model">--</strong></div>
         <div class="metric"><span>Serial / UID</span><strong id="serial">--</strong></div>
         <div class="metric"><span>System clock</span><strong id="identity-clock">--</strong></div>
-        <div class="metric">
-          <span>Firmware RAM reserved / total</span>
-          <strong id="ram-usage" title="Statically linked RAM, including the heap pool and thread stacks / internal SRAM; not live usage">--</strong>
-        </div>
         <div class="metric"><span>Firmware version</span><strong id="firmware-version">--</strong></div>
       </div>
+    </section>
+
+    <section class="runtime" aria-labelledby="memory-inventory-title">
+      <h2 id="memory-inventory-title">Module memory</h2>
+      <dl class="runtime-grid memory-inventory">
+        <div><dt>Internal SRAM reserved / total</dt><dd id="ram-usage">--</dd></div>
+        <div><dt>External PSRAM reserved / total</dt><dd id="psram-usage">--</dd></div>
+        <div><dt>Module SPI flash capacity</dt><dd id="flash-capacity">--</dd></div>
+      </dl>
+      <p class="sample-time">Reserved RAM includes linked regions and heap pools, not live usage.
+        SPI flash is external to the ESP32-S3; it has no on-chip flash. PSRAM is RAM, not flash.
+        -- means unavailable or not reported by this firmware.</p>
     </section>
 
     <section class="runtime" aria-labelledby="settings-title">
@@ -79,20 +100,18 @@ Copyright (c) 2026 Ji Dong
             <select id="settings-wifi" disabled>
               <option value="1">Enabled</option>
               <option value="0">Disabled</option>
+              <option value="configure">Configure…</option>
             </select>
           </label>
-          <button class="button button-secondary" id="wifi-configure" type="button"
-            aria-haspopup="dialog" aria-controls="wifi-dialog" aria-label="Configure Wi-Fi" disabled>Configure…</button>
         </div>
         <div class="radio-setting" id="ble-settings" hidden>
           <label for="settings-ble">Bluetooth
             <select id="settings-ble" disabled>
               <option value="1">Enabled</option>
               <option value="0">Disabled</option>
+              <option value="configure">Configure…</option>
             </select>
           </label>
-          <button class="button button-secondary" id="ble-configure" type="button"
-            aria-haspopup="dialog" aria-controls="ble-dialog" aria-label="Configure Bluetooth" disabled>Configure…</button>
         </div>
       </div>
       <p id="wireless-summary" role="status" aria-live="polite"></p>
@@ -123,9 +142,9 @@ Copyright (c) 2026 Ji Dong
       <dl class="runtime-grid runtime-summary">
         <div><dt>Uptime</dt><dd id="uptime">--</dd></div>
         <div><dt>Reset cause</dt><dd id="board-reset-cause">--</dd></div>
-        <div title="Service-pass workload proxy for the PRO CPU, not CPU utilization">
-          <dt>Service load (Core 0)</dt>
-          <dd id="cpu-usage-core0">--</dd>
+        <div title="Per-core service load; -- means unavailable">
+          <dt>Service load (Core 0 / Core 1)</dt>
+          <dd id="cpu-usage-core0">-- / --</dd>
         </div>
         <div><dt>Board temperature</dt><dd id="temperature">--</dd></div>
         <div><dt>Storage bus speed</dt><dd id="memory-speed">--</dd></div>
@@ -134,10 +153,14 @@ Copyright (c) 2026 Ji Dong
       </dl>
     </section>
 
-    <section class="runtime" aria-labelledby="memory-title">
+    <section class="runtime" aria-labelledby="memory-title" hidden>
       <div class="section-heading">
         <div>
           <h2 id="memory-title">Storage</h2>
+        </div>
+        <div class="settings-actions" id="msc-controls" hidden>
+          <button class="button" id="msc-enable" type="button" disabled>Enable USB drive</button>
+          <button class="button button-secondary" id="msc-return" type="button" disabled>Return to firmware</button>
         </div>
       </div>
       <p class="sample-time" id="memory-note">Waiting for card status</p>
@@ -150,6 +173,32 @@ Copyright (c) 2026 Ji Dong
         <div><dt>Serial</dt><dd id="memory-serial">--</dd></div>
       </dl>
     </section>
+
+    <section class="runtime" id="benchmark-controls" aria-labelledby="benchmark-title" hidden>
+      <h2 id="benchmark-title">Storage benchmark</h2>
+      <div class="settings-actions">
+        <label for="benchmark-size">Size (MiB)</label>
+        <input id="benchmark-size" type="number" min="1" max="1024" step="1" value="32" disabled>
+        <button class="button" id="benchmark-start" type="button" disabled>Start benchmark</button>
+        <button class="button button-secondary" id="benchmark-cancel" type="button" disabled>Cancel benchmark</button>
+      </div>
+      <dl class="runtime-grid">
+        <div><dt>Benchmark state</dt><dd id="benchmark-state">--</dd></div>
+        <div><dt>Write throughput</dt><dd id="benchmark-write">--</dd></div>
+        <div><dt>Read/verify throughput</dt><dd id="benchmark-read">--</dd></div>
+        <div><dt>Result</dt><dd id="benchmark-result" role="status">--</dd></div>
+      </dl>
+    </section>
+
+    <dialog class="confirmation-dialog" id="msc-dialog" aria-labelledby="msc-dialog-title"
+      aria-describedby="msc-warning">
+      <h2 id="msc-dialog-title">USB storage ownership</h2>
+      <p id="msc-warning"></p>
+      <div class="dialog-actions">
+        <button class="button button-cancel" id="cancel-msc" type="button" autofocus>Cancel</button>
+        <button class="button" id="confirm-msc" type="button">Confirm</button>
+      </div>
+    </dialog>
 
     <dialog class="confirmation-dialog" id="configuration-dialog" aria-labelledby="configuration-dialog-title"
       aria-describedby="configuration-dialog-profile configuration-warning configuration-wireless-warning">

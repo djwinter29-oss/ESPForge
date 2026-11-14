@@ -13,6 +13,9 @@
     ]
   },
   "files": [
+    "src/js/console-terminal.mjs",
+    "src/js/console-session.mjs",
+    "src/js/console.mjs",
     "src/js/dashboard-api.mjs",
     "src/js/operation-state.mjs",
     "src/js/wireless-form.mjs",
