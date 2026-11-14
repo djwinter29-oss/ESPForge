@@ -82,8 +82,7 @@ Both hosts remain loopback-only and require local request origins.
 
 ## Browser shell
 
-Dashboard Wi-Fi status shows the network and address as plain text, without a shell link.
-Browser-terminal routes and relay APIs remain available for explicit integrations.
+Fresh connected Wi-Fi status becomes a link opening the [diagnostic shell](../../docs/guides/console.md) in a new tab.
 Wi-Fi connectivity does not establish that TCP port 2323 is listening; connection failures are explicit.
 
 `POST /api/console?board=ID` accepts exactly `{}`. The host obtains the address from that board's monitor, sends

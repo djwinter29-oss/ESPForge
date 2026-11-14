@@ -32,7 +32,7 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
-test("Wi-Fi status stays plain text even when a snapshot includes a legacy shell URL", context => {
+test("fresh connected Wi-Fi links to the selected board and removes the link when stale", context => {
   const previous = globalThis.document;
   const fixture = domFixture();
   globalThis.document = fixture.document;
@@ -42,8 +42,11 @@ test("Wi-Fi status stays plain text even when a snapshot includes a legacy shell
   } };
   renderStatus({ ...state, console_url: "/console?board=selected" });
   const status = fixture.el("#wifi-state");
-  assert.equal(status.children.length, 0);
-  assert.equal(status.textContent, "<script> (192.168.1.9)");
+  assert.equal(status.children.length, 1);
+  assert.equal(status.children[0].href, "/console?board=selected");
+  assert.equal(status.children[0].textContent, "<script> (192.168.1.9)");
+  assert.equal(status.children[0].target, "_blank");
+  assert.equal(status.children[0].rel, "noopener noreferrer");
   for (const changed of [{ ...state, connected: false }, { ...state, wireless_error: "Stale" },
     { ...state, wireless: { ...state.wireless, stale: true } },
     { ...state, wireless: { ...state.wireless, wifi_state: "connecting" } }]) {
@@ -808,7 +811,7 @@ test("failed temporary Wi-Fi cancellation retains the stage and permits a safe r
   }
 });
 
-test("Wi-Fi label stays plain text", () => {
+test("Wi-Fi label stays plain text without a selected console URL", () => {
   const saved = globalThis.document;
   const elements = new Map();
   const element = selector => {

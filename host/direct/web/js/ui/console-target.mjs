@@ -2,10 +2,12 @@
 // Copyright (c) 2026 Ji Dong
 
 // @ts-check
+import { REPORT } from "../protocol/constants.mjs";
+
 /** @param {import("../state/reducer.mjs").DashboardState} state */
 export function consoleTarget(state) {
   const wireless = state.wireless;
-  if (!state.connected || state.wireless_error || !wireless || state.freshness?.[6] !== "fresh"
+  if (!state.connected || state.wireless_error || !wireless || state.freshness?.[REPORT.WIRELESS] !== "fresh"
       || !wireless.wifi_enabled || wireless.wifi_state !== "connected" || !state.hardware?.serial_number) return null;
   const address = wireless.ipv4;
   if (typeof address !== "string" || !/^\d{1,3}(\.\d{1,3}){3}$/.test(address)) return null;

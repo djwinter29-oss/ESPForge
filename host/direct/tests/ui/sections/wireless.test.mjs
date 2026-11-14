@@ -90,20 +90,36 @@ test("keyless Bluetooth reports that a control key is needed; unavailable report
   } finally { globalThis.document = previous; }
 });
 
-test("connected Wi-Fi status stays plain text over USB and BLE", () => {
+test("fresh connected Wi-Fi links to the local shell over USB and BLE only while available", () => {
   const previous = globalThis.document;
   const { document, element } = createDocument();
   const wifi = element("#direct-wifi-state");
   globalThis.document = document;
   try {
     for (const link of ["usb", "ble"]) {
-      renderWirelessStatus({ connected: true, link, hardware: { capabilities: 128 },
+      const state = { connected: true, link, hardware: { capabilities: 128, serial_number: "board-a" },
         freshness: { 12: "fresh" },
         wireless: { wifi_enabled: true, wifi_state: "connected", ssid: "<script>", ipv4: "192.168.1.9",
-          ble_enabled: false } });
+          ble_enabled: false } };
+      const url = "/console.html?source=owner&serial=board-a&ipv4=192.168.1.9";
+      renderWirelessStatus(state, url);
+      assert.equal(wifi.children.length, 1);
+      assert.equal(wifi.children[0].textContent, "<script> (192.168.1.9)");
+      assert.equal(wifi.children[0].href, url);
+      assert.equal(wifi.children[0].target, "_blank");
+      assert.equal(wifi.children[0].rel, "noopener noreferrer");
+      for (const changed of [{ ...state, connected: false }, { ...state, wireless_error: "Read failed" },
+        { ...state, freshness: { 12: "stale" } },
+        { ...state, wireless: { ...state.wireless, wifi_enabled: false } },
+        { ...state, wireless: { ...state.wireless, wifi_state: "connecting" } },
+        { ...state, wireless: { ...state.wireless, ipv4: "0.0.0.0" } }]) {
+        renderWirelessStatus(changed, url);
+        assert.equal(wifi.children.length, 0);
+      }
+      renderWirelessStatus(state, url);
+      renderWirelessStatus(state);
       assert.equal(wifi.textContent, "<script> (192.168.1.9)");
-      assert.equal(wifi.children.length, 0);
-      assert.equal(wifi.title, "");
+      assert.equal(wifi.children.length, 0, "static hosting must not offer a broken shell link");
     }
   } finally { globalThis.document = previous; }
 });

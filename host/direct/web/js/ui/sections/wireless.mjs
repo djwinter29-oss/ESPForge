@@ -3,6 +3,7 @@
 
 import { CAP } from "../../protocol/constants.mjs";
 import { queryElement } from "../dom.mjs";
+import { consoleTarget } from "../console-target.mjs";
 
 export function deriveWirelessViewModel(state) {
   const wireless = state.wireless;
@@ -23,12 +24,21 @@ export function deriveWirelessViewModel(state) {
   };
 }
 
-export function renderWirelessStatus(state) {
+export function renderWirelessStatus(state, consoleUrl = null) {
   const model = deriveWirelessViewModel(state);
   for (const name of ["wifi", "ble"]) {
     queryElement(`#direct-${name}-diagnostics`).hidden = model.hidden;
     const status = queryElement(`#direct-${name}-state`);
     status.textContent = model[name];
     status.title = model[`${name}Title`];
+    if (name === "wifi" && consoleUrl && consoleTarget(state)) {
+      const link = document.createElement("a");
+      link.href = consoleUrl;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.textContent = model.wifi;
+      link.title = "Open the unauthenticated Wi-Fi shell; keep this dashboard open";
+      status.replaceChildren(link);
+    }
   }
 }

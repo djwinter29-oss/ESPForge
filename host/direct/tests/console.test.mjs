@@ -21,7 +21,7 @@ test("Direct terminal handles native erase and bounds plain-text scrollback", ()
 });
 
 test("console lease rejects stale, replaced and disconnected board state", async context => {
-  let state = { connected: true, hardware: { serial_number: "board-a" }, freshness: { 6: "fresh" },
+  let state = { connected: true, hardware: { serial_number: "board-a" }, freshness: { 12: "fresh" },
     wireless: { wifi_enabled: true, wifi_state: "connected", ipv4: "192.168.1.9" } };
   const target = consoleTarget(state);
   assert.deepEqual(target, { serial: "board-a", ipv4: "192.168.1.9" });
@@ -31,7 +31,8 @@ test("console lease rejects stale, replaced and disconnected board state", async
   context.after(() => { owner.close(); child.close(); });
   serveConsoleTarget(owner, () => state);
   await checkConsoleTarget(child, target);
-  for (const changed of [{ ...state, connected: false }, { ...state, freshness: { 6: "stale" } },
+  for (const changed of [{ ...state, connected: false }, { ...state, freshness: { 12: "stale" } },
+    { ...state, freshness: {} }, { ...state, freshness: { 6: "fresh" } },
     { ...state, hardware: { serial_number: "other" } }, { ...state, wireless: { ...state.wireless, ipv4: "10.0.0.2" } }]) {
     state = changed;
     await assert.rejects(checkConsoleTarget(child, target), /fresh Wi-Fi/);

@@ -78,13 +78,19 @@ test("Direct UI preserves unsaved profiles, and separates confirmed reboot", asy
   const prototypes = new Map(["connect", "saveSettings", "reboot"].map(name =>
     [name, BoardSession.prototype[name]]));
   const { document, element: el, fire } = createDocument();
+  const windowHandlers = new Map();
   let client;
   /** Apply a client change and flush the dashboard's coalesced refresh. */
   const sync = async changes => { patchState(client, changes); await null; };
   const commands = [];
   globalThis.document = document;
-  globalThis.window = { confirm() { assert.fail("Use styled dialogs, not browser confirmations"); } };
-  globalThis.location = { hostname: "example.test" };
+  globalThis.window = { confirm() { assert.fail("Use styled dialogs, not browser confirmations"); },
+    addEventListener(type, handler) { windowHandlers.set(type, handler); } };
+  globalThis.location = { hostname: "localhost" };
+  context.mock.method(globalThis, "fetch", async url => {
+    assert.equal(url, "/api/console/capabilities");
+    return { ok: true, status: 200, json: async () => ({ available: true }) };
+  });
   Object.defineProperty(globalThis, "navigator", { configurable: true, value: { hid: new EventTarget() } });
   Object.defineProperty(globalThis, "isSecureContext", { configurable: true, value: true });
   Object.defineProperty(globalThis, "sessionStorage", { configurable: true, value: memorySessionStorage() });
@@ -177,6 +183,13 @@ test("Direct UI preserves unsaved profiles, and separates confirmed reboot", asy
     client.pollWireless();
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(el("#direct-wifi-state").textContent, "HomeDev (192.168.1.9)");
+    const shell = el("#direct-wifi-state").children[0];
+    assert.ok(shell, "local relay discovery and fresh Report 12 must enable the shell link");
+    const shellUrl = new URL(shell.href, "http://localhost");
+    assert.equal(shellUrl.pathname, "/console.html");
+    assert.equal(shellUrl.searchParams.get("serial"), client.state.hardware.serial_number);
+    assert.equal(shellUrl.searchParams.get("ipv4"), "192.168.1.9");
+    assert.ok(shellUrl.searchParams.get("source"));
     assert.equal(reads, 1);
     wifiState = 1;
     client.pollWireless();
@@ -186,6 +199,7 @@ test("Direct UI preserves unsaved profiles, and separates confirmed reboot", asy
     client.pollWireless();
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(el("#direct-wifi-state").textContent, "HomeDev (connecting)");
+    assert.equal(el("#direct-wifi-state").children.length, 0);
     failure = true;
     now += 2000;
     client.pollWireless();
@@ -206,6 +220,7 @@ test("Direct UI preserves unsaved profiles, and separates confirmed reboot", asy
     assert.equal(client.state.wireless, null, "a late report must not repopulate a disconnected board");
     assert.equal(el("#direct-wifi-state").textContent, "--");
   } finally {
+    windowHandlers.get("pagehide")?.();
     for (const [name, method] of prototypes) BoardSession.prototype[name] = method;
     globalThis.document = saved.document; globalThis.window = saved.window;
     if (saved.location === undefined) delete globalThis.location;
