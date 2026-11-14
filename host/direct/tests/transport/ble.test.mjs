@@ -7,6 +7,7 @@ import { createHmac, webcrypto } from "node:crypto";
 import { describe } from "../../web/js/ui/messages.mjs";
 import { BleTransport, BLE_SERVICE } from "../../web/js/transport/ble.mjs";
 import { BoardSession } from "../../web/js/board/session.mjs";
+import { CAP } from "../../web/js/protocol/constants.mjs";
 import {
   fakeConnection, storage, identity, config, telemetry, result, patchState, says, memoryInventory,
 } from "../support/fixtures.mjs";
@@ -23,8 +24,10 @@ test("BLE maps normalized68byte control to restricted9byte wire form and HMACs t
   const warnings = [];
   console.warn = (...args) => warnings.push(args);
   const nonce = Uint8Array.from({ length: 16 }, (_, index) => index);
+  const benchmark = new Uint8Array(32); benchmark[0] = 1;
   const ble = new EventTarget();
-  const values = { 1: identity(), 2: config(), 3: telemetry(), 10: storage(), 12: status(), 13: memoryInventory(), 256: nonce };
+  const values = { 1: identity(), 2: config(), 3: telemetry(), 10: storage(), 11: benchmark,
+    12: status(), 13: memoryInventory(), 256: nonce };
   values[1][16] = 1;
   ble.gatt = { connected: false,
     async connect() {
@@ -75,6 +78,7 @@ test("BLE maps normalized68byte control to restricted9byte wire form and HMACs t
     assert.equal(notificationStarts, 1);
     assert.deepEqual(discoveryOrder.slice(0, 2), ["service_changed_subscription", "espforge_service_discovery"]);
     assert.deepEqual(requested, [1, 2, 3, 10, 12, 20, 256, 257, 13]);
+    assert.equal(client.state.freshness[11], "unavailable");
     assert.equal(client.state.hardware.psram_total_bytes, 8 << 20);
     assert.equal(client.state.hardware.flash_total_bytes, 16 << 20);
     const sign = request => [...createHmac("sha256", Buffer.from("ab".repeat(32), "hex"))
@@ -100,8 +104,17 @@ test("BLE maps normalized68byte control to restricted9byte wire form and HMACs t
     assert.equal(client.state.wireless.ssid_hex, "");
     await client.disconnect();
     serviceChangedAvailable = false;
+    values[1][17] |= CAP.SELF_TEST;
+    requested.length = 0;
     await client.connect(new Uint8Array(32).fill(0xab));
     assert.equal(client.state.connected, true);
+    assert.equal(client.state.error, null);
+    assert.ok(requested.includes(11), "advertised benchmark status is discovered before polling");
+    for (const id of [3, 10, 11]) assert.equal(client.state.freshness[id], "fresh");
+    assert.equal(client.state.self_test.state, "idle");
+    benchmark[1] = 7;
+    await client.polling.pollReports();
+    assert.equal(client.state.self_test.sequence, 7, "later polls keep reading live benchmark status");
     assert.equal(notificationStarts, 1);
     assert.ok(warnings.some(([message]) => message.includes("Service Changed is unavailable")));
   } finally {

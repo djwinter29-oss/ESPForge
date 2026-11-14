@@ -3,6 +3,7 @@
 
 import { OPCODES } from "../protocol/opcodes.mjs";
 import { decodeIdentityReport, hexToBytes } from "../protocol/codec.mjs";
+import { CAP } from "../protocol/constants.mjs";
 import { wait } from "../timers.mjs";
 import { BoardError, REASON } from "../state/errors.mjs";
 
@@ -10,7 +11,7 @@ export const BLE_SERVICE = "ef5c0000-7c91-4d70-8b32-6e856443f502";
 const characteristic = id => `ef5c${id.toString(16).padStart(4, "0")}-7c91-4d70-8b32-6e856443f502`;
 const GATT_SERVICE = 0x1801;
 const SERVICE_CHANGED = 0x2a05;
-/** @brief Readable characteristics: reports 1, 2, 3, 10, 12, the result, the nonce and the proof. 000b is empty. */
+/** @brief Required characteristics; benchmark and module-memory mirrors are discovered from identity. */
 const CHARACTERISTICS = [1, 2, 3, 10, 12, 20, 256, 257];
 
 /** @typedef {import("./transport.mjs").Transport} Transport */
@@ -118,6 +119,8 @@ export class BleTransport extends EventTarget {
             signal.throwIfAborted();
           }
           const hardware = await this.unlock(signal);
+          if (hardware.capabilities & CAP.SELF_TEST)
+            this.characteristics.set(11, await service.getCharacteristic(characteristic(11)));
           if (hardware.memory_report_supported)
             this.characteristics.set(13, await service.getCharacteristic(characteristic(13)));
           return true;

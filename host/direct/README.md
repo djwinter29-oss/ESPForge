@@ -99,7 +99,7 @@ The Device information RGB dropdown sends volatile colour requests over USB or a
 It requires fresh available-driver telemetry; uncertain commands are reconciled without replay.
 When firmware advertises benchmarking, Storage offers confirmed start/cancel and live write/read verification results.
 See [benchmark safety and timing](../../docs/reference/sdcard.md#optional-storage-benchmark); BLE mirrors progress read-only.
-The dashboard omits those controls rather than inventing values.
+Without this capability, benchmark controls and BLE benchmark-status polling are omitted.
 
 ### Wi-Fi shell
 
