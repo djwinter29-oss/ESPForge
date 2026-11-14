@@ -20,6 +20,30 @@ can publish release assets, and only Pages and PyPI deployment get OIDC write pe
 PR checks cancel superseded runs; release/publication runs are not cancelled mid-flight.
 No workflow flashes hardware, tests an SD card or runs a dedicated manual-tool test suite.
 
+## Package and publication helpers
+
+Workflows call the scripts in [tools/release](../../tools/release) for packaging, archive smoke checks and release
+downloads. Run them from the repository root with the same prerequisites and environment as the corresponding
+workflow; firmware collection instead runs from the Zephyr workspace root with the checkout named `espforge`.
+The workflows retain triggers, permissions, tool installation, build commands, artifact transfer and publication actions.
+
+| Script | Required environment and inputs |
+| --- | --- |
+| [build-wheel.sh](../../tools/release/build-wheel.sh) | `SETUPTOOLS_SCM_PRETEND_VERSION`; Python/pip. Stages assets and builds into `dist/`. |
+| [check-wheel.sh](../../tools/release/check-wheel.sh) | `VERSION`; wheel in `dist/`. Installs into `build/wheel-check` and runs the installed-wheel check. |
+| [package-direct.py](../../tools/release/package-direct.py) | `VERSION`, `SOURCE_SHA`; Git checkout. Builds and checks the extracted Direct ZIP. |
+| [package-dotnet.py](../../tools/release/package-dotnet.py) | `VERSION`, `RID`; self-contained publish in `build/host-release` and restored packages in `build/nuget`. |
+| [package-firmware.sh](../../tools/release/package-firmware.sh) | `STORAGE`, `FIRMWARE_BUILD`; completed firmware build and frozen manifest. `ESPFORGE_VERSION` optionally overrides the source version. |
+| [archive.sh](../../tools/release/archive.sh) | `VERSION`; downloaded firmware artifacts in `build/firmware-packages` and host packages in `build/packages`. |
+| [download-direct.sh](../../tools/release/download-direct.sh) | `RELEASE_TAG`, `SOURCE_SHA`, `GH_TOKEN`, `GH_REPO`; fetches and verifies the released site for Pages. |
+| [download-wheel.sh](../../tools/release/download-wheel.sh) | `RELEASE_TAG`, `SOURCE_SHA`, `GH_TOKEN`; fetches and verifies the released wheel for PyPI. |
+
+Invoke Python scripts with `python` and shell scripts with `bash`. Use fresh staging/output directories, as in CI.
+`SOURCE_SHA` may be empty for manual publication downloads; tag and checksum checks still apply.
+The download helpers do not publish anything themselves. Package smoke checks start only local loopback hosts.
+
+## Package identities
+
 Python uses Hatchling and hatch-vcs: [pyproject.toml](../../host/python/pyproject.toml) builds the
 `espforge` wheel. CI explicitly copies `host/web/src` into the package before building; the wheel bundles it as
 `espforge/web` without a custom build hook. For local builds, follow the

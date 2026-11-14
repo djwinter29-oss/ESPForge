@@ -82,19 +82,12 @@ jobs:
       - name: Stage dashboard assets and build wheel
         env:
           SETUPTOOLS_SCM_PRETEND_VERSION: ${{ needs.validate-tag.outputs.version }}
-        run: |
-          cp LICENSE host/python/LICENSE
-          mkdir -p host/python/src/espforge/web
-          cp -R host/web/src/. host/python/src/espforge/web/
-          python -m pip wheel --disable-pip-version-check --no-deps host/python --wheel-dir dist
+        run: bash tools/release/build-wheel.sh
 
       - name: Verify installed wheel and bundled dashboard
         env:
           VERSION: ${{ needs.validate-tag.outputs.version }}
-        run: |
-          python -m venv build/wheel-check
-          build/wheel-check/bin/python -m pip install --disable-pip-version-check dist/*.whl
-          build/wheel-check/bin/python -I tools/check_python_wheel.py "$VERSION"
+        run: bash tools/release/check-wheel.sh
 
       - name: Attach Python wheel
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -124,91 +117,7 @@ jobs:
         env:
           VERSION: ${{ needs.validate-tag.outputs.version }}
           SOURCE_SHA: ${{ github.sha }}
-        run: |
-          python - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-          import shutil
-          import socket
-          import subprocess
-          import sys
-          import tempfile
-          import time
-          import urllib.error
-          import urllib.request
-          from host.direct.server import build_site, identity
-
-          version = os.environ["VERSION"]
-          Path("build/packages").mkdir(parents=True, exist_ok=True)
-          footer = "Software checks do not qualify physical USB HID, Wi-Fi, BLE or SD behavior.\n"
-
-          # The standalone Direct archive includes the standard-library console relay.
-          direct = Path("build/direct-release")
-          _, commit, dirty = identity(Path.cwd())
-          assert commit == os.environ["SOURCE_SHA"], "Direct source commit differs from release"
-          build_site(Path("host/direct/web"), direct / "web", version, commit, dirty)
-          shutil.copyfile("host/direct/server.py", direct / "server.py")
-          shutil.copyfile("host/python/src/espforge/dashboard/console.py", direct / "console_bridge.py")
-          shutil.copyfile("LICENSE", direct / "LICENSE")
-          (direct / "RELEASE.txt").write_text(
-              f"ESPForge {version}\nSource: {os.environ['SOURCE_SHA']}\n"
-              "Run: python3 server.py --port 8000\nOpen: http://127.0.0.1:8000/ in desktop Chrome or Edge\n"
-              + footer, encoding="utf-8")
-          shutil.make_archive(f"build/packages/espforge-direct-v{version}", "zip", root_dir=direct)
-
-          def free_port():
-              with socket.socket() as listener:
-                  listener.bind(("127.0.0.1", 0))
-                  return listener.getsockname()[1]
-
-          def fetch(url):
-              with urllib.request.urlopen(url, timeout=2) as response:
-                  return response.headers, response.read()
-
-          def smoke(archive, command, web, check):
-              with tempfile.TemporaryDirectory() as directory:
-                  shutil.unpack_archive(archive, directory)
-                  port = free_port()
-                  process = subprocess.Popen([sys.executable, *command, "--port", str(port)], cwd=directory)
-                  origin = f"http://127.0.0.1:{port}"
-                  try:
-                      for attempt in range(100):
-                          assert process.poll() is None, f"{archive} server exited before readiness"
-                          try:
-                              assert b"ESPForge" in fetch(f"{origin}/")[1]
-                              break
-                          except urllib.error.URLError:
-                              time.sleep(0.1)
-                      else:
-                          raise RuntimeError(f"{archive} dashboard did not become ready")
-                      root = Path(directory) / web
-                      for path in sorted(root.rglob("*")):
-                          if path.is_file():
-                              relative = path.relative_to(root).as_posix()
-                              assert fetch(f"{origin}/{relative}")[1] == path.read_bytes(), relative
-                      check(origin, Path(directory))
-                  finally:
-                      if process.poll() is None:
-                          process.terminate()
-                      try:
-                          process.wait(timeout=10)
-                      except subprocess.TimeoutExpired:
-                          process.kill()
-                          process.wait(timeout=10)
-
-          def check_direct(origin, directory):
-              assert sorted(path.name for path in directory.iterdir() if path.name != "__pycache__") == [
-                  "LICENSE", "RELEASE.txt", "console_bridge.py", "server.py", "web"]
-              headers, body = fetch(f"{origin}/")
-              assert f'aria-label="Host application version" title="{commit}">{version}</span>'.encode() in body
-              assert "default-src 'self'" in headers["Content-Security-Policy"]
-              assert fetch(f"{origin}/favicon.svg")[0]["Content-Type"].startswith("image/svg+xml")
-              assert fetch(f"{origin}/js/app.mjs")[0]["Content-Type"].startswith("text/javascript")
-              assert json.loads(fetch(f"{origin}/api/console/capabilities")[1]) == {"available": True}
-
-          smoke(f"build/packages/espforge-direct-v{version}.zip", ["server.py"], "web", check_direct)
-          PY
+        run: python tools/release/package-direct.py
 
       - name: Attach Direct dashboard package
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -247,13 +156,7 @@ jobs:
       - name: Archive firmware and checksum all release assets
         env:
           VERSION: ${{ needs.validate-tag.outputs.version }}
-        run: |
-          for storage in sdmmc sd-spi; do
-            (cd "build/firmware-packages/espforge-esp32s3-$storage-software-build" &&
-              zip -r "../../packages/espforge-firmware-v$VERSION-esp32s3-devkitc-$storage.zip" .)
-          done
-          cd build/packages
-          sha256sum *.zip *.tar.gz *.whl > SHA256SUMS.txt
+        run: bash tools/release/archive.sh
 
       - name: Publish software-only GitHub release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
