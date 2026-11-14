@@ -455,7 +455,9 @@ def main() -> None:
                         check_accessibility_smoke(page, origin, label)
                         check_partial_diagnostics(page, origin, label)
                         check_msc_handoff(page, origin, label)
-                        assert page.request.get(f"{origin}/console").status == 404
+                        console = page.request.get(f"{origin}/console")
+                        assert console.status == 200
+                        assert "<h1>Wi-Fi shell</h1>" in console.text()
                         assert not errors, errors
             finally:
                 browser.close()

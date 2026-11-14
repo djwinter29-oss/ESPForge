@@ -64,7 +64,7 @@ export const OPCODES = Object.freeze({
       valid: facts => inRange(facts.led_colour, 0, 7) } },
   [OP.REBOOT]: { capability: CAP.REBOOT, ble: { proof: true, flags: true }, reboots: true, excluded: [4],
     rejections: [1, 2], details: { 1: 5, 2: 5, 28: 5 }, request: (r, unused) => r[3] === 1 && unused(4) },
-  [OP.MSC]: { capability: CAP.SDMMC, ble: null, rejections: [1, 2, 3], details: { 1: 5, 2: 5 },
+  [OP.MSC]: { capability: CAP.SPI | CAP.SDMMC, ble: null, rejections: [1, 2, 3], details: { 1: 5, 2: 5 },
     request: (r, unused) => [0, 1].includes(r[4]) && r[3] === (r[4] === 0 ? 1 : 0) && unused(5),
     facts: { keys: ["msc_enabled"], read: r => ({ msc_enabled: r[4] === 1 }),
       valid: facts => typeof facts.msc_enabled === "boolean" } },

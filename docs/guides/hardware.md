@@ -32,17 +32,19 @@ short wires and adequate regulated power. A SPI-only breakout is insufficient fo
 Wire with power disconnected. Do not apply 5 V to ESP32 GPIOs or a bare SD card.
 This is proposed wiring, not electrically qualified hardware.
 
-Follow the [SD pin allocation](../reference/sdcard.md#pin-allocation) for all six SDMMC signals, GPIO8 active-high
+The alternate SD-over-SPI image supports a 3.3 V SPI socket/module without DAT1/DAT2 wiring.
+Follow the [SD pin allocation](../reference/sdcard.md#pin-allocation) for the selected image, GPIO8 active-high
 card detection, supply and ground. An unwired detection input reads absent and prevents mounting.
 
-GPIO assignments use explicit native SDMMC slot-0 pinctrl in the project's overlay.
+GPIO assignments use explicit hardware pinctrl for native SDMMC slot 0 or SPI3.
 The ESP32-S3 has 512 KiB of internal SRAM and no on-chip flash. N16R8 specifies the module's 16 MiB SPI flash
 and 8 MiB octal PSRAM; both are external to the SoC. PSRAM is volatile RAM, not additional flash.
 The Module memory panel separates SRAM reservation, PSRAM reservation/capacity and detected module-flash
 capacity. Reservations include linked regions and permanent heap pools, not live usage. Unknown or unavailable
 inventory remains `--`; it is not inferred from the board name. No additional flash chip or interface is configured.
 
-SPI2 is dedicated to the onboard WS2812-compatible RGB LED, with only MOSI allocated; SPI3 remains disabled.
+SPI2 is dedicated to the onboard WS2812-compatible RGB LED, with only MOSI allocated.
+SPI3 is disabled in the native image and dedicated to the SD card in the SPI image.
 The MOSI pin has a pull-down configured. Startup sends Off twice, separated by the reset/latch interval, so the
 first SPI transfer's output configuration cannot leave a startup colour latched.
 The default LED data pin is GPIO48. This is unverified for the diymore dual-USB-C N16R8 clone; official DevKitC-1
@@ -64,11 +66,11 @@ not establish the link's condition on the actual board.
 
 Octal PSRAM occupies GPIO33-37, so those pins are not available on N16R8.
 Leave boot-strapping and onboard flash/PSRAM pins alone. Consult your exact board schematic.
-The requested SDMMC ceiling is 25 MHz; this is not a measured bus frequency or throughput claim.
+The requested SD bus ceiling is 25 MHz for either image; this is not a measured bus frequency or throughput claim.
 
 Prepare an existing FAT16/FAT32 volume on your computer and back up its data.
 Cards may be inserted after startup or replaced; detection mounts them for firmware, not automatically for USB.
-Power switching is not implemented. Power-cycle the card when switching from SPI mode;
+Power switching is not implemented. Power-cycle the card when switching between native SDMMC and SPI images;
 a board-only reset may leave the card in SPI mode.
 Physical unplugging during I/O may corrupt data. Safely eject the USB drive before confirming return to firmware.
 See the [SD contract](../reference/sdcard.md) for data-safety behavior.

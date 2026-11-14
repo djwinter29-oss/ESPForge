@@ -19,12 +19,22 @@ permissions:
 
 jobs:
   firmware:
-    name: Zephyr ESP32-S3-DevKitC (PROCPU, 4-bit SDMMC)
+    name: Zephyr ESP32-S3-DevKitC (PROCPU, ${{ matrix.storage }})
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - storage: sdmmc
+            build: firmware
+          - storage: sd-spi
+            build: firmware-sd-spi
     env:
       ESPFORGE_VERSION: ${{ inputs.version }}
       CMAKE_BUILD_PARALLEL_LEVEL: 2
+      STORAGE: ${{ matrix.storage }}
+      FIRMWARE_BUILD: espforge/build/${{ matrix.build }}
     steps:
       - name: Checkout manifest repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -57,22 +67,22 @@ jobs:
 
       - name: Build and check required defaults
         run: |
-          bash espforge/tools/firmware/build.sh
-          python espforge/tools/check_firmware_config.py
-          west manifest --freeze > espforge/build/firmware/west-manifest.yml
+          bash espforge/tools/firmware/build.sh --storage "$STORAGE"
+          python espforge/tools/check_firmware_config.py --storage "$STORAGE"
+          west manifest --freeze > "$FIRMWARE_BUILD/west-manifest.yml"
 
       - name: Collect firmware, provenance and dependency licenses
         run: |
           for expected in 'CONFIG_ESP_SIMPLE_BOOT=y' 'CONFIG_FLASH_SIZE=16777216' \
             'CONFIG_BOARD_TARGET="esp32s3_devkitc/esp32s3/procpu"'; do
-            if ! grep -Fxq "$expected" espforge/build/firmware/zephyr/.config; then
+            if ! grep -Fxq "$expected" "$FIRMWARE_BUILD/zephyr/.config"; then
               printf 'Error: N16R8 simple-boot packaging requires %s.\n' "$expected" >&2
               exit 1
             fi
           done
           for expected in --esp-app-address=0x0 --esp-flash-mode=dio \
             --esp-flash-freq=80m --esp-flash-size=16MB; do
-            if ! grep -Fq -- "$expected" espforge/build/firmware/zephyr/runners.yaml; then
+            if ! grep -Fq -- "$expected" "$FIRMWARE_BUILD/zephyr/runners.yaml"; then
               printf 'Error: packaged flashing instructions require runner option %s.\n' "$expected" >&2
               exit 1
             fi
@@ -80,8 +90,8 @@ jobs:
           package=espforge/build/firmware-package
           mkdir -p "$package/licenses"
           cp espforge/LICENSE "$package/LICENSE"
-          cp espforge/build/firmware/zephyr/{zephyr.bin,zephyr.elf,.config,zephyr.dts,runners.yaml} "$package/"
-          cp espforge/build/firmware/west-manifest.yml "$package/"
+          cp "$FIRMWARE_BUILD"/zephyr/{zephyr.bin,zephyr.elf,.config,zephyr.dts,runners.yaml} "$package/"
+          cp "$FIRMWARE_BUILD/west-manifest.yml" "$package/"
           cp -R espforge/docs "$package/docs"
           for component in zephyr modules/hal/espressif modules/crypto/mbedtls; do
             find "$component" -name .git -prune -o -type f \
@@ -98,6 +108,7 @@ jobs:
           {
             printf 'Firmware version: %s\n' "${ESPFORGE_VERSION:-$source_version}"
             printf 'Source commit: %s\n' "$(git -C espforge rev-parse HEAD)"
+            printf 'Storage image: %s\n' "$STORAGE"
             printf 'Board: esp32s3_devkitc/esp32s3/procpu\nModule: ESP32-S3-WROOM-1-N16R8\nZephyr SDK: 0.17.4\n'
             printf 'Software build only; not flashed or hardware-qualified. SD testing is deferred.\n'
           } > "$package/BUILD-INFO.txt"
@@ -105,6 +116,8 @@ jobs:
           Target: ESP32-S3-DevKitC-1 N16R8 / 16 MB flash, 8 MB octal PSRAM, PROCPU, simple-boot image.
           This is a software build, not a hardware-qualified release.
           Check docs/guides/hardware.md and docs/validation/qualification-gaps.md first.
+          BUILD-INFO.txt identifies the storage variant. Use only its matching SD wiring.
+          Disconnect card power before changing between native SDMMC and SD-over-SPI images.
 
           Close all serial clients. Flash through the UART (USB-to-UART) connector;
           the USB connector carries the ESPForge HID management interface after boot.
@@ -124,7 +137,7 @@ jobs:
       - name: Attach software build
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: espforge-esp32s3-software-build
+          name: espforge-esp32s3-${{ matrix.storage }}-software-build
           path: espforge/build/firmware-package/
           include-hidden-files: true
           if-no-files-found: error

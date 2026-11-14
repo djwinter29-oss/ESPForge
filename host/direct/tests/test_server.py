@@ -110,6 +110,13 @@ class DirectServerTests(unittest.TestCase):
             self.assertEqual(write.call_count, 1)
         self.assertEqual(self.fetch("/api/console", "PUT", {"data": "aA=="})[0], 405)
 
+    def test_bind_failure_preserves_the_error_and_closes_the_relay(self):
+        with patch("host.direct.server._CONSOLE_MODULE.ConsoleBridge") as bridge, \
+                patch("host.direct.server.TCPServer.server_bind", side_effect=OSError("address unavailable")), \
+                self.assertRaisesRegex(OSError, "address unavailable"):
+            create_server("127.0.0.1", 0, _DEFAULT_WEB_ROOT)
+        bridge.return_value.close_all.assert_called_once_with()
+
     def test_release_server_runs_without_checkout_or_host_dependencies(self):
         source = Path(__file__).resolve().parents[1]
         with tempfile.TemporaryDirectory() as directory:
@@ -119,8 +126,10 @@ class DirectServerTests(unittest.TestCase):
             shutil.copytree(source / "web", root / "web")
             script = """
 import json, runpy, threading, urllib.request
-module = runpy.run_path("server.py")
-server = module["create_server"]("127.0.0.1", 0, module["_DEFAULT_WEB_ROOT"])
+from unittest.mock import patch
+with patch("socket.getfqdn", side_effect=AssertionError("Local startup must not require reverse DNS")):
+    module = runpy.run_path("server.py")
+    server = module["create_server"]("127.0.0.1", 0, module["_DEFAULT_WEB_ROOT"])
 thread = threading.Thread(target=server.serve_forever)
 thread.start()
 try:

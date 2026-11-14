@@ -71,6 +71,25 @@ def control_result(opcode, status, error=0, transaction=11, data=b""):
 
 
 class ProtocolTests(unittest.TestCase):
+    def test_spi_transport_reports_pins_and_rejects_mismatched_bus_modes(self):
+        spi = parse_identity_report(identity_report(capabilities=0x8E))
+        native = parse_identity_report(identity_report())
+        self.assertEqual(spi["storage_transport"], "spi")
+        config = bytearray(configuration_report())
+        config[8:14] = bytes([12, 11, 13, 10, 255, 255])
+        self.assertEqual(parse_configuration_report(config, spi)["storage_gpios"], (12, 11, 13, 10, 255, 255))
+        with self.assertRaises(ValueError):
+            parse_configuration_report(config, native)
+        with self.assertRaises(ValueError):
+            parse_configuration_report(configuration_report(), spi)
+        report = bytearray(storage_report())
+        report[5] = 2
+        self.assertEqual(parse_memory_report(report, spi)["mode"], "spi")
+        with self.assertRaises(ValueError):
+            parse_memory_report(report, native)
+        with self.assertRaises(ValueError):
+            parse_memory_report(storage_report(), spi)
+
     def test_memory_inventory_reports_physical_capacity_and_no_invented_values(self):
         report = bytes((13, 1, 3, 0, 0)) + struct.pack("<III", 8 << 20, 1 << 20, 16 << 20)
         self.assertEqual(parse_memory_inventory_report(report), {
@@ -181,9 +200,9 @@ class ProtocolTests(unittest.TestCase):
                 other = parse_identity_report(identity_report(product=product))
                 self.assertFalse(other["supported"])
                 self.assertEqual(other["product_name"], name)
-        for invalid in (identity_report(capabilities=0), identity_report(capabilities=0x8F),
-                        identity_report(capabilities=0xCE), identity_report(capabilities=0xAE),
-                        identity_report(capabilities=0x8e), identity_report(mcu=2, board=1)):
+        for invalid in (identity_report(capabilities=0), identity_report(capabilities=0xCF),
+                        identity_report(capabilities=0xCE), identity_report(capabilities=0xBE),
+                        identity_report(capabilities=0x9e), identity_report(mcu=2, board=1)):
             with self.subTest(report=invalid), self.assertRaises(ValueError):
                 parse_identity_report(invalid)
         unknown_mcu = parse_identity_report(identity_report(mcu=9, board=0))
@@ -213,7 +232,7 @@ class ProtocolTests(unittest.TestCase):
             parse_configuration_report(led, self.identity)
         spi_layout = bytearray(configuration_report())
         spi_layout[12:14] = bytes([255, 255])
-        with self.assertRaisesRegex(ValueError, "SDMMC"):
+        with self.assertRaisesRegex(ValueError, "storage GPIO"):
             parse_configuration_report(spi_layout, self.identity)
 
     def test_telemetry_decodes_profile_values_and_rejects_unavailable_features(self):

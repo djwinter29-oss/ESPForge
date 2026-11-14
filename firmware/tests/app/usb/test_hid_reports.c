@@ -35,6 +35,9 @@ void test_identity_layout(void)
 #if EF_ENABLE_STORAGE_BENCHMARK
 	expected[17] = 0xB7;
 #endif
+#if EF_STORAGE_SPI
+	expected[17] = (expected[17] & ~EF_CAP_SDMMC) | EF_CAP_SPI;
+#endif
 	ef_report_identity(&identity, out);
 	TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, out, sizeof(out));
 }
@@ -59,7 +62,7 @@ void test_memory_inventory_layout_and_unavailable_components(void)
 void test_config_layout_reflects_saved_radios(void)
 {
 	ef_config_t config = {.stored_clock_mhz = 240, .stored_radios = 0x03,
-			      .reset_cause = 3};
+			      .reset_cause = 3, .storage_gpios = {12, 11, 13, 14, 15, 10}};
 	const uint8_t expected[EF_CONFIG_SIZE] = {1, 240, 0, 0, 0, 43, 44, 12, 11, 13, 14, 15, 10, 0x1C, 3, 255, 255};
 	uint8_t out[EF_CONFIG_SIZE];
 
@@ -68,6 +71,16 @@ void test_config_layout_reflects_saved_radios(void)
 	config.stored_radios = 0x02;
 	ef_report_config(&config, out);
 	TEST_ASSERT_EQUAL_HEX8(0x14, out[13]);
+}
+
+void test_config_preserves_spi_chip_select_and_unassigned_pin_slots(void)
+{
+	ef_config_t config = {.storage_gpios = {12, 11, 13, 10, 255, 255}};
+	uint8_t out[EF_CONFIG_SIZE];
+	const uint8_t expected[] = {12, 11, 13, 10, 255, 255};
+
+	ef_report_config(&config, out);
+	TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, out + 7, sizeof(expected));
 }
 
 void test_telemetry_layout(void)
@@ -135,7 +148,7 @@ void test_storage_layout(void)
 	TEST_ASSERT_EQUAL_UINT8(4, out[1]);
 	TEST_ASSERT_EQUAL_HEX8(0x6F, out[2]);
 	TEST_ASSERT_EQUAL_UINT8(1, out[3]);
-	TEST_ASSERT_EQUAL_UINT8(3, out[4]);
+	TEST_ASSERT_EQUAL_UINT8(EF_STORAGE_SPI ? 2 : 3, out[4]);
 	TEST_ASSERT_EQUAL_HEX8(0x40, out[5]);
 	TEST_ASSERT_EQUAL_HEX8(0x78, out[6]);
 	TEST_ASSERT_EQUAL_HEX8(0x7D, out[7]);
@@ -146,7 +159,7 @@ void test_storage_layout(void)
 	storage.capacity_valid = false;
 	ef_report_storage(&storage, out);
 	TEST_ASSERT_EQUAL_HEX8(0x4F, out[2]);
-	TEST_ASSERT_EQUAL_UINT8(3, out[4]);
+	TEST_ASSERT_EQUAL_UINT8(EF_STORAGE_SPI ? 2 : 3, out[4]);
 	for (size_t i = 10; i < 14; ++i) {
 		TEST_ASSERT_EQUAL_UINT8(0, out[i]);
 	}

@@ -30,7 +30,8 @@ export function deriveDeviceViewModel(state, dashboard = deriveDashboardViewMode
   const psramTotal = hardware?.psram_total_bytes;
   const psramReserved = hardware?.psram_reserved_bytes;
   const flashTotal = hardware?.flash_total_bytes;
-  const signals = ["CLK", "CMD", "DAT0", "DAT1", "DAT2", "DAT3"];
+  const transport = hardware?.transport === "spi" ? "SPI" : "SDMMC";
+  const signals = transport === "SPI" ? ["SCK", "MOSI", "MISO", "CS"] : ["CLK", "CMD", "DAT0", "DAT1", "DAT2", "DAT3"];
   const pin = value => !config ? "--" : value === 255 || value == null ? "Unassigned" : `GPIO${value}`;
   const storagePins = signals.map((_, index) => pin(config?.storage_gpios?.[index]));
   if (config?.card_detect_gpio != null && config.card_detect_gpio !== 255) {
@@ -45,13 +46,13 @@ export function deriveDeviceViewModel(state, dashboard = deriveDashboardViewMode
       label, hidden: state.freshness?.[id] === "fresh", text: `${label}: ${state.freshness?.[id] ?? "unavailable"}`,
     })),
     pins: {
-      signature: JSON.stringify([config?.monitor_uart_index, config?.monitor_uart_tx_gpio,
+      signature: JSON.stringify([transport, config?.monitor_uart_index, config?.monitor_uart_tx_gpio,
         config?.monitor_uart_rx_gpio, config?.storage_gpios, config?.card_detect_gpio, config?.reset_cause]),
       uart: [["TX", "RX"], [pin(config?.monitor_uart_tx_gpio), pin(config?.monitor_uart_rx_gpio)]],
       storage: [signals, storagePins],
     },
     text: {
-      "product-name": hardware ? `${hardware.product_name} (SDMMC)` : "--",
+      "product-name": hardware ? `${hardware.product_name} (${transport})` : "--",
       "board-model": hardware ? `${hardware.board_name ?? unknown("board", hardware.board_model)} `
         + `(${hardware.mcu ?? unknown("MCU", hardware.mcu_id)})` : "--",
       "firmware-version": hardware?.firmware_version ?? "Unknown",
@@ -74,7 +75,7 @@ export function deriveDeviceViewModel(state, dashboard = deriveDashboardViewMode
       temperature: runtime?.temperature_valid ? `${(runtime.temperature_centidegrees / 100).toFixed(2)} °C` : "--",
       "board-uart-title": config && config.monitor_uart_index !== 255
         ? `Monitor UART${config.monitor_uart_index}` : "Monitor UART",
-      "board-storage-title": config ? "Storage (SDMMC)" : "Storage",
+      "board-storage-title": config ? `Storage (${transport})` : "Storage",
       "board-reset-cause": config
         ? ["Unknown", "Power-on", "Watchdog", "Software request"][config.reset_cause]
           ?? `Unassigned (${config.reset_cause})` : "--",

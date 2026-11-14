@@ -73,13 +73,14 @@ The release publishes:
 
 | Asset | Contents/use |
 | --- | --- |
-| `espforge-firmware-vVERSION-esp32s3-devkitc.zip` | Simple-boot `zephyr.bin`, ELF, hidden `.config`, DTS, runner provenance, frozen west manifest, dependency licenses, docs and flashing instructions |
+| `espforge-firmware-vVERSION-esp32s3-devkitc-sdmmc.zip` | Native four-bit SDMMC simple-boot image, ELF, hidden `.config`, DTS, runner provenance, frozen west manifest, dependency licenses, docs and flashing instructions |
+| `espforge-firmware-vVERSION-esp32s3-devkitc-sd-spi.zip` | SD-over-SPI image with the same package contents, card detection, FAT and USB drive handoff |
 | `espforge-direct-vVERSION.zip` | Independent Direct `web/` app, `server.py`, project license and `RELEASE.txt` source metadata; run `python3 server.py` |
 | `espforge-VERSION-py3-none-any.whl` | Python host package with the `espforge` command, bundled `host/web/src` bridge dashboard and license; also published to PyPI |
 | `espforge-host-vVERSION-linux-x64.tar.gz` | Self-contained Linux .NET host, dashboard assets and dependency notices |
 | `espforge-host-vVERSION-win-x64.zip` | Self-contained Windows .NET host |
 | `espforge-host-vVERSION-osx-arm64.tar.gz` | Self-contained Apple Silicon .NET host |
-| `SHA256SUMS.txt` | SHA-256 of all six packages |
+| `SHA256SUMS.txt` | SHA-256 of all seven packages |
 
 Install the wheel with `python -m pip install espforge-VERSION-py3-none-any.whl` and run `espforge web`.
 Standalone .NET hosts do not require an installed .NET runtime. Their smoke tests start the extracted host without
@@ -87,11 +88,13 @@ hardware, verify every deployed dashboard asset and confirm that `/api/boards` a
 Windows/macOS packages are not publisher-signed or notarized; local OS security policy may
 require explicit approval. No signing credentials are configured by these workflows.
 
-The firmware ZIP is not a relocatable west build directory. Its `FLASHING.txt` gives the
+Each firmware ZIP is not a relocatable west build directory. Its `FLASHING.txt` gives the
 esptool 5 command for the selected simple-boot N16R8 image at `0x0`, with DIO/80 MHz/16 MB flash
 parameters. `runners.yaml` records how it was built; do not feed its CI paths to a local west
 runner. The [source-build flash wrapper](../guides/getting-started.md#2-build-now-flash-later)
 remains the supported west-based path.
+Choose the archive matching the [SD wiring](../reference/sdcard.md#pin-allocation) and power-cycle the card
+before switching buses. Neither image has automatic bus fallback.
 
 ## Direct Pages, PyPI and retries
 

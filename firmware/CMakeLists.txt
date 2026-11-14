@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.20.0)
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(espforge)
+target_compile_definitions(app PRIVATE EF_STORAGE_SPI=$<BOOL:${CONFIG_SPI_SDHC}>)
 option(EF_ENABLE_STORAGE_BENCHMARK "Include temporary-file verification and throughput measurement" OFF)
 target_compile_definitions(app PRIVATE EF_ENABLE_STORAGE_BENCHMARK=$<BOOL:${EF_ENABLE_STORAGE_BENCHMARK}>)
 if(EF_ENABLE_STORAGE_BENCHMARK)

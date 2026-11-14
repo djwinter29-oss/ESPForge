@@ -46,6 +46,19 @@ test("board pin tables are reused until the displayed configuration changes", ()
   assert.equal(el("#board-storage-pins").children[1].children.at(-1).textContent, "GPIO8");
 }));
 
+test("SPI boards show four bus signals and retain card detection", () => withDocument((el, renderStatus) => {
+  const state = snapshot();
+  renderStatus(state);
+  state.hardware = { ...state.hardware, transport: "spi", capabilities: 0x8e };
+  state.settings = { ...state.settings, storage_gpios: [12, 11, 13, 10, 255, 255],
+    board_flags: 0x45, card_detect_gpio: 8 };
+  renderStatus(state);
+  assert.equal(el("#product-name").textContent, "ESPForge (SPI)");
+  assert.equal(el("#board-storage-title").textContent, "Storage (SPI)");
+  assert.deepEqual(el("#board-storage-pins").children.map(row => row.children.map(cell => cell.textContent)),
+    [["SCK", "MOSI", "MISO", "CS", "Card detect"], ["GPIO12", "GPIO11", "GPIO13", "GPIO10", "GPIO8"]]);
+}));
+
 test("identity RAM stays build accounting while stale inputs show no current values", () =>
   withDocument((el, renderStatus) => {
   const state = snapshot();

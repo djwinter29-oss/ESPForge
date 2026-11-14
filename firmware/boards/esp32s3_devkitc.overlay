@@ -3,6 +3,9 @@
 #include <zephyr/dt-bindings/led/led.h>
 
 / {
+	aliases {
+		espforge-sd = &sdhc0;
+	};
 	zephyr,user {
 		sd-detect-gpios = <&gpio0 8 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>;
 	};

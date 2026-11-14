@@ -65,13 +65,13 @@ test("identity requires ESPForge product 3, the 0x96 capability set, ESP32-S3 an
   for (const bytes of [report.slice(0, 25), Uint8Array.from([1, ...report]), new Uint8Array(42)]) {
     assert.throws(() => decodeIdentityReport(bytes));
   }
-  for (const [offset, value] of [[0, 2], [1, 2], [1, 1], [17, 0], [17, 0x8f], [17, 0x9e], [17, 0xae],
+  for (const [offset, value] of [[0, 2], [1, 2], [1, 1], [17, 0], [17, 0xcf], [17, 0x9e], [17, 0xbe],
     [17, 0x86], [14, 1]]) {
     const bad = report.slice(); bad[offset] = value;
     assert.throws(() => decodeIdentityReport(bad), `${offset}: ${value}`);
   }
   assert.equal(decodeIdentityReport(identity(16 | 128)).capabilities, 0x90, "capabilities may be a subset");
-  assert.throws(() => decodeIdentityReport(identity(0x8e)), "legacy SPI firmware requires matching hosts");
+  assert.equal(decodeIdentityReport(identity(0x8e)).transport, "spi");
   const reserved = report.slice(); reserved[16] = 255;
   assert.equal(decodeIdentityReport(reserved).product_name, "ESPForge", "identity reserved byte is ignored");
   const unknown = report.slice(); unknown[14] = 99; unknown[15] = 99;
@@ -82,6 +82,20 @@ test("identity requires ESPForge product 3, the 0x96 capability set, ESP32-S3 an
     view.setUint32(18, total, true); view.setUint32(22, used, true);
     assert.throws(() => decodeIdentityReport(bad));
   }
+});
+
+test("SPI identity selects four pins and matching storage samples", () => {
+  const spi = decodeIdentityReport(identity(0x8e));
+  const native = decodeIdentityReport(identity());
+  const pins = config();
+  pins.set([12, 11, 13, 10, 255, 255], 7);
+  assert.deepEqual(decodeConfigReport(pins, spi).storage_gpios, [12, 11, 13, 10, 255, 255]);
+  assert.throws(() => decodeConfigReport(pins, native));
+  assert.throws(() => decodeConfigReport(config(), spi));
+  const sample = storage(); sample[4] = 2;
+  assert.equal(decodeStorageReport(sample, spi).memory.mode, "spi");
+  assert.throws(() => decodeStorageReport(sample, native));
+  assert.throws(() => decodeStorageReport(storage(), spi));
 });
 
 test("WebHID matching needs the ESPForge VID:PID and the vendor collection", () => {
@@ -158,7 +172,7 @@ test("storage validates native SDMMC samples, timing, capacity and CID with isol
   assert.equal(decodeStorageReport(cid).memory.manufacturer.product_name, "SD16G");
   assert.equal(decodeStorageReport(cid).memory.manufacturer.serial_number, 0x12345678);
   assert.equal(decodeStorageReport(cid).memory.manufacturer.manufacture_year, 2025);
-  for (const [offset, value] of [[2, 128], [2, 63], [2, 64], [2, 71], [4, 1], [4, 2], [3, 2], [9, 0], [9, 3],
+  for (const [offset, value] of [[2, 128], [2, 63], [2, 64], [2, 71], [4, 1], [4, 4], [3, 2], [9, 0], [9, 3],
     [31, 1], [32, 1], [33, 2], [30, 5], [14, 1]]) {
     const bad = storage(); bad[offset] = value;
     assert.throws(() => decodeStorageReport(bad), `${offset}: ${value}`);

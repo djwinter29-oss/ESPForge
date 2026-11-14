@@ -135,7 +135,9 @@ jobs:
           bundler-cache: true
 
       - name: Run Ceedling
-        run: bundle exec ceedling test:all
+        run: |
+          bundle exec ceedling test:all
+          bundle exec ceedling --mixin '={project: {build_root: build/ceedling-sd-spi}, defines: {test: [EF_STORAGE_SPI=1, EF_ENABLE_STORAGE_BENCHMARK=1]}}' test:test_hid_reports
 
   docs:
     name: Documentation links

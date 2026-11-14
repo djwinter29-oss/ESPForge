@@ -48,7 +48,9 @@ export function decodeIdentityReport(report) {
   const capabilities = view.getUint8(17);
   const total = view.getUint32(18, true);
   const reserved = view.getUint32(22, true);
-  requireValid(Boolean(capabilities & CAP.SDMMC) && !(capabilities & ~ESPFORGE_CAPABILITIES)
+  const storage = capabilities & (CAP.SPI | CAP.SDMMC);
+  requireValid((storage === CAP.SPI || storage === CAP.SDMMC)
+    && !(capabilities & ~ESPFORGE_CAPABILITIES)
     && total > 0 && reserved <= total && (board !== 1 || mcu === 3), "identity");
   return {
     version: 1, product_id: product, product_name: "ESPForge",
@@ -56,7 +58,7 @@ export function decodeIdentityReport(report) {
     firmware_version: [11, 12, 13].map(offset => view.getUint8(offset)).join("."),
     mcu_id: mcu, mcu: ({ 3: "ESP32-S3" })[mcu] ?? null,
     board_model: board, board_name: ({ 0: "Unspecified", 1: "ESP32-S3-DevKitC-1" })[board] ?? null,
-    capabilities, transport: "sdmmc",
+    capabilities, transport: capabilities & CAP.SPI ? "spi" : "sdmmc",
     ram_total_bytes: total, ram_reserved_bytes: reserved,
     memory_report_supported: Boolean(view.getUint8(16) & 1),
   };
@@ -84,6 +86,7 @@ export function decodeConfigReport(report, identity) {
   const rx = view.getUint8(6);
   const led = view.getUint8(15);
   const detect = view.getUint8(16);
+  const assignedCount = identity.capabilities & CAP.SPI ? 4 : 6;
   const settings = { system_clock_mhz: view.getUint16(1, true), sdcard_profile: view.getUint8(3),
     radios: (flags & CONFIG_FLAGS.RADIO_MASK) >> 3 };
   requireValid(validSettings(settings) && !(flags & ~CONFIG_FLAGS.VALID_MASK)
@@ -94,7 +97,8 @@ export function decodeConfigReport(report, identity) {
     && (led === 255 || Boolean(identity.capabilities & CAP.LED))
     && Boolean(flags & CONFIG_FLAGS.CARD_DETECT) === (detect !== 255)
     && [led, tx, rx, detect, ...gpios].every(pin => pin === 255 || pin <= MAX_GPIO)
-    && gpios.every(pin => pin !== 255),
+    && gpios.slice(0, assignedCount).every(pin => pin !== 255)
+    && gpios.slice(assignedCount).every(pin => pin === 255),
   "board-configuration");
   return { ...settings, monitor_uart_index: uart, monitor_uart_tx_gpio: tx, monitor_uart_rx_gpio: rx,
     storage_gpios: gpios, board_flags: flags, reset_cause: view.getUint8(14), card_detect_gpio: detect, led_gpio: led };
@@ -127,7 +131,7 @@ function decodeCid(cid) {
     manufacture_year: 2000 + ((cid[13] & 15) << 4) + (cid[14] >> 4), manufacture_month: cid[14] & 15 };
 }
 
-export function decodeStorageReport(report) {
+export function decodeStorageReport(report, identity = null) {
   const view = payload(report, 34);
   const flags = view.getUint8(2);
   const component = view.getUint8(3);
@@ -146,7 +150,8 @@ export function decodeStorageReport(report) {
     && (!(msc.enabled || msc.transition_pending) || configured && !sampleValid)
     && (!sampleValid || configured) && (configured || !(flags & 126))
     && (sampleValid || (!(flags & 62) && zero(bytesAt(view, 3, 27))))
-    && (!sampleValid || (initialized ? component === 1 && mode === 3 : component === 0 && mode === 0))
+    && (!sampleValid || (initialized ? component === 1 && [2, 3].includes(mode)
+      && (!identity || mode === (identity.capabilities & CAP.SPI ? 2 : 3)) : component === 0 && mode === 0))
     && (!initialized || (flags & 15) === 15)
     && (!(flags & 48) || (sampleValid && initialized))
     && (!(flags & 4) || Boolean(flags & 2))
@@ -156,7 +161,7 @@ export function decodeStorageReport(report) {
   return {
     memory: { version: 1, sequence: view.getUint8(1), configured, sample_valid: sampleValid,
       presence_known: sampleValid && Boolean(flags & 2), present: sampleValid && Boolean(flags & 4),
-      initialized, mode: initialized ? "sdmmc" : null, speed_mode: speed,
+      initialized, mode: mode === 2 ? "spi" : mode === 3 ? "sdmmc" : null, speed_mode: speed,
       bus_clock_hz: clock, capacity_bytes: flags & 32 ? blocks * 512 : null,
       cid: [...cid], manufacturer: flags & 16 ? decodeCid(cid) : null, msc },
     filesystem_format: ["unknown", "fat12", "fat16", "fat32", "exfat"][format],

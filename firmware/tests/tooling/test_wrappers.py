@@ -44,11 +44,26 @@ case "$*" in
         chmod +x "$sdk/xtensa-espressif_esp32s3_zephyr-elf/bin/xtensa-espressif_esp32s3_zephyr-elf-gcc" ;;
     "-m west build "*)
         [[ "${MOCK_BUILD_STATUS:-0}" == 0 ]] || exit "$MOCK_BUILD_STATUS"
-        mkdir -p "$MOCK_ROOT/build/firmware/zephyr"
-        for file in zephyr.bin zephyr.elf runners.yaml; do
-            printf 'artifact\n' > "$MOCK_ROOT/build/firmware/zephyr/$file"
+        build="$MOCK_ROOT/build/firmware"
+        driver=SDHC_ESP32
+        while (($#)); do
+            case "$1" in
+                -d) build="$2"; shift ;;
+                -DDTC_OVERLAY_FILE=*sd_spi.overlay) driver=SPI_SDHC ;;
+            esac
+            shift
         done
-        printf 'CONFIG_BOARD_TARGET="esp32s3_devkitc/esp32s3/procpu"\n' > "$MOCK_ROOT/build/firmware/zephyr/.config" ;;
+        mkdir -p "$build/zephyr"
+        for file in zephyr.elf runners.yaml; do
+            printf 'artifact\n' > "$build/zephyr/$file"
+        done
+        if [[ "${MOCK_INVALID_IMAGE:-0}" == 1 ]]; then
+            printf 'incomplete\n' > "$build/zephyr/zephyr.bin"
+        else
+            printf '\xe9image\n' > "$build/zephyr/zephyr.bin"
+        fi
+        printf 'CONFIG_BOARD_TARGET="esp32s3_devkitc/esp32s3/procpu"\nCONFIG_%s=y\n' "$driver" \
+            > "$build/zephyr/.config" ;;
     "-m west flash "*)
         exit "${MOCK_FLASH_STATUS:-0}" ;;
     *)
@@ -79,7 +94,7 @@ class WrapperTests(unittest.TestCase):
                         HOME=str(self.workspace), MOCK_ROOT=str(self.root), MOCK_LOG=str(self.log))
         for key in ("VENV_DIR", "VIRTUAL_ENV", "ZEPHYR_BASE", "ZEPHYR_SDK_INSTALL_DIR",
                     "MOCK_BUILD_STATUS", "MOCK_BLOB_STATUS", "MOCK_PIP_STATUS", "MOCK_FLASH_STATUS",
-                    "MOCK_PYTHON_STATUS"):
+                    "MOCK_PYTHON_STATUS", "MOCK_INVALID_IMAGE"):
             self.env.pop(key, None)
 
     def run_script(self, name, *args):
@@ -119,6 +134,56 @@ class WrapperTests(unittest.TestCase):
         result = self.run_script("flash.sh", "--port", "/dev/mock")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn("-m west build ", self.commands())
+
+    def test_spi_build_and_flash_use_a_separate_image(self):
+        result = self.run_script("build.sh", "--storage", "sd-spi")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("-d " + str(self.root / "build/firmware-sd-spi"), self.commands())
+        self.assertIn("-DDTC_OVERLAY_FILE=boards/esp32s3_devkitc_sd_spi.overlay", self.commands())
+        self.log.write_text("")
+        result = self.run_script("flash.sh", "--storage", "sd-spi", "--port", "/dev/mock")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("-m west build ", self.commands())
+        self.assertIn("-m west flash -d " + str(self.root / "build/firmware-sd-spi"), self.commands())
+        self.assertFalse((self.root / "build/firmware").exists())
+
+    def test_spi_dry_run_builds_only_the_selected_image(self):
+        result = self.run_script("flash.sh", "--storage", "sd-spi", "--port", "/dev/mock", "--dry-run")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((self.root / "build/firmware-sd-spi/zephyr/zephyr.bin").exists())
+        self.assertFalse((self.root / "build/firmware").exists())
+        self.assertNotIn("-m west flash ", self.commands())
+
+    def test_wrong_storage_image_is_rejected_without_flashing(self):
+        self.assertEqual(self.run_script("build.sh").returncode, 0)
+        config = self.root / "build/firmware/zephyr/.config"
+        config.write_text(config.read_text().replace("CONFIG_SDHC_ESP32=y", "CONFIG_SPI_SDHC=y"))
+        result = self.run_script("flash.sh", "--port", "/dev/mock")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("does not match --storage sdmmc", result.stderr)
+        self.assertNotIn("-m west flash ", self.commands())
+
+    def test_incomplete_image_is_rebuilt_and_failed_conversion_prevents_flash(self):
+        self.assertEqual(self.run_script("build.sh").returncode, 0)
+        image = self.root / "build/firmware/zephyr/zephyr.bin"
+        image.write_bytes(b"raw data")
+        self.log.write_text("")
+        result = self.run_script("flash.sh", "--port", "/dev/mock")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("-m west build ", self.commands())
+        image.write_bytes(b"raw data")
+        self.env["MOCK_INVALID_IMAGE"] = "1"
+        self.log.write_text("")
+        result = self.run_script("flash.sh", "--port", "/dev/mock")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("valid ESP image", result.stderr)
+        self.assertNotIn("-m west flash ", self.commands())
+
+    def test_invalid_storage_does_not_install_build_or_flash(self):
+        for name in ("build.sh", "flash.sh"):
+            result = self.run_script(name, "--storage", "sdio")
+            self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.commands(), "")
 
     def test_flash_auto_detects_serial_port_when_omitted(self):
         self.env["MOCK_SERIAL_PORT"] = "/dev/mock-auto"

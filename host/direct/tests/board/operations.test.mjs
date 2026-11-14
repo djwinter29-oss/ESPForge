@@ -65,16 +65,18 @@ test("benchmark admission invalidates snapshots and uncertain starts are never r
   await client.disconnect();
 });
 
-test("MSC admission clears old storage facts, requires eject confirmation, and never replays uncertain writes", async () => {
-  const { client, device, sent, pendingStore } = fakeConnection();
+for (const spi of [false, true]) test(`MSC over ${spi ? "SPI" : "SDMMC"} requires eject and never replays writes`, async () => {
+  const { client, device, sent, pendingStore } = fakeConnection({ capabilities: spi ? 0x8e : 0x96 });
   const receive = device.receiveFeatureReport;
   device.receiveFeatureReport = async id => {
     if (id !== 2) return receive(id);
     const report = config(); report[13] = 0x45; report[16] = 8;
+    if (spi) report.set([12, 11, 13, 10, 255, 255], 7);
     return report;
   };
+  const mounted = storage(); mounted[4] = spi ? 2 : 3;
   await client.connect();
-  emit(device, 10, storage());
+  emit(device, 10, mounted);
   await client.setMsc(true);
   assert.deepEqual(sent[0].slice(0, 6), [20, 1, 1, 3, 0, 1]);
   assert.equal(client.state.memory, null);
@@ -88,7 +90,7 @@ test("MSC admission clears old storage facts, requires eject confirmation, and n
   emit(device, 10, owned);
   await client.setMsc(false, true);
   assert.deepEqual(sent[2].slice(0, 6), [20, 1, 3, 3, 1, 0]);
-  emit(device, 10, storage());
+  emit(device, 10, mounted);
   device.receiveFeatureReport = async id => {
     if (id === 20) throw new Error("Result lost");
     return receive(id);

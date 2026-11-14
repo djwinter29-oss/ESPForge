@@ -17,6 +17,9 @@
 #include <zephyr/sys/reboot.h>
 
 #define RAM_TOTAL_BYTES (512u * 1024u)
+#define SD_PINCTRL DT_PHANDLE_BY_IDX(DT_ALIAS(espforge_sd), pinctrl_0, 0)
+#define SD_SPI_PINCTRL DT_PHANDLE_BY_IDX(DT_PARENT(DT_ALIAS(espforge_sd)), pinctrl_0, 0)
+#define GPIO_FROM_MUX(node, index) (DT_PROP_BY_IDX(node, pinmux, index) & ESP32_PIN_NUM_MASK)
 
 LOG_MODULE_REGISTER(ef_board, LOG_LEVEL_INF);
 extern char _ext_ram_start[];
@@ -118,6 +121,24 @@ void ef_config_report(uint8_t out[EF_CONFIG_SIZE])
 		.led_available = true,
 		.led_gpio = DT_PROP_BY_IDX(DT_CHILD(DT_NODELABEL(espforge_led_default), mosi), pinmux, 0)
 			    & ESP32_PIN_NUM_MASK,
+#if EF_STORAGE_SPI
+		.storage_gpios = {
+			GPIO_FROM_MUX(DT_CHILD(SD_SPI_PINCTRL, clock), 0),
+			GPIO_FROM_MUX(DT_CHILD(SD_SPI_PINCTRL, data), 0),
+			GPIO_FROM_MUX(DT_CHILD(SD_SPI_PINCTRL, data), 1),
+			DT_GPIO_PIN(DT_PARENT(DT_ALIAS(espforge_sd)), cs_gpios),
+			EF_GPIO_UNASSIGNED, EF_GPIO_UNASSIGNED,
+		},
+#else
+		.storage_gpios = {
+			GPIO_FROM_MUX(DT_CHILD(SD_PINCTRL, clock), 0),
+			GPIO_FROM_MUX(DT_CHILD(SD_PINCTRL, command_data), 0),
+			GPIO_FROM_MUX(DT_CHILD(SD_PINCTRL, command_data), 1),
+			GPIO_FROM_MUX(DT_CHILD(SD_PINCTRL, command_data), 2),
+			GPIO_FROM_MUX(DT_CHILD(SD_PINCTRL, command_data), 3),
+			GPIO_FROM_MUX(DT_CHILD(SD_PINCTRL, command_data), 4),
+		},
+#endif
 	};
 
 	ef_lock();

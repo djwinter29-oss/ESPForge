@@ -17,6 +17,7 @@ import json
 from pathlib import Path
 import re
 import shutil
+from socketserver import TCPServer
 import subprocess
 import sys
 from tempfile import TemporaryDirectory
@@ -235,8 +236,13 @@ class DirectServer(ThreadingHTTPServer):
     daemon_threads = True
 
     def __init__(self, address, handler):
-        super().__init__(address, handler)
         self.console = _CONSOLE_MODULE.ConsoleBridge()
+        super().__init__(address, handler)
+
+    def server_bind(self) -> None:
+        """Bind without the HTTP server's reverse DNS lookup, which can stall local startup."""
+        TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
 
     def server_close(self) -> None:
         try:

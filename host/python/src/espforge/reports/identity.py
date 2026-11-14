@@ -22,6 +22,8 @@ from .common import (
     CAP_REBOOT,
     CAP_SAVE_SETTINGS,
     CAP_SELF_TEST,
+    CAP_SPI,
+    CAP_SDMMC,
     CAP_WIRELESS,
     CONFIGURATION_PAYLOAD_SIZE,
     CONFIGURATION_REPORT_ID,
@@ -60,7 +62,10 @@ def parse_identity_report(report: bytes | bytearray | list[int]) -> HardwareIden
     firmware = tuple(payload[11:14])
     mcu_id, board_model, _, capabilities = payload[14:18]
     ram_total, ram_reserved = struct.unpack_from("<II", payload, 18)
-    if capabilities & ~(CAP_LED | CAP_SELF_TEST) != ESPFORGE_CAPABILITIES:
+    transport = capabilities & (CAP_SPI | CAP_SDMMC)
+    if (transport not in (CAP_SPI, CAP_SDMMC)
+            or capabilities & ~(CAP_LED | CAP_SELF_TEST | CAP_SPI | CAP_SDMMC)
+            != ESPFORGE_CAPABILITIES & ~(CAP_SPI | CAP_SDMMC)):
         raise ValueError("HID identity capabilities do not match the ESPForge profile")
     if board_model == 1 and mcu_id != ESP32S3_MCU:
         raise ValueError("board model and MCU disagree in HID identity report")
@@ -85,7 +90,7 @@ def parse_identity_report(report: bytes | bytearray | list[int]) -> HardwareIden
         "led_available": bool(capabilities & CAP_LED),
         "reboot_available": bool(capabilities & CAP_REBOOT),
         "settings_supported": bool(capabilities & CAP_SAVE_SETTINGS),
-        "storage_transport": "sdmmc",
+        "storage_transport": "spi" if transport == CAP_SPI else "sdmmc",
         "self_test_supported": bool(capabilities & CAP_SELF_TEST),
         "wireless_supported": bool(capabilities & CAP_WIRELESS),
         "ram_total_bytes": ram_total,
@@ -150,8 +155,10 @@ def parse_configuration_report(
     if flags & 0x04 and uart_index == 255:
         raise ValueError("enabled monitor UART is unavailable")
     transport = identity["storage_transport"]
-    if any(gpio == 255 for gpio in storage_gpios):
-        raise ValueError("invalid 4-bit SDMMC storage GPIO layout")
+    assigned_count = 4 if transport == "spi" else 6
+    if (any(gpio == 255 for gpio in storage_gpios[:assigned_count])
+            or any(gpio != 255 for gpio in storage_gpios[assigned_count:])):
+        raise ValueError("storage GPIO layout disagrees with the selected transport")
     board_model = identity["board_model_id"]
     mcu_id = identity["mcu_id"]
     if mcu_id == ESP32S3_MCU or board_model == 1:

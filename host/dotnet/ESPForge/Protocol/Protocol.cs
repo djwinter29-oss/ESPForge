@@ -264,8 +264,10 @@ internal static partial class HidProtocol
         Require(productId == FamilyId, $"unsupported ESPForge product ID 0x{productId:X4}");
         var capabilities = payload[17];
         var sdmmc = (capabilities & CapabilitySdmmc) != 0;
-        const byte supported = CapabilityLed | CapabilityReboot | CapabilitySettings | CapabilitySdmmc | CapabilitySelfTest | CapabilityWireless;
-        Require(sdmmc && (capabilities & ~supported) == 0, "invalid HID capability flags");
+        var spi = (capabilities & CapabilitySpi) != 0;
+        const byte supported = CapabilityLed | CapabilityReboot | CapabilitySettings | CapabilitySdmmc |
+            CapabilitySpi | CapabilitySelfTest | CapabilityWireless;
+        Require(sdmmc != spi && (capabilities & ~supported) == 0, "invalid HID capability flags");
         var mcuId = payload[14];
         var boardModel = payload[15];
         Require(boardModel != BoardEsp32S3DevKitC1 || mcuId == McuEsp32S3, "board model and MCU do not match");
@@ -328,7 +330,10 @@ internal static partial class HidProtocol
         var gpioLimit = identity.McuId == McuEsp32S3 ? 49 : 256;
         foreach (var pin in gpios.Concat([tx, rx, ledGpio, detectGpio]))
             Require(pin == byte.MaxValue || pin < gpioLimit, "GPIO is invalid for the reported MCU");
-        Require(gpios.All(pin => pin != byte.MaxValue), "4-bit SDMMC requires six configured storage GPIOs");
+        var assignedCount = (identity.Capabilities & CapabilitySpi) != 0 ? 4 : 6;
+        Require(gpios.Take(assignedCount).All(pin => pin != byte.MaxValue)
+            && gpios.Skip(assignedCount).All(pin => pin == byte.MaxValue),
+            "storage GPIO layout disagrees with selected transport");
         return new(clock, sdProfile, uartIndex, tx, rx, gpios, flags, payload[14], ledGpio, detectGpio);
     }
 
@@ -418,7 +423,7 @@ internal static partial class HidProtocol
         Require(capacityValid || blocks == 0, "invalid capacity has a block count");
         Require(cidValid || cid.IndexOfAnyExcept((byte)0) < 0, "invalid CID field is nonzero");
         Require(!sampleValid || (configured && (initialized
-            ? component == 1 && mode == 3 && (identity.Capabilities & CapabilitySdmmc) != 0
+            ? component == 1 && mode == ((identity.Capabilities & CapabilitySpi) != 0 ? 2 : 3)
             : component == 0 && mode == 0)),
             "storage sample disagrees with selected transport");
         Require(sampleValid || ((flags & 0x3e) == 0 && component == 0 && mode == 0
@@ -431,7 +436,7 @@ internal static partial class HidProtocol
         if (cidValid) identityInfo = ParseCid(cid);
         var memory = new MemoryStatusResponse(payload[1], configured, presenceKnown,
             presenceKnown ? present : null, initialized, component == 1 ? "sd-card" : null,
-            mode == 3 ? "sdmmc" : null, initialized ? clock : null,
+            mode == 3 ? "sdmmc" : mode == 2 ? "spi" : null, initialized ? clock : null,
             capacityValid ? blocks : null, capacityValid ? (ulong)blocks * 512 : null,
             identityInfo, sampleValid, speed);
         return new(null, memory with

@@ -131,7 +131,6 @@ public sealed class ProtocolTests
     [InlineData(2, 0)]
     [InlineData(3, 1)]
     [InlineData(18, 0x9e)]
-    [InlineData(18, 0x8e)]
     [InlineData(18, 0x86)]
     [InlineData(19, 0)]
     public void RejectsIdentityOutsideTheEspForgeProfile(int index, byte value)
@@ -140,6 +139,28 @@ public sealed class ProtocolTests
         report[index] = value;
         if (index == 19) report[21] = 0;
         Assert.Throws<InvalidDataException>(() => HidProtocol.ParseIdentityReport(report));
+    }
+
+    [Fact]
+    public void SpiIdentityRequiresFourPinsAndMatchingStorageSamples()
+    {
+        var report = IdentityReport();
+        report[18] = 0x8e;
+        var spi = HidProtocol.ParseIdentityReport(report);
+        var native = HidProtocol.ParseIdentityReport(IdentityReport());
+        var config = ConfigurationReport();
+        new byte[] { 12, 11, 13, 10, 255, 255 }.CopyTo(config, 8);
+        Assert.Equal(new byte[] { 12, 11, 13, 10, 255, 255 },
+            HidProtocol.ParseConfigurationReport(config, spi).StorageGpios);
+        Assert.Throws<InvalidDataException>(() => HidProtocol.ParseConfigurationReport(config, native));
+        Assert.Throws<InvalidDataException>(() => HidProtocol.ParseConfigurationReport(ConfigurationReport(), spi));
+        var storage = new byte[35];
+        storage[0] = 10; storage[1] = 1; storage[3] = 0x4f; storage[4] = 1; storage[5] = 2; storage[10] = 1;
+        BinaryPrimitives.WriteUInt32LittleEndian(storage.AsSpan(6), 25000000);
+        Assert.Equal("spi", HidProtocol.ParseStorageReport(storage, spi).Memory!.Mode);
+        Assert.Throws<InvalidDataException>(() => HidProtocol.ParseStorageReport(storage, native));
+        storage[5] = 3;
+        Assert.Throws<InvalidDataException>(() => HidProtocol.ParseStorageReport(storage, spi));
     }
 
     [Fact]

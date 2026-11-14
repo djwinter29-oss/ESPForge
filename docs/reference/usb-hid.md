@@ -151,19 +151,21 @@ Board model `1` requires MCU `3`; model `0` makes no board claim.
 | 0 | RGB LED control | Set |
 | 1 | Confirmed standalone reboot | Set |
 | 2 | Persistent boot-settings save | Set |
-| 3 | Legacy SPI storage transport | Clear |
-| 4 | Native SDMMC storage transport | Set |
+| 3 | SPI storage transport | Set only in the SD-over-SPI image |
+| 4 | Native SDMMC storage transport | Set only in the native image |
 | 5 | Storage benchmark | Set only when built with the optional feature |
 | 6 | Forced settings save | Clear |
 | 7 | Wireless capability | Set |
 | 8 | Module memory inventory | Set in extension byte bit 0 |
 
-The low capability byte is `0x97`, or `0xB7` with benchmarking enabled. The extension byte is `0x01`.
+Exactly one storage capability is set. The native image's low capability byte is `0x97`, or `0xB7` with benchmarking;
+the SPI image uses `0x8F`, or `0xAF` with benchmarking. The extension byte is `0x01`.
 Hosts also accept older firmware without RGB or memory inventory. Unassigned extension bits MUST be transmitted
 as zero and ignored by hosts. Firmware version is diagnostic information, not a substitute for capabilities.
 
 Bits 1 and 2 identify reboot and settings-save support. Bit 4 selects the six-signal native SDMMC layout of Report `2`;
-it does **not** imply USB mass-storage support. Report `2` board flag bit 6 advertises MSC ownership control.
+bit 3 selects its four-signal SPI layout. Neither implies USB mass-storage support.
+Report `2` board flag bit 6 advertises MSC ownership control.
 Forced-save support is absent: opcode `5` flag bit 0 returns Unsupported/error `4`.
 When bit 5 is clear, opcode `4` is also unsupported and Report `11` is unavailable.
 Wireless capability does not imply that Wi-Fi is connected
@@ -202,7 +204,7 @@ Settings describe the next boot, while GPIOs describe configured board facts.
 | 4 | 1 | `monitor_uart_index` | Hardware UART index; `255` unavailable |
 | 5 | 1 | `monitor_uart_tx_gpio` | TX GPIO; `255` unassigned |
 | 6 | 1 | `monitor_uart_rx_gpio` | RX GPIO; `255` unassigned |
-| 7 | 6 | `storage_gpios` | Native SDMMC order: CLK, CMD, DAT0, DAT1, DAT2, DAT3 |
+| 7 | 6 | `storage_gpios` | Native: CLK, CMD, DAT0-DAT3; SPI: SCK, MOSI, MISO, CS, `255`, `255` |
 | 13 | 1 | `board_flags` | Flags below |
 | 14 | 1 | `reset_cause` | Reset enum below |
 | 15 | 1 | `led_gpio` | Configured RGB data GPIO; `255` if unallocated |
@@ -220,10 +222,12 @@ Settings describe the next boot, while GPIOs describe configured board facts.
 | 6 | Native USB MSC with explicit ownership handoff | Set |
 | 7 | Reserved | Zero |
 
-The current board reports UART0 TX GPIO43 / RX GPIO44 and SDMMC pins `12, 11, 13, 14, 15, 10`.
+The current board reports UART0 TX GPIO43 / RX GPIO44. Native storage pins are `12, 11, 13, 14, 15, 10`;
+SPI storage pins are `12, 11, 13, 10, 255, 255`.
 GPIO values are signal numbers, not physical header positions. See [SD pin allocation](sdcard.md#pin-allocation).
 Assigned GPIOs MUST be valid for the reported MCU/board. An enabled UART requires its index and both pins;
 TX/RX MUST both be assigned or both unavailable. Native four-bit SDMMC requires all six storage pins assigned.
+SPI requires its first four pins assigned and its final two slots unassigned.
 
 Wi-Fi and BLE switches default on and represent next-boot policy, not current link state.
 Hosts MUST reject unsupported stored profiles and inconsistent flags/pins.
@@ -283,8 +287,8 @@ It reflects the storage worker's detection, mount and ownership state; it perfor
 | 1 | 1 | `sequence` | Publication sequence |
 | 2 | 1 | `sd_flags` | Flags below |
 | 3 | 1 | `component_type` | `0` unavailable; `1` SD card after successful mount |
-| 4 | 1 | `bus_mode` | `0` unavailable; `3` native SDMMC after successful mount |
-| 5 | 4 | `bus_clock_hz` | Configured SDMMC ceiling after successful mount; zero otherwise |
+| 4 | 1 | `bus_mode` | `0` unavailable; `2` SPI or `3` native SDMMC after successful mount, matching identity |
+| 5 | 4 | `bus_clock_hz` | Configured storage bus ceiling after successful mount; zero otherwise |
 | 9 | 1 | `speed_mode` | `0` unavailable; `1` Standard after successful mount |
 | 10 | 4 | `block_count` | 512-byte sectors; zero unless capacity is valid |
 | 14 | 16 | `cid` | Zero; CID unavailable through the current disk API |
@@ -728,10 +732,11 @@ Prior values MAY be shown only as explicitly historical/stale.
 
 Hosts accept report version `1` only. An incompatible field, size, unit, validation rule or lifecycle change
 requires an affected report-version increment and coordinated firmware/host updates.
-An additive capability-selected transport does not change the existing byte layout: native SDMMC assigns bit 4,
-uses all six Report `2` pin slots and adds bus-mode value `3`, without reinterpreting legacy SPI bit 3 / mode `2`
-or reserved SDIO-PIO mode `1`. These reports retain version `1`. Current hosts require native SDMMC and reject
-legacy SPI identities; SPI-era hosts reject the native identity. Firmware and hosts MUST be updated together.
+Capability-selected transports do not change the existing byte layout: native SDMMC assigns bit 4,
+uses all six Report `2` pin slots and bus-mode value `3`; SPI uses bit 3, four assigned pin slots and mode `2`.
+SDIO-PIO mode `1` remains reserved. These reports retain version `1`. Current hosts accept either image,
+reject both/neither transport bits and require initialized storage samples to match identity.
+Older native-only hosts reject SPI identities. Firmware and hosts MUST be updated together.
 There is no wire-level SPI fallback or assumption that version `1` alone guarantees transport compatibility.
 Wire-layout versioning is independent of firmware semantic version and
 [persistent-record migration](settings.md#record-format). There is no legacy wire fallback.

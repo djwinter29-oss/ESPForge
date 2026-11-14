@@ -40,6 +40,7 @@ python3 server.py --port 8000
 
 For either local option, open **<http://127.0.0.1:8000/>**. The local server requires Python, but does not require the
 ESPForge Python host package. Keep the default loopback binding for local use.
+Local startup does not require reverse DNS resolution of the bind address.
 
 Local checkout launches serve a temporary, versioned copy without editing the source assets. Like the other hosts,
 versions use `vMAJOR.MINOR.PATCH` Git tags: the next commit after `v1.2.3` displays `1.2.4-dev.1`.

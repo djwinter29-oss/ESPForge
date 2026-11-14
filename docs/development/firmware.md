@@ -102,6 +102,24 @@ bash tools/firmware/build.sh
 python3 tools/check_firmware_config.py
 ```
 
+The default image uses native four-bit SDMMC. Build and check the alternate SD-over-SPI image with:
+
+```sh
+bash tools/firmware/build.sh --storage sd-spi
+python3 tools/check_firmware_config.py --storage sd-spi
+```
+
+Outputs are separate: `build/firmware/zephyr/zephyr.bin` (native) and
+`build/firmware-sd-spi/zephyr/zephyr.bin` (SPI). `--storage sdmmc` explicitly selects the default.
+Both retain card detection, FAT mounting and explicit USB drive handoff; neither formats a card.
+Use the matching [SD wiring](../reference/sdcard.md#pin-allocation) and disconnect card power when changing buses.
+
+Host Validation also compiles the report tests for SPI with benchmarking enabled:
+
+```sh
+bundle exec ceedling --mixin '={project: {build_root: build/ceedling-sd-spi}, defines: {test: [EF_STORAGE_SPI=1, EF_ENABLE_STORAGE_BENCHMARK=1]}}' test:test_hid_reports
+```
+
 For changes to board/configuration selection, use a pristine build from the workspace:
 
 ```sh
@@ -114,6 +132,9 @@ Required defaults include Wi-Fi, BLE, software coexistence, native Espressif SDH
 the `device_next` USB stack with HID/MSC, and UART/raw TCP diagnostic shells. Both FAT mkfs options must remain disabled.
 The configuration check also verifies native slot 0, four-bit width, the 25 MHz ceiling,
 GPIO12/11/13/14/15/10 in CLK/CMD/DAT0-DAT3 order, and command/data pull-up configuration.
+For SPI it instead verifies the SPI SD driver, disabled native slot, SPI3 SCK/MOSI/MISO on GPIO12/11/13
+and active-low CS on GPIO10. Both require active-high GPIO8 card detection with a pull-down.
+Manual SPI builds use `boards/esp32s3_devkitc_sd_spi.overlay` and a separate build directory.
 The management protocol runs over the ESP32-S3 native USB connector (USB HID, VID:PID `CAFE:4021`)
 and BLE GATT.
 The UART connector carries the Zephyr diagnostic shell/log output and the ROM bootloader used for flashing;
@@ -135,7 +156,8 @@ Use [the USB flashing instructions](../guides/getting-started.md#2-build-now-fla
 port, preferring Silicon Labs CP210x devices; tied candidates require an explicit port.
 `--baud` overrides upload speed; `--dry-run` validates artifacts and prints the command
 without connecting to or flashing a device. Missing or empty required build artifacts trigger a build first;
-complete existing builds are reused. A wrong-board build is rejected. Runner errors propagate to the caller.
+complete existing builds are reused. Select `--storage sd-spi` for the alternate image, or `--storage sdmmc`
+for native. Builds with the wrong board or storage driver are rejected. Runner errors propagate to the caller.
 
 `--dry-run` also prepares dependencies and builds missing firmware.
 Use `--help` and `--dry-run` to inspect it before uploading to hardware.

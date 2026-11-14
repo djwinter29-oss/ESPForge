@@ -32,6 +32,19 @@ function snapshot() {
     msc: { enabled: false, transition_pending: false }, filesystem_format: "exfat" };
 }
 
+test("SPI boards show four bus signals and retain card detection", () => withDocument(el => {
+  const state = snapshot();
+  renderServerStatus(state);
+  state.hardware.capabilities = 0x8e;
+  state.settings.storage_gpios = [12, 11, 13, 10, 255, 255];
+  state.settings.card_detect_gpio = 8;
+  renderServerStatus({ ...state, settings_supported: true, board_configuration: state.settings });
+  assert.equal(el("#product-name").textContent, "ESPForge (SPI)");
+  assert.equal(el("#board-storage-title").textContent, "Storage (SPI)");
+  assert.deepEqual(el("#board-storage-pins").children.map(row => row.children.map(cell => cell.textContent)),
+    [["SCK", "MOSI", "MISO", "CS", "Card detect"], ["GPIO12", "GPIO11", "GPIO13", "GPIO10", "GPIO8"]]);
+}));
+
 test("presentation uses the supplied operation projection consistently without reconstructing admission", () =>
   withDocument(el => {
     const state = snapshot();

@@ -3,7 +3,7 @@
 
 // @ts-check
 import { renderWirelessStatus } from "./wireless-form.mjs";
-import { CAPABILITY_SDMMC, CAPABILITY_WIRELESS, operationState } from "./operation-state.mjs";
+import { CAPABILITY_SPI, CAPABILITY_SDMMC, CAPABILITY_WIRELESS, operationState } from "./operation-state.mjs";
 
 /**
  * @typedef {import("./dashboard-api.mjs").StatusSnapshot & {
@@ -78,7 +78,8 @@ export function renderStatus(snapshot, operations = operationState(snapshot, {
   element("#connection-label").textContent = snapshot.error
     ? "Attention" : snapshot.reconnecting ? "Reconnecting" : connected ? "Connected" : "Disconnected";
   element("#product-name").textContent = hardware?.product_name !== undefined
-    ? `${hardware.product_name}${(hardware.capabilities ?? 0) & CAPABILITY_SDMMC ? " (SDMMC)" : ""}` : "--";
+    ? `${hardware.product_name}${(hardware.capabilities ?? 0) & CAPABILITY_SDMMC ? " (SDMMC)"
+      : (hardware.capabilities ?? 0) & CAPABILITY_SPI ? " (SPI)" : ""}` : "--";
   const boardModel = typeof hardware?.board_model === "string" ? hardware.board_model
     : ({ 1: "ESP32-S3-DevKitC-1" })[hardware?.board_model ?? 0]
       ?? (hardware?.board_model !== undefined ? `Unknown (${hardware.board_model})` : "--");
@@ -283,13 +284,14 @@ function renderBoardConfiguration(snapshot) {
     table.replaceChildren(headings, values);
   };
   const sdmmc = Boolean((snapshot.hardware?.capabilities ?? 0) & CAPABILITY_SDMMC);
-  const labels = ["CLK", "CMD", "DAT0", "DAT1", "DAT2", "DAT3"];
-  const signature = JSON.stringify([sdmmc, configuration]);
+  const spi = Boolean((snapshot.hardware?.capabilities ?? 0) & CAPABILITY_SPI);
+  const labels = spi ? ["SCK", "MOSI", "MISO", "CS"] : ["CLK", "CMD", "DAT0", "DAT1", "DAT2", "DAT3"];
+  const signature = JSON.stringify([sdmmc, spi, configuration]);
   if (signature !== boardConfigurationSignature) {
     boardConfigurationSignature = signature;
     setText(uartTitle, configuration?.monitor_uart_index !== undefined && configuration.monitor_uart_index !== 255
       ? `Monitor UART${configuration.monitor_uart_index}` : "Monitor UART");
-    setText(storageTitle, configuration ? `Storage (${sdmmc ? "SDMMC" : "unknown transport"})` : "Storage");
+    setText(storageTitle, configuration ? `Storage (${sdmmc ? "SDMMC" : spi ? "SPI" : "unknown transport"})` : "Storage");
     renderPins(uartTable, ["TX", "RX"],
       [configuration?.monitor_uart_tx_gpio, configuration?.monitor_uart_rx_gpio]);
     renderPins(storageTable, [...labels, "Card detect"],

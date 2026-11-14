@@ -15,7 +15,11 @@ LOG_MODULE_REGISTER(ef_storage, LOG_LEVEL_INF);
 
 #define DISK_NAME "SD"
 #define USB_DISK_NAME "USB_SD"
-#define BUS_CLOCK_HZ DT_PROP(DT_NODELABEL(espforge_sd), max_bus_freq)
+#if EF_STORAGE_SPI
+#define BUS_CLOCK_HZ DT_PROP(DT_ALIAS(espforge_sd), spi_max_frequency)
+#else
+#define BUS_CLOCK_HZ DT_PROP(DT_ALIAS(espforge_sd), max_bus_freq)
+#endif
 #define STORAGE_POLL_MS 50
 
 USBD_DEFINE_MSC_LUN(espforge_sd, USB_DISK_NAME, "ESPForge", "SD card", "1.00");

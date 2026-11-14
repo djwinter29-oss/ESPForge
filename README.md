@@ -12,7 +12,7 @@ management experience. Connect over **USB HID** or **Bluetooth LE**, choose your
 your own ESP32-S3 application on top.
 
 Built for **ESP32-S3-DevKitC-1 N16R8** with **Zephyr OS**, **16 MB flash**, **8 MB octal PSRAM**
-and **native four-bit SDMMC**.
+and **native four-bit SDMMC**, with an alternate **SD-over-SPI** firmware image.
 
 **[Get started](docs/guides/getting-started.md)** · **[Choose a dashboard](#choose-your-dashboard)** ·
 **[Hardware & wiring](docs/guides/hardware.md)** · **[Explore the docs](docs/README.md)**
@@ -25,11 +25,11 @@ and **native four-bit SDMMC**.
 
 | | ESPForge provides |
 | --- | --- |
-| **Know your board** | Device identity, firmware version, UART and SDMMC pin allocation |
+| **Know your board** | Device identity, firmware version, UART and SD bus pin allocation |
 | **Watch it run** | Uptime, CPU clock, core-0 load, die temperature and firmware RAM accounting |
 | **Configure the next boot** | CPU clock, Wi-Fi/BLE switches and credentials in a CRC-checked flash record |
 | **Set up wireless** | Scan, test and save a 2.4 GHz Wi-Fi network; provision a BLE Control key over USB |
-| **Use storage** | Runtime card detection, FAT mounting and explicit native USB MSC handoff over four-bit SDMMC |
+| **Use storage** | Runtime card detection, FAT mounting and explicit native USB MSC handoff over SDMMC or SPI |
 | **Inspect diagnostics** | Native Zephyr shells over UART and raw TCP; see the [console guide](docs/guides/console.md) |
 | **Build your product** | Separate board/platform code, management services and host clients, with portable firmware tests |
 

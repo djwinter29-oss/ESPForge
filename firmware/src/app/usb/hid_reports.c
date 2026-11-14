@@ -8,11 +8,10 @@
 #define HWINFO_RESET_POR 0x08u
 #define HWINFO_RESET_WATCHDOG 0x10u
 
-/* DevKitC monitor UART0 and native SDMMC pins. */
+/* DevKitC monitor UART0. */
 #define MONITOR_UART_INDEX 0u
 #define MONITOR_UART_TX 43u
 #define MONITOR_UART_RX 44u
-static const uint8_t storage_gpios[6] = {12u, 11u, 13u, 14u, 15u, 10u};
 
 #define CONFIG_FLAG_MONITOR_UART 0x04u
 #define CONFIG_FLAG_WIFI 0x08u
@@ -85,7 +84,7 @@ void ef_report_config(const ef_config_t *config, uint8_t out[EF_CONFIG_SIZE])
 	out[4] = MONITOR_UART_INDEX;
 	out[5] = MONITOR_UART_TX;
 	out[6] = MONITOR_UART_RX;
-	memcpy(out + 7, storage_gpios, sizeof(storage_gpios));
+	memcpy(out + 7, config->storage_gpios, sizeof(config->storage_gpios));
 	out[13] = flags;
 	out[14] = config->reset_cause;
 	out[15] = config->led_available ? config->led_gpio : EF_GPIO_UNASSIGNED;
@@ -134,7 +133,7 @@ void ef_report_storage(const ef_storage_t *storage, uint8_t out[EF_STORAGE_SIZE]
 			put32(out + 10, storage->block_count);
 		}
 		out[3] = 1;
-		out[4] = 3;
+		out[4] = EF_STORAGE_SPI ? 2 : 3;
 		put32(out + 5, storage->bus_clock_hz);
 		out[9] = 1;
 	}

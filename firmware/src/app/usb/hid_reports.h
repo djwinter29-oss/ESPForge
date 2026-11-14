@@ -42,11 +42,19 @@
 #define EF_CAP_LED 0x01u
 #define EF_CAP_REBOOT 0x02u
 #define EF_CAP_SETTINGS 0x04u
+/** SD memory-card transport over SPI, mutually exclusive with native SDMMC. */
+#define EF_CAP_SPI 0x08u
 #define EF_CAP_SDMMC 0x10u
+/** Build-selected storage transport; portable tests default to native SDMMC. */
+#ifndef EF_STORAGE_SPI
+#define EF_STORAGE_SPI 0
+#endif
+/** Exactly one storage capability is advertised by each firmware image. */
+#define EF_CAP_STORAGE (EF_STORAGE_SPI ? EF_CAP_SPI : EF_CAP_SDMMC)
 /** Optional temporary-file benchmark capability. */
 #define EF_CAP_BENCHMARK 0x20u
 #define EF_CAP_WIRELESS 0x80u
-#define EF_CAPABILITIES (EF_CAP_LED | EF_CAP_REBOOT | EF_CAP_SETTINGS | EF_CAP_SDMMC | EF_CAP_WIRELESS | \
+#define EF_CAPABILITIES (EF_CAP_LED | EF_CAP_REBOOT | EF_CAP_SETTINGS | EF_CAP_STORAGE | EF_CAP_WIRELESS | \
 			(EF_ENABLE_STORAGE_BENCHMARK ? EF_CAP_BENCHMARK : 0))
 
 #define EF_UID_SIZE 8u
@@ -72,15 +80,17 @@ typedef struct {
 	uint32_t flash_total_bytes; /**< Detected module SPI flash capacity; not free filesystem space. */
 } ef_memory_inventory_t;
 
+/** Saved configuration and hardware pin allocation. */
 typedef struct {
-	uint16_t stored_clock_mhz;
+	uint16_t stored_clock_mhz; /**< Next-boot clock profile in MHz; zero selects the build default. */
 	uint8_t stored_radios; /**< EF_WIRELESS_WIFI / EF_WIRELESS_BLE bits. */
-	uint8_t reset_cause;
+	uint8_t reset_cause; /**< Boot-sampled reset reason in the management wire enum. */
 	bool card_detect_available; /**< A physical card-present GPIO is allocated. */
 	uint8_t card_detect_gpio; /**< Board card-present input, valid when allocated. */
 	bool msc_supported; /**< Native USB mass-storage class is enabled. */
 	bool led_available; /**< Addressable RGB LED is allocated in hardware configuration. */
 	uint8_t led_gpio; /**< LED data pin, valid when allocated. */
+	uint8_t storage_gpios[6]; /**< Native CLK/CMD/DAT0-DAT3 or SPI SCK/MOSI/MISO/CS/255/255. */
 } ef_config_t;
 
 typedef struct {

@@ -157,7 +157,8 @@ export class Polling {
     }
     try {
       const changes = id === REPORT.TELEMETRY ? { runtime: decodeTelemetryReport(event.data, this.session.state.hardware) }
-        : id === REPORT.BENCHMARK ? { self_test: decodeBenchmarkReport(event.data) } : decodeStorageReport(event.data);
+        : id === REPORT.BENCHMARK ? { self_test: decodeBenchmarkReport(event.data) }
+          : decodeStorageReport(event.data, s.state.hardware);
       this.receipts.record(id);
       this.scheduleExpiry();
       s.emit("report/received", { ...changes, freshness: { ...state.freshness, [id]: "fresh" } });

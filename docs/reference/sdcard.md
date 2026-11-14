@@ -1,7 +1,8 @@
 # SD Storage Reference
 
-ESPForge uses an SD card over **native four-bit SDMMC, slot 0**, on the ESP32-S3-DevKitC-1 N16R8.
-Zephyr's Espressif SDHC driver, SDMMC disk layer and FatFs are enabled in the default firmware.
+ESPForge provides two firmware images for the ESP32-S3-DevKitC-1 N16R8: **native four-bit SDMMC, slot 0**
+(the default), and **SD-over-SPI** on SPI3. Select the image that matches the wiring; there is no runtime fallback.
+Both use Zephyr's SDMMC disk layer and FatFs, with the same card detection and ownership behavior.
 This is the SD memory-card bus, not an SDIO peripheral/function API or a PIO-emulated bus.
 The disk is `SD`, mounted at `/SD:` for firmware access or explicitly handed to native USB mass storage.
 This reference owns the SD pin allocation,
@@ -37,16 +38,32 @@ GPIO8 and 3V3, closing when a card is inserted; the internal pull-down holds an 
 A socket whose detect contact instead shorts to ground on insertion needs polarity adaptation, not direct
 connection with this configuration. Never apply 5 V. Detection wiring is required for mounting: an unwired
 GPIO8 reports no card even when the SDMMC signals are connected. There is no power-control GPIO.
-GPIO10 is DAT3, **not a chip-select output**.
-When migrating a card previously used in SPI mode, disconnect card power before starting native SDMMC:
+In the native image, GPIO10 is DAT3, **not a chip-select output**.
+When changing between native SDMMC and SPI images, disconnect card power before restarting:
 a board reset alone does not necessarily reset the card's selected bus mode.
 
-The board configuration enables native SDMMC slot 0 with explicit pin allocation, a four-bit bus
-and a 25 MHz maximum frequency.
-SPI2 and SPI3 are disabled. GPIO33-37 are occupied by octal PSRAM on N16R8.
+### SD-over-SPI image
+
+| SPI function | ESP32-S3 pin | SD-card signal |
+| --- | --- | --- |
+| SCK | GPIO12 | CLK |
+| MOSI | GPIO11 | CMD / DI |
+| MISO | GPIO13 | DAT0 / DO |
+| CS, active-low | GPIO10 | DAT3 / CS |
+| Card detect | GPIO8 | Inserted-high, 3.3 V detection signal |
+
+Supply, ground and the active-high detect switch use the same wiring and precautions as above.
+GPIO14 and GPIO15 are unused by the SPI image; DAT1/DAT2 do not carry SPI data.
+Use a 3.3 V-compatible SPI socket/module with appropriate SD pull-ups, including CS; internal data pull-ups do not
+replace external resistors. This is ordinary full-duplex SPI with one MOSI and one MISO line, not native one-bit SDMMC.
+
+The native image enables SDMMC slot 0 with a four-bit bus; the SPI image disables that slot and enables SPI3.
+Both request a 25 MHz maximum frequency. SPI2 remains dedicated to the RGB LED in both images.
+GPIO33-37 are occupied by octal PSRAM on N16R8.
 
 Report `2` publishes storage GPIOs in CLK, CMD, DAT0, DAT1, DAT2, DAT3 order as
-`12, 11, 13, 14, 15, 10`. The card-detect GPIO is `8`.
+`12, 11, 13, 14, 15, 10` for native SDMMC. The SPI image uses SCK, MOSI, MISO, CS, unassigned, unassigned order:
+`12, 11, 13, 10, 255, 255`. The card-detect GPIO is `8` in both.
 If a downstream board changes the wiring, its hardware configuration and reported pin allocation MUST agree;
 validate the new allocation before use.
 
@@ -54,14 +71,15 @@ validate the new allocation before use.
 
 | Layer | Configuration |
 | --- | --- |
-| Native controller | `sdhc`, compatible `espressif,esp32-sdhc` |
-| SD host slot | `sdhc0`, compatible `espressif,esp32-sdhc-slot`, four-bit bus |
+| Native image controller/slot | Espressif SDHC slot 0, compatible `espressif,esp32-sdhc-slot`, four-bit bus |
+| SPI image controller/slot | SPI3, compatible `zephyr,sdhc-spi-slot` |
 | Disk layer | `zephyr,sdmmc-disk`, disk name `SD` |
 | Filesystem | FatFs, mount point `/SD:` |
-| Requested SDMMC ceiling | 25 MHz; not a measured runtime clock or throughput |
+| Requested bus ceiling | 25 MHz; not a measured runtime clock or throughput |
 
-The default firmware enables GPIO/pinctrl, disk access, the SDMMC disk driver, `CONFIG_SDHC_ESP32`,
-the filesystem API and FatFs. Both `CONFIG_FS_FATFS_MOUNT_MKFS` and `CONFIG_FS_FATFS_MKFS` are explicitly
+Both images enable GPIO/pinctrl, disk access, the SDMMC disk driver, the filesystem API and FatFs.
+The native image selects `CONFIG_SDHC_ESP32`; the SPI image selects `CONFIG_SPI_SDHC`.
+Both `CONFIG_FS_FATFS_MOUNT_MKFS` and `CONFIG_FS_FATFS_MKFS` are explicitly
 disabled: the application cannot automatically format a failed mount or call FatFs mkfs through these options.
 
 Prepare an existing FAT16/FAT32 volume on a computer and back up its data before use. exFAT is not enabled
@@ -114,12 +132,13 @@ Capacity counts the whole volume in 512-byte sectors, not free space. The report
 ceiling, not a runtime measurement. CID and negotiated bus state are unavailable.
 
 The mount error code is **only logged**, not retained in Report `10`. Hosts can distinguish detected absence,
-but cannot distinguish bad SDMMC wiring, an unsupported filesystem or another mount error from this report alone.
+but cannot distinguish bad SD wiring, an unsupported filesystem or another mount error from this report alone.
 Use the UART log for
 diagnosis, and do not label every uninitialized sample "no card".
 
-Update firmware and hosts together when migrating from SPI: current hosts require native SDMMC, and there is
-no automatic SPI fallback. Power-cycle the card as described in the wiring instructions.
+Current hosts accept exactly one advertised storage transport and validate its pin layout and bus-mode reports.
+Older native-only hosts reject the SPI image; update the host when selecting it.
+Power-cycle the card as described in the wiring instructions.
 
 ## Optional storage benchmark
 
