@@ -363,8 +363,18 @@ These security properties and residual risks are accepted tradeoffs for a local 
 ## Operational Notes
 
 Connection interval and supervision timeout are managed by the server and central stacks; this specification does not
-promise a disconnect-detection deadline. Application notifications are intentionally omitted: the
-Direct dashboard polls reports every 250 ms. Standard Service Changed indications are managed by the Bluetooth stack; the Direct subscription is ephemeral
+promise a disconnect-detection deadline. Application notifications are intentionally omitted. The Direct dashboard
+serializes GATT reads and writes, including each proof with its command, and waits 250 ms between status-read rounds.
+Read latency therefore adds to the round period. Wireless status retains its separate polling schedule.
+Queued commands whose write deadline expires are canceled rather than sent later; uncertain outcomes still require
+explicit reconciliation and are never replayed.
+
+Direct marks BLE telemetry stale after 3 seconds without a valid receipt, and storage/benchmark status after 6 seconds.
+These bounded windows allow for multi-characteristic ATT reads; USB Input freshness deadlines are unchanged.
+Invalid reports do not refresh receipt times. Wireless status expires after three of its polling intervals
+(1.5 seconds during a test/scan, 6 seconds otherwise). Disconnect clears connection snapshots immediately.
+
+Standard Service Changed indications are managed by the Bluetooth stack; the Direct subscription is ephemeral
 and used only for cache invalidation. The browser chooses MTU negotiation for Web Bluetooth clients.
 
 BLE cannot stage credentials, test or scan Wi-Fi, produce TCP CLI proofs, run benchmarks, change radio switches,

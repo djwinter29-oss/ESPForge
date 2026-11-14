@@ -222,7 +222,7 @@ export function bindWirelessForm({
     el("direct-wifi-manual-label").hidden = false;
     if (form.phase !== "cancelFailed") {
       setStatus("direct-wifi-status", "Choose a network and test the connection. "
-        + "Credentials stay in RAM until saved, canceled or expired.");
+        + "Save requires a successful, unexpired test; Cancel clears temporary credentials.");
     }
     wifiDialog.showModal();
   };

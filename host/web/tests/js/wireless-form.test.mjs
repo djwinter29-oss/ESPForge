@@ -4,6 +4,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { bindWirelessForm, renderWirelessStatus } from "../../src/js/wireless-form.mjs";
+import { renderStatus } from "../../src/js/dashboard.mjs";
 import { domFixture } from "../support/dom-fixture.mjs";
 
 function formFixture(context, overrides = {}) {
@@ -31,7 +32,7 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
-test("fresh connected Wi-Fi links to the selected board and removes the link when stale", context => {
+test("Wi-Fi status stays plain text even when a snapshot includes a legacy shell URL", context => {
   const previous = globalThis.document;
   const fixture = domFixture();
   globalThis.document = fixture.document;
@@ -39,16 +40,14 @@ test("fresh connected Wi-Fi links to the selected board and removes the link whe
   const state = { connected: true, hardware: { capabilities: 128 }, wireless: {
     wifi_enabled: true, wifi_state: "connected", ssid: "<script>", ipv4: "192.168.1.9",
   } };
-  renderWirelessStatus(state, "/console?board=selected");
+  renderStatus({ ...state, console_url: "/console?board=selected" });
   const status = fixture.el("#wifi-state");
-  assert.equal(status.children.length, 1);
-  assert.equal(status.children[0].href, "/console?board=selected");
-  assert.equal(status.children[0].textContent, "<script> (192.168.1.9)");
-  assert.equal(status.children[0].target, "_blank");
+  assert.equal(status.children.length, 0);
+  assert.equal(status.textContent, "<script> (192.168.1.9)");
   for (const changed of [{ ...state, connected: false }, { ...state, wireless_error: "Stale" },
     { ...state, wireless: { ...state.wireless, stale: true } },
     { ...state, wireless: { ...state.wireless, wifi_state: "connecting" } }]) {
-    renderWirelessStatus(changed, "/console?board=selected");
+    renderStatus({ ...changed, console_url: "/console?board=selected" });
     assert.equal(status.children.length, 0);
   }
 });
@@ -809,7 +808,7 @@ test("failed temporary Wi-Fi cancellation retains the stage and permits a safe r
   }
 });
 
-test("Wi-Fi label stays plain text without a selected console URL", () => {
+test("Wi-Fi label stays plain text", () => {
   const saved = globalThis.document;
   const elements = new Map();
   const element = selector => {
@@ -824,7 +823,7 @@ test("Wi-Fi label stays plain text without a selected console URL", () => {
   };
   globalThis.document = { querySelector: element, createElement: () => ({}) };
   try {
-    const state = { connected: true, hardware: { capabilities: 128 }, console_url: "/console?board=board-a",
+    const state = { connected: true, hardware: { capabilities: 128 },
       wireless: { wifi_enabled: true, wifi_state: "connected", tcp_cli_started: true,
         ssid: "HomeDev", ipv4: "192.168.66.87" } };
     renderWirelessStatus(state);

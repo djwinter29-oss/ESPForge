@@ -8,6 +8,8 @@ import { describe } from "../../web/js/ui/messages.mjs";
 import { BleTransport, BLE_SERVICE } from "../../web/js/transport/ble.mjs";
 import { BoardSession } from "../../web/js/board/session.mjs";
 import { CAP } from "../../web/js/protocol/constants.mjs";
+import { buildControlRequest } from "../../web/js/protocol/codec.mjs";
+import { REASON } from "../../web/js/state/errors.mjs";
 import {
   fakeConnection, storage, identity, config, telemetry, result, patchState, says, memoryInventory,
 } from "../support/fixtures.mjs";
@@ -161,6 +163,78 @@ test("BLE discovery retries only read-only setup on the chosen board and retains
   assert.equal(connects, 3);
   assert.match(describe(client.state.error), /No matching service/);
   assert.equal(client.transport.bleKey, null);
+});
+
+test("BLE serializes reads and proved writes, skips aborted queued I/O and continues after rejection", async () => {
+  const transport = new BleTransport({});
+  const calls = [];
+  let release;
+  transport.uid = "0102030405060708";
+  transport.prove = async () => {
+    calls.push("proof");
+    await new Promise(resolve => setImmediate(resolve));
+  };
+  transport.characteristics.set(3, { async readValue() {
+    calls.push(3);
+    await new Promise(resolve => { release = resolve; });
+    return telemetry();
+  } });
+  transport.characteristics.set(10, { async readValue() { calls.push(10); return storage(); } });
+  transport.characteristics.set(12, { async readValue() { calls.push(12); return status(); } });
+  transport.characteristics.set(20, { async writeValueWithResponse() { calls.push("write"); } });
+  const signal = new AbortController().signal;
+  const cancelled = new AbortController();
+  const first = transport.readReport(3, signal);
+  const second = transport.readReport(10, signal);
+  const write = transport.writeReport(20, buildControlRequest(1, 2, { flags: 1 }), signal);
+  const aborted = assert.rejects(transport.readReport(12, cancelled.signal), { name: "AbortError" });
+  const last = transport.readReport(10, signal);
+  cancelled.abort();
+  const pending = [first, second, write, aborted, last];
+  const settled = Promise.allSettled(pending);
+  try {
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(calls, [3], "only one native GATT operation may be in flight");
+    release();
+    await Promise.all(pending);
+    assert.deepEqual(calls, [3, 10, "proof", "write", 10]);
+  } finally {
+    release?.();
+    await settled;
+    await transport.disconnect();
+  }
+});
+
+test("BLE disconnect fences queued writes without blocking a new connection", async () => {
+  const transport = new BleTransport({});
+  transport.device = Object.assign(new EventTarget(), { gatt: { disconnect() {} } });
+  let release, freshReads = 0, writes = 0;
+  transport.characteristics.set(3, { async readValue() {
+    await new Promise(resolve => { release = resolve; });
+    return telemetry();
+  } });
+  transport.characteristics.set(20, { async writeValueWithResponse() { writes++; } });
+  const signal = new AbortController().signal;
+  const oldRead = transport.readReport(3, signal);
+  const oldWrite = assert.rejects(transport.writeReport(20, buildControlRequest(1, 1, { args: [0] }), signal),
+    { code: REASON.CONNECTION_CHANGED });
+  const pending = [oldRead, oldWrite];
+  try {
+    await new Promise(resolve => setImmediate(resolve));
+    transport.onDisconnect();
+    transport.device = Object.assign(new EventTarget(), { gatt: { disconnect() {} } });
+    transport.characteristics.set(3, { async readValue() { freshReads++; return telemetry(); } });
+    pending.push(transport.readReport(3, signal));
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(freshReads, 1, "an old unresolved read must not hold up the new link");
+    release();
+    await Promise.all(pending);
+    assert.equal(writes, 0, "queued writes from the old link must never reach the new device");
+  } finally {
+    release?.();
+    await Promise.allSettled(pending);
+    await transport.disconnect();
+  }
 });
 
 test("the bluetooth.md worked proof vector signs SESSION01 and a confirmed reboot", async () => {

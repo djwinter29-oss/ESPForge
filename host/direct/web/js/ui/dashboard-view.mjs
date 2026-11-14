@@ -8,13 +8,12 @@ import { renderClockOptions } from "./sections/controls.mjs";
 
 export { renderControls } from "./sections/controls.mjs";
 
-/** @param {(state: import("../state/reducer.mjs").DashboardState) => string | null} [consoleUrl] */
-export function createDashboardView(consoleUrl = () => null) {
+export function createDashboardView() {
   const renderStorage = createStorageSection();
   return (state, dashboard) => {
     renderClockOptions(state);
     renderDevice(state, dashboard);
-    renderWirelessStatus(state, consoleUrl(state));
+    renderWirelessStatus(state);
     renderStorage(state);
   };
 }

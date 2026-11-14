@@ -7,7 +7,7 @@
  */
 import { decodeStorageReport, decodeTelemetryReport, decodeBenchmarkReport, decodeWireless } from "../protocol/codec.mjs";
 import {
-  CAP, OP, REPORT, REPORT_LIFETIME_MS, SCAN_STATE, STAGED_EXPIRED, WIFI_STATE,
+  BLE_REPORT_LIFETIME_MS, CAP, OP, REPORT, REPORT_LIFETIME_MS, SCAN_STATE, STAGED_EXPIRED, WIFI_STATE,
 } from "../protocol/constants.mjs";
 import { OPCODES } from "../protocol/opcodes.mjs";
 import { BoardError, errorValue, REASON } from "../state/errors.mjs";
@@ -33,8 +33,8 @@ const showsSavedSsid = wireless => !wireless.staged_mask
   && ![WIFI_STATE.TESTING, WIFI_STATE.TEST_JOINED, WIFI_STATE.TEST_FAILED].includes(wireless.state);
 
 /** @brief Lifetime of one report snapshot in milliseconds. */
-export const reportLifetime = (id, wireless) => id === REPORT.WIRELESS
-  ? 3 * wirelessPollInterval(wireless) : REPORT_LIFETIME_MS[id];
+export const reportLifetime = (id, wireless, link = "usb") => id === REPORT.WIRELESS
+  ? 3 * wirelessPollInterval(wireless) : (link === "ble" ? BLE_REPORT_LIFETIME_MS : REPORT_LIFETIME_MS)[id];
 
 /**
  * @brief Interpret one Feature 12 snapshot for an accepted scan/test lifecycle.
@@ -69,11 +69,13 @@ export class ReportReceipts {
    * @param timers Timer scope owning the expiry timer.
    * @param {() => number} now Monotonic clock in milliseconds.
    * @param {() => object | null} wireless Current wireless snapshot, for the Feature 12 lifetime.
+   * @param {"usb" | "ble"} [link] Link whose delivery cadence sets the status-report deadlines.
    */
-  constructor(timers, now, wireless) {
+  constructor(timers, now, wireless, link = "usb") {
     this.timers = timers;
     this.now = now;
     this.wireless = wireless;
+    this.link = link;
     /** @type {Map<number, number>} Report ID to receipt time. */
     this.received = new Map();
     this.timer = null;
@@ -92,7 +94,7 @@ export class ReportReceipts {
     const changes = {};
     const next = { ...freshness };
     for (const [id, received] of this.received) {
-      if (!suspended && this.now() - received < reportLifetime(id, this.wireless())) continue;
+      if (!suspended && this.now() - received < reportLifetime(id, this.wireless(), this.link)) continue;
       this.received.delete(id);
       next[id] = "stale";
       Object.assign(changes, STALE[id]);
@@ -105,7 +107,7 @@ export class ReportReceipts {
     this.cancel();
     if (!this.received.size) return;
     const deadline = Math.min(...[...this.received].map(([id, received]) =>
-      received + reportLifetime(id, this.wireless())));
+      received + reportLifetime(id, this.wireless(), this.link)));
     this.timer = this.timers.setTimeout(() => {
       this.timer = null;
       onExpire();
@@ -134,7 +136,8 @@ export class Polling {
     this.session = session;
     /** Feature 12 polling switch; tests disable it to drive reads explicitly. */
     this.enabled = enabled;
-    this.receipts = new ReportReceipts(session.timers, () => session.now(), () => session.state.wireless);
+    this.receipts = new ReportReceipts(session.timers, () => session.now(), () => session.state.wireless,
+      session.transport.kind);
     this.pollTimer = null;
     this.wirelessPollTimer = null;
     /** Clock value of the last Feature 12 poll. */

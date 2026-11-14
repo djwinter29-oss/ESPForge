@@ -28,6 +28,7 @@ export class BleTransport extends EventTarget {
     this.pollInterval = 250;
     this.device = null;
     this.characteristics = new Map();
+    this.gattQueue = Promise.resolve();
     this.bleKey = null;
     this.uid = null;
     this.connecting = false;
@@ -35,6 +36,7 @@ export class BleTransport extends EventTarget {
     this.onDisconnect = () => {
       if (this.connecting) return;
       this.bleKey = null;
+      this.gattQueue = Promise.resolve();
       this.characteristics.clear();
       this.device?.removeEventListener("gattserverdisconnected", this.onDisconnect);
       this.device = null;
@@ -137,15 +139,36 @@ export class BleTransport extends EventTarget {
     } finally { this.connecting = false; }
   }
 
+  /**
+   * @brief Serialize GATT I/O, keeping a proof and its write together and fencing queued work by connection.
+   * @template T
+   * @param {() => Promise<T>} operation
+   * @param {AbortSignal} signal
+   * @return {Promise<T>}
+   */
+  runGatt(operation, signal) {
+    signal.throwIfAborted();
+    const device = this.device;
+    const result = this.gattQueue.then(() => {
+      signal.throwIfAborted();
+      if (device !== this.device) throw new BoardError(REASON.CONNECTION_CHANGED);
+      return operation();
+    });
+    // The caller retains the rejection; only the queue tail recovers so later I/O can proceed.
+    this.gattQueue = result.then(() => {}, () => {});
+    return result;
+  }
+
   async readReport(id, signal) {
-    signal.throwIfAborted();
-    const value = await this.characteristics.get(id).readValue();
-    signal.throwIfAborted();
-    if (id !== 20) return value;
-    if (value.byteLength !== 9) throw new BoardError(REASON.BLE_RESULT_LENGTH);
-    const report = new Uint8Array(68);
-    report.set(new Uint8Array(value.buffer, value.byteOffset, value.byteLength));
-    return report;
+    return this.runGatt(async () => {
+      const value = await this.characteristics.get(id).readValue();
+      signal.throwIfAborted();
+      if (id !== 20) return value;
+      if (value.byteLength !== 9) throw new BoardError(REASON.BLE_RESULT_LENGTH);
+      const report = new Uint8Array(68);
+      report.set(new Uint8Array(value.buffer, value.byteOffset, value.byteLength));
+      return report;
+    }, signal);
   }
 
   async writeReport(id, report, signal) {
@@ -155,19 +178,22 @@ export class BleTransport extends EventTarget {
       throw new BoardError(REASON.BLE_FRAME);
     }
     const request = report.slice(0, 9);
-    try {
-      if (OPCODES[report[2]]?.ble?.proof !== false) await this.prove(hexToBytes(this.uid), request, signal);
-      signal.throwIfAborted();
-      await this.characteristics.get(20).writeValueWithResponse(request);
-      signal.throwIfAborted();
-    } catch (error) {
-      if (signal.aborted || error.final || !this.device?.gatt.connected) throw error;
-      throw new BoardError(REASON.BLE_PROOF_REJECTED);
-    }
+    return this.runGatt(async () => {
+      try {
+        if (OPCODES[request[2]]?.ble?.proof !== false) await this.prove(hexToBytes(this.uid), request, signal);
+        signal.throwIfAborted();
+        await this.characteristics.get(20).writeValueWithResponse(request);
+        signal.throwIfAborted();
+      } catch (error) {
+        if (signal.aborted || error.final || !this.device?.gatt.connected) throw error;
+        throw new BoardError(REASON.BLE_PROOF_REJECTED);
+      }
+    }, signal);
   }
 
   async disconnect() {
     this.bleKey = null;
+    this.gattQueue = Promise.resolve();
     this.characteristics.clear();
     this.device?.removeEventListener("gattserverdisconnected", this.onDisconnect);
     this.device?.gatt.disconnect();
