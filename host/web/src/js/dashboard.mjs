@@ -83,8 +83,8 @@ export function renderStatus(snapshot, operations = operationState(snapshot, {
   const boardModel = typeof hardware?.board_model === "string" ? hardware.board_model
     : ({ 1: "ESP32-S3-DevKitC-1" })[hardware?.board_model ?? 0]
       ?? (hardware?.board_model !== undefined ? `Unknown (${hardware.board_model})` : "--");
-  element("#board-model").textContent = hardware?.mcu
-    ? `${boardModel} (${hardware.mcu})` : boardModel;
+  element("#board-model").textContent = boardModel;
+  element("#board-mcu").textContent = hardware?.mcu ?? "--";
   element("#firmware-version").textContent = hardware?.firmware_version ?? "Unknown";
   const clock = runtime?.system_clock_hz !== undefined
     ? `${(runtime.system_clock_hz / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: 3 })} MHz`
@@ -113,6 +113,10 @@ export function renderStatus(snapshot, operations = operationState(snapshot, {
     ? `${(psramReserved / 1048576).toFixed(1)} / ${(psramTotal / 1048576).toFixed(1)} MiB`
       + ` (${(psramReserved * 100 / psramTotal).toFixed(1)}%)` : "--";
   const flashTotal = hardware?.flash_total_bytes;
+  /** @param {number | null | undefined} value */
+  const capacity = value => typeof value === "number" && Number.isSafeInteger(value) && value > 0
+    ? String(Number((value / 1048576).toFixed(1))) : "--";
+  element("#memory-capacity").textContent = `${capacity(flashTotal)} MiB flash · ${capacity(psramTotal)} MiB PSRAM`;
   element("#flash-capacity").textContent = typeof flashTotal === "number" && Number.isSafeInteger(flashTotal)
     && flashTotal > 0 ? `${(flashTotal / 1048576).toFixed(1)} MiB` : "--";
   element("#serial").textContent = hardware?.serial_number || "--";

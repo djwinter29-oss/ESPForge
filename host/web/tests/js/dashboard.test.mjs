@@ -32,6 +32,14 @@ function snapshot() {
     msc: { enabled: false, transition_pending: false }, filesystem_format: "exfat" };
 }
 
+test("memory summary never infers missing or invalid capacities from the board model", () => withDocument(el => {
+  for (const value of [undefined, null, 0, -1, 1.5, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
+    renderServerStatus({ ...snapshot(), hardware: { ...snapshot().hardware,
+      ram_total_bytes: value, psram_total_bytes: value, flash_total_bytes: value } });
+    assert.equal(el("#memory-capacity").textContent, "-- MiB flash · -- MiB PSRAM");
+  }
+}));
+
 test("SPI boards show four bus signals and retain card detection", () => withDocument(el => {
   const state = snapshot();
   renderServerStatus(state);
@@ -216,10 +224,12 @@ test("diagnostic rendering distinguishes missing facts, explicit false and repor
     }
     renderServerStatus({ ...snapshot(), hardware: { ...snapshot().hardware, board_model: 9 },
       board_configuration: { ...snapshot().settings, reset_cause: 0 } });
-    assert.equal(el("#board-model").textContent, "Unknown (9) (ESP32-S3)");
+    assert.equal(el("#board-model").textContent, "Unknown (9)");
+    assert.equal(el("#board-mcu").textContent, "ESP32-S3");
     assert.equal(el("#board-reset-cause").textContent, "Unknown");
     renderServerStatus({ ...snapshot(), board_configuration: { ...snapshot().settings, reset_cause: 1 } });
-    assert.equal(el("#board-model").textContent, "ESP32-S3-DevKitC-1 (ESP32-S3)");
+    assert.equal(el("#board-model").textContent, "ESP32-S3-DevKitC-1");
+    assert.equal(el("#board-mcu").textContent, "ESP32-S3");
     assert.equal(el("#board-reset-cause").textContent, "Power-on");
     assert.equal(el("#product-name").textContent, "ESPForge (SDMMC)");
     assert.equal(el("#board-storage-title").textContent, "Storage (SDMMC)");

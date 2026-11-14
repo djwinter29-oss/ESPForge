@@ -663,7 +663,8 @@ test("lost reboot delivery waits for the originating board's disconnect without 
       await send();
       assert.equal(reboots(), 1);
       await switchBoard("board-b");
-      assert.equal(elements.get("#board-model").textContent, "ESP32-S3-DevKitC-1 (ESP32-S3)");
+      assert.equal(elements.get("#board-model").textContent, "ESP32-S3-DevKitC-1");
+      assert.equal(elements.get("#board-mcu").textContent, "ESP32-S3");
       assert.equal(elements.get("#settings-clock").value, "160");
       assert.equal(elements.get("#reboot-control").disabled, false);
       boardStatuses.get("board-b").connected = false;

@@ -61,7 +61,12 @@ test("standalone dashboard labels profiles, active measurements, controls and ac
   assert.match(html, /id="settings-title">Board configuration/);
   const identity = html.split('aria-label="Hardware identity"')[1].split("</section>")[0];
   assert.deepEqual([...identity.matchAll(/<strong id="([^"]+)"/g)].map(match => match[1]),
-    ["product-name", "board-model", "serial", "identity-clock", "firmware-version"]);
+    ["product-name", "serial", "identity-clock", "firmware-version", "memory-capacity"]);
+  assert.match(identity, /<details[^>]*id="product-information"[\s\S]*?id="product-name"[\s\S]*?<dd id="board-model">/);
+  const product = identity.split('id="product-information"')[1].split("</details>")[0];
+  assert.deepEqual([...product.matchAll(/<dd id="([^"]+)"/g)].map(match => match[1]), ["board-model", "board-mcu"]);
+  assert.match(identity, /<details[^>]*id="module-memory"[\s\S]*?<summary>[\s\S]*?id="ram-usage"/);
+  assert.doesNotMatch(html, /memory-inventory-title/);
   const runtime = html.split('<dl class="runtime-grid runtime-summary">')[1].split("</dl>")[0];
   assert.deepEqual([...runtime.matchAll(/<dt>([^<]+)<\/dt>/g)].map(match => match[1]),
     ["Uptime", "Reset cause", "Service load (Core 0 / Core 1)", "Board temperature", "Storage bus speed",

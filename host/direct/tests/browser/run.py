@@ -70,6 +70,72 @@ def check_version_label(browser: Browser, origin: str) -> None:
         print("PASS long Direct development versions fit desktop, tablet and mobile widths")
 
 
+def check_identity_details(browser: Browser, origin: str) -> None:
+    """Verify aligned identity values and both disclosures with native mouse, keyboard and touch events."""
+    with browser.new_context() as context:
+        page = context.new_page()
+        page.goto(f"{origin}/web/index.html")
+        assert page.locator(".identity > .metric").count() == 5
+        tops = page.locator(".identity strong").evaluate_all(
+            "(nodes) => nodes.map(node => node.getBoundingClientRect().top)")
+        assert max(tops) - min(tops) <= 1, tops
+        for identity in ("product-information", "module-memory"):
+            page.set_viewport_size({"width": 1440, "height": 900})
+            summary = page.locator(f"#{identity} > summary")
+            details = page.locator(f"#{identity} .identity-popover")
+            expect(details).to_be_hidden()
+            summary.hover()
+            expect(details).to_be_visible()
+            if identity == "product-information":
+                expect(page.locator("#board-model")).to_be_visible()
+                expect(page.locator("#board-mcu")).to_be_visible()
+                assert page.locator("#board-mcu").evaluate(
+                    "(node) => node.getBoundingClientRect().top"
+                    " > document.querySelector('#board-model').getBoundingClientRect().bottom")
+            details.hover()
+            expect(details).to_be_visible()
+            page.mouse.move(0, 0)
+            expect(details).to_be_hidden()
+            summary.focus()
+            page.keyboard.press("Tab")
+            page.keyboard.press("Shift+Tab")
+            expect(details).to_be_visible()
+            summary.press("Escape")
+            expect(details).to_be_hidden()
+            summary.press("Enter")
+            expect(details).to_be_visible()
+            summary.press("Enter")
+            expect(details).to_be_hidden()
+            for width in (1440, 720, 320):
+                page.set_viewport_size({"width": width, "height": 900})
+                summary.press("Enter")
+                expect(details).to_be_visible()
+                assert details.evaluate("(node) => node.getBoundingClientRect().left >= 0"
+                                        " && node.getBoundingClientRect().right <= innerWidth")
+                summary.press("Escape")
+                summary.press("Tab")
+                summary.hover()
+                details.hover()
+                expect(details).to_be_visible()
+                page.mouse.move(0, 0)
+                expect(details).to_be_hidden()
+                summary.press("Escape")
+        page.set_viewport_size({"width": 1440, "height": 900})
+        page.locator("#product-information > summary").hover()
+        page.locator("#module-memory > summary").hover()
+        expect(page.locator("#product-information .identity-popover")).to_be_hidden()
+        expect(page.locator("#module-memory .identity-popover")).to_be_visible()
+    with browser.new_context(has_touch=True, viewport={"width": 320, "height": 800}) as context:
+        page = context.new_page()
+        page.goto(f"{origin}/web/index.html")
+        for identity in ("product-information", "module-memory"):
+            page.locator(f"#{identity} > summary").tap()
+            expect(page.locator(f"#{identity} .identity-popover")).to_be_visible()
+            page.locator(f"#{identity} > summary").tap()
+            expect(page.locator(f"#{identity} .identity-popover")).to_be_hidden()
+    print("PASS aligned identity and product/memory hover, keyboard, touch and responsive details")
+
+
 def main() -> None:
     """Fail on browser errors, incomplete checks, or any reported assertion failure."""
     root = Path(__file__).resolve().parents[2]
@@ -98,6 +164,7 @@ def main() -> None:
                                              f"failed assertions: {failures}; page errors: {errors}")
                     check_history(browser, origin)
                     check_version_label(browser, origin)
+                    check_identity_details(browser, origin)
                 finally:
                     browser.close()
         finally:

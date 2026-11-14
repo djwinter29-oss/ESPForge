@@ -15,7 +15,7 @@ import tempfile
 import time
 import urllib.request
 
-from playwright.sync_api import Page, expect, sync_playwright
+from playwright.sync_api import Browser, Page, expect, sync_playwright
 from werkzeug.serving import make_server
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -349,7 +349,8 @@ def check_partial_diagnostics(page: Page, origin: str, host_name: str) -> None:
     }""")
     expect(page.locator("#status-message")).to_contain_text("runtime.cdc_open")
     expect(page.locator("#product-name")).to_have_text("--")
-    expect(page.locator("#board-model")).to_have_text("-- (ESP32-S3)")
+    expect(page.locator("#board-model")).to_have_text("--")
+    expect(page.locator("#board-mcu")).to_have_text("ESP32-S3")
     expect(page.locator("#board-uart-title")).to_have_text("Monitor UART")
     expect(page.locator("#board-uart td").nth(0)).to_have_text("--")
     expect(page.locator("#board-uart td").nth(1)).to_have_text("Unassigned")
@@ -416,6 +417,75 @@ def check_msc_handoff(page: Page, origin: str, host_name: str) -> None:
     print(f"{host_name}: PASS MSC confirmation, Escape, returned ownership and replacement without re-export")
 
 
+def check_identity_details(browser: Browser, page: Page, origin: str, host_name: str) -> None:
+    """Align the identity values and expose product/memory details by mouse, keyboard and touch."""
+    page.goto(origin)
+    page.wait_for_function("document.querySelector('#product-name').textContent.includes('ESPForge')")
+    assert page.locator(".identity > .metric").count() == 5
+    page.set_viewport_size({"width": 1440, "height": 900})
+    tops = page.locator(".identity strong").evaluate_all(
+        "(nodes) => nodes.map(node => node.getBoundingClientRect().top)")
+    assert max(tops) - min(tops) <= 1, tops
+    for identity in ("product-information", "module-memory"):
+        page.set_viewport_size({"width": 1440, "height": 900})
+        details = page.locator(f"#{identity} .identity-popover")
+        summary = page.locator(f"#{identity} > summary")
+        page.mouse.move(0, 0)
+        expect(details).to_be_hidden()
+        summary.hover()
+        expect(details).to_be_visible()
+        if identity == "product-information":
+            expect(page.locator("#board-model")).to_contain_text("ESP32-S3")
+            expect(page.locator("#board-mcu")).to_have_text("ESP32-S3")
+            assert page.locator("#board-mcu").evaluate(
+                "(node) => node.getBoundingClientRect().top"
+                " > document.querySelector('#board-model').getBoundingClientRect().bottom")
+        details.hover()
+        expect(details).to_be_visible()
+        page.mouse.move(0, 0)
+        expect(details).to_be_hidden()
+        summary.focus()
+        page.keyboard.press("Tab")
+        page.keyboard.press("Shift+Tab")
+        expect(details).to_be_visible()
+        summary.press("Escape")
+        expect(details).to_be_hidden()
+        summary.press("Enter")
+        expect(details).to_be_visible()
+        summary.press("Enter")
+        expect(details).to_be_hidden()
+        for width in (1440, 720, 320):
+            page.set_viewport_size({"width": width, "height": 900})
+            summary.press("Enter")
+            expect(details).to_be_visible()
+            assert details.evaluate("(node) => node.getBoundingClientRect().left >= 0"
+                                    " && node.getBoundingClientRect().right <= innerWidth")
+            summary.press("Escape")
+            summary.press("Tab")
+            summary.hover()
+            details.hover()
+            expect(details).to_be_visible()
+            page.mouse.move(0, 0)
+            expect(details).to_be_hidden()
+            summary.press("Escape")
+    page.set_viewport_size({"width": 1440, "height": 900})
+    page.locator("#product-information > summary").hover()
+    page.locator("#module-memory > summary").hover()
+    expect(page.locator("#product-information .identity-popover")).to_be_hidden()
+    expect(page.locator("#module-memory .identity-popover")).to_be_visible()
+    with browser.new_context(has_touch=True, viewport={"width": 320, "height": 800}) as context:
+        touch = context.new_page()
+        touch.add_init_script(MOCK)
+        touch.goto(origin)
+        touch.wait_for_function("document.querySelector('#product-name').textContent.includes('ESPForge')")
+        for identity in ("product-information", "module-memory"):
+            touch.locator(f"#{identity} > summary").tap()
+            expect(touch.locator(f"#{identity} .identity-popover")).to_be_visible()
+            touch.locator(f"#{identity} > summary").tap()
+            expect(touch.locator(f"#{identity} .identity-popover")).to_be_hidden()
+    print(f"{host_name}: PASS aligned identity and product/memory hover, keyboard, touch and responsive details")
+
+
 def main() -> None:
     """Fail on incomplete checks, assertion failures, page errors, or missing hosting assets."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -455,6 +525,7 @@ def main() -> None:
                         check_accessibility_smoke(page, origin, label)
                         check_partial_diagnostics(page, origin, label)
                         check_msc_handoff(page, origin, label)
+                        check_identity_details(browser, page, origin, label)
                         console = page.request.get(f"{origin}/console")
                         assert console.status == 200
                         assert "<h1>Wi-Fi shell</h1>" in console.text()

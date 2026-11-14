@@ -80,13 +80,16 @@ a board advertising as `ESPForge-…`. See [wireless setup](../../docs/guides/wi
 
 | Section | What it shows or controls |
 |---|---|
-| Device information | Product, board/MCU, serial, system clock, reserved/total firmware RAM, and firmware version |
+| Device information | Product, serial, system clock, firmware version, and flash/PSRAM capacities |
 | Board configuration | Next-boot clock, Wi-Fi and Bluetooth switches, and reset cause |
 | Pin configuration | Collapsible management UART, SDMMC and allocated card-detect GPIO tables |
 | Live diagnostics | Uptime, Core 0 CPU load, temperature, storage bus speed, and wireless status |
 | Storage | Card state, capacity, filesystem, and card identity |
 
-Firmware RAM is boot-stable build accounting, not live heap or stack usage. ESPForge has one SD-card profile, so
+Hover or focus Product for separate Board and MCU rows, or Module memory for SRAM/PSRAM reservations and flash capacity.
+Click or tap either item to toggle its details; Escape closes them.
+Firmware RAM is boot-stable build accounting, not live heap or stack usage.
+ESPForge has one SD-card profile, so
 the dashboard always saves profile 0 and shows the bus clock actually reported by Storage.
 
 USB connections can explicitly export an initialized SD card and return it after confirmed OS eject;
