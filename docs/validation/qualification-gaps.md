@@ -1,26 +1,29 @@
 # Qualification gaps
 
-This starter is intended to be ready for later hardware connection, not qualified for production.
+Functional hardware testing on ESP32-S3-DevKitC-1 N16R8 has been reported with no issues in the listed checks.
+See the [hardware test report](records/2026-11-14-hardware-tests.md) for coverage, provenance and missing configuration
+details. This is functional evidence, not production qualification.
 
 | Area | Current boundary |
 | --- | --- |
-| ESP32-S3 target | DevKitC-1 N16R8 PROCPU source build (16 MB flash, 8 MB octal PSRAM); no physical flash/boot or PSRAM memory-test observation |
+| ESP32-S3 target | N16R8 flashing and boot reported working; firmware revision, image hashes and PSRAM memory-test output not recorded |
 | Firmware unit tests | Ceedling covers the portable control dispatcher, report encoding, SD lifecycle, wireless staging/auth, SHA-256 and boot-settings record with mocked platform hooks and a fake flash; no Zephyr execution |
-| USB HID | Firmware builds the `device_next` HID device; hosts are tested with fake devices. Enumeration, report timing and reconnect on a real host are pending |
-| BLE | Firmware GATT, session unlock and Control writes build; Direct client tested with fakes. Advertising, long reads, authentication and reconnect pending on hardware |
-| Wi-Fi | Saved/test/scan state machine builds; association, failure details, retries, coexistence and DHCP leases unmeasured |
-| Boot settings | Record codec, validation and staging tested natively; `storage_partition` erase/program/readback, power-loss behaviour and runtime CPU clock profiles unmeasured on hardware |
-| SD card | Drivers, proposed wiring and safe mount code ready; **all SD hardware tests intentionally deferred** |
-| USB MSC | Native class builds and synthetic ownership controls are tested; GPIO8 detection, real media I/O, OS eject and reconnect remain unqualified; see [SD ownership](../reference/sdcard.md#usb-drive-handoff) |
-| Diagnostic shells | Native UART and raw TCP backends configured; real serial input, TCP admission/reconnect and concurrent HID/BLE responsiveness remain unqualified |
-| Storage benchmark | Portable temporary-file safety and host codecs tested; no physical benchmark, throughput, removal-during-write or cleanup qualification |
-| Onboard RGB LED | SPI driver builds and colour commands are tested synthetically; GPIO48 on the diymore clone, timing and optical colours are unverified; no flashing performed |
-| Module memory inventory | Boot sampling and host codecs build/test; detected PSRAM/flash values and reservations have not been observed on flashed hardware |
-| Dashboards | Explicit synthetic preview and protocol tests; no live-board screenshot or measurements |
+| USB HID | Dashboard connection reported working; report timing, host compatibility and repeated reconnect behavior remain unqualified |
+| BLE | Monitoring and authenticated control reported working; MTU variation, reconnect stress and radio coexistence remain unqualified |
+| Wi-Fi | Provisioning and connection reported working; failure recovery, lease renewal, coexistence and long-duration behavior remain unqualified |
+| Boot settings | Save and reboot reported working; interrupted erase/program, endurance and individual CPU-clock profiles not documented in the report |
+| SD card | Native four-bit SDMMC, SPI, detection and replacement reported working; card/wiring matrix, sustained I/O and fault recovery remain unqualified |
+| USB MSC | Handoff and return reported working; no OS/card matrix, repeated-cycle data or interrupted-handoff results recorded; see [SD ownership](../reference/sdcard.md#usb-drive-handoff) |
+| Diagnostic shells | UART and Wi-Fi TCP shells reported working; admission/reconnect stress and concurrent HID/BLE responsiveness remain unqualified |
+| Storage benchmark | Portable safety and host codecs tested; physical benchmark figures, removal-during-write and cleanup results not supplied |
+| Onboard RGB LED | LED controls reported working; exact board revision/pin, waveform timing and optical measurements not recorded |
+| Module memory inventory | Live board diagnostics reported working; raw PSRAM/flash inventory values, reservations and memory-accounting checks not supplied |
+| Dashboards | Live USB HID connection and diagnostics reported working; no per-dashboard/OS/browser hardware matrix or raw measurements recorded |
 | Security | BLE Control key authentication without link encryption; unencrypted flash; physical USB/UART control; unauthenticated plaintext diagnostic TCP; loopback hosts |
 | Variants | Only N16R8 is configured; N4/N8/octal-flash modules and other S3 boards are not targets |
 | Product readiness | No power-loss, soak, performance, RF, EMC or regulatory qualification |
 
-When hardware arrives, first validate USB enumeration and Report 1, then the console output, BLE and Wi-Fi independently.
-SD-card tests are outside the current setup request; schedule them explicitly later, with backups and a dedicated card.
-Historical software results do not establish current or future hardware compatibility.
+Further qualification should record firmware/image identity, host/tool versions, board and card details,
+procedures, durations and observed results. Use backups and a dedicated card for destructive or fault-injection tests.
+Historical software-only records remain unchanged; neither they nor one functional report establish compatibility
+with every hardware or workload combination.
