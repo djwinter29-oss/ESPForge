@@ -32,6 +32,10 @@ export const REPORT = Object.freeze({
 export const REPORT_LIFETIME_MS = Object.freeze({
   [REPORT.TELEMETRY]: 750, [REPORT.STORAGE]: 1500, [REPORT.BENCHMARK]: 1500,
 });
+/** BLE snapshots allow for serialized, multi-characteristic ATT read rounds rather than USB Input delivery. */
+export const BLE_REPORT_LIFETIME_MS = Object.freeze({
+  [REPORT.TELEMETRY]: 3000, [REPORT.STORAGE]: 6000, [REPORT.BENCHMARK]: 6000,
+});
 /** Control result status byte. Values above PENDING are final. */
 export const RESULT = Object.freeze({ IDLE: 0, PENDING: 1, COMPLETED: 2 });
 /** Feature 12 `wifi_state`. */

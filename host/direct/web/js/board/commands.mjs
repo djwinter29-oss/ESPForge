@@ -188,7 +188,14 @@ export class Commands {
       recovered_opcode: null });
     let sent = false;
     try {
-      await withTimeout(s.transport.writeReport(REPORT.CONTROL, report, signal), s.timeout, signal, s.timers);
+      const writeController = new AbortController();
+      try {
+        const writeSignal = AbortSignal.any([signal, writeController.signal]);
+        await withTimeout(s.transport.writeReport(REPORT.CONTROL, report, writeSignal), s.timeout, signal, s.timers);
+      } finally {
+        // A write still queued when its deadline expires must not start later.
+        writeController.abort();
+      }
       sent = true;
       if (!current()) throw new BoardError(REASON.OUTCOME_UNCERTAIN);
       const result = await this.pollResult(device, request, signal);

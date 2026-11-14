@@ -80,37 +80,41 @@ a board advertising as `ESPForge-…`. See [wireless setup](../../docs/guides/wi
 
 | Section | What it shows or controls |
 |---|---|
-| Device information | Product, board/MCU, serial, system clock, reserved/total firmware RAM, and firmware version |
+| Device information | Product, serial, system clock, firmware version, and flash/PSRAM capacities |
 | Board configuration | Next-boot clock, Wi-Fi and Bluetooth switches, and reset cause |
 | Pin configuration | Collapsible management UART, SDMMC and allocated card-detect GPIO tables |
 | Live diagnostics | Uptime, Core 0 CPU load, temperature, storage bus speed, and wireless status |
 | Storage | Card state, capacity, filesystem, and card identity |
 
-Firmware RAM is boot-stable build accounting, not live heap or stack usage. ESPForge has one SD-card profile, so
+Hover or focus Product for separate Board and MCU rows, or Module memory for SRAM/PSRAM reservations and flash capacity.
+Click or tap either item to toggle its details; Escape closes them.
+Firmware RAM is boot-stable build accounting, not live heap or stack usage.
+ESPForge has one SD-card profile, so
 the dashboard always saves profile 0 and shows the bus clock actually reported by Storage.
 
 USB connections can explicitly export an initialized SD card and return it after confirmed OS eject;
 see [SD ownership](../../docs/reference/sdcard.md#usb-drive-handoff). Bluetooth cannot change ownership.
-ESPForge has no forced save. Local serving also provides a browser link to the native Wi-Fi shell.
+ESPForge has no forced save. Wi-Fi status shows the network and address as plain text, without a shell link.
 The Device information RGB dropdown sends volatile colour requests over USB or an authenticated BLE session.
 It requires fresh available-driver telemetry; uncertain commands are reconciled without replay.
 When firmware advertises benchmarking, Storage offers confirmed start/cancel and live write/read verification results.
 See [benchmark safety and timing](../../docs/reference/sdcard.md#optional-storage-benchmark); BLE mirrors progress read-only.
-The dashboard omits those controls rather than inventing values.
+Without this capability, benchmark controls and BLE benchmark-status polling are omitted.
 
 ### Wi-Fi shell
 
-With the local server, fresh connected Wi-Fi status links to the
-[unauthenticated plaintext diagnostic shell](../../docs/guides/console.md).
-Keep the originating dashboard tab open and connected. Before opening, reading or sending input, the terminal
-checks that tab's fresh board identity and reported address; replacement, stale status or a closed dashboard
-disconnects it. The server does not own HID or BLE, and accepts only private LAN IPv4 targets on port 2323.
+For raw TCP diagnostics, use an external terminal as described in the
+[diagnostic shell guide](../../docs/guides/console.md).
+The local server retains relay endpoints for explicit integrations, but the dashboard does not discover or link them.
+Browser-terminal integrations must provide a live board-owner channel and validate fresh board identity and address
+before opening, reading or sending input; replacement, stale status or a closed owner disconnects the terminal.
+The server does not own HID or BLE, and accepts only private LAN IPv4 targets on port 2323.
 Wi-Fi connectivity is not proof of listener readiness; failed TCP connections are reported explicitly.
 
 The relay is available only through same-origin loopback HTTP requests. Static hosting, including Pages and
-other local static servers, keeps Wi-Fi status as plain text rather than presenting a broken shell link.
+other local static servers, has no TCP relay.
 `GET /api/console/capabilities` reports `{"available":true}` on the local ESPForge server.
-Direct opens with `POST /api/console`, exactly `{"ipv4":"REPORTED_ADDRESS"}`; the remaining header-token,
+Clients open with `POST /api/console`, exactly `{"ipv4":"REPORTED_ADDRESS"}`; the remaining header-token,
 bounded packet and no-replay contract matches the [bridge API](../web/README.md#browser-shell).
 The release ZIP includes its standard-library relay and requires no Python host installation.
 
@@ -132,6 +136,9 @@ Controls depend on board capabilities, connection type, and fresh reports.
 | Radio switches, Wi-Fi credentials, and Control-key provisioning | Supported | USB-only |
 
 ### Wireless provisioning
+
+Wi-Fi follows the Python/.NET dashboards' scan/select, **Other network…**, password and **Test connection** flow.
+Open networks hide the password field; long network names and dialog actions wrap on narrow screens.
 
 1. Over USB, choose **Configure…** for the radio.
 2. For Wi-Fi, select or enter a network and successfully test it.

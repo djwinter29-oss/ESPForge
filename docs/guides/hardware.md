@@ -39,7 +39,7 @@ card detection, supply and ground. An unwired detection input reads absent and p
 GPIO assignments use explicit hardware pinctrl for native SDMMC slot 0 or SPI3.
 The ESP32-S3 has 512 KiB of internal SRAM and no on-chip flash. N16R8 specifies the module's 16 MiB SPI flash
 and 8 MiB octal PSRAM; both are external to the SoC. PSRAM is volatile RAM, not additional flash.
-The Module memory panel separates SRAM reservation, PSRAM reservation/capacity and detected module-flash
+The Module memory details separate SRAM reservation, PSRAM reservation/capacity and detected module-flash
 capacity. Reservations include linked regions and permanent heap pools, not live usage. Unknown or unavailable
 inventory remains `--`; it is not inferred from the board name. No additional flash chip or interface is configured.
 

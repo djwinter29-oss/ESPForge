@@ -15,12 +15,22 @@ test("module memory keeps PSRAM separate from SRAM and unavailable flash unknown
   assert.equal(el("#ram-usage").textContent, "64.0 / 512 KiB (12.5%)");
   assert.equal(el("#psram-usage").textContent, "1.0 / 8.0 MiB (12.5%)");
   assert.equal(el("#flash-capacity").textContent, "16.0 MiB");
+  assert.equal(el("#memory-capacity").textContent, "16 MiB flash · 8 MiB PSRAM");
   state.hardware.psram_reserved_bytes = 16 << 20;
   state.hardware.flash_total_bytes = null;
   renderStatus(state);
   assert.equal(el("#psram-usage").textContent, "--");
   assert.equal(el("#flash-capacity").textContent, "--");
+  assert.equal(el("#memory-capacity").textContent, "-- MiB flash · 8 MiB PSRAM");
 }));
+
+test("memory summary never infers missing or invalid capacities from the board model", () => {
+  for (const value of [undefined, null, 0, -1, 1.5, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
+    const state = snapshot();
+    Object.assign(state.hardware, { ram_total_bytes: value, psram_total_bytes: value, flash_total_bytes: value });
+    assert.equal(deriveDeviceViewModel(state).text["memory-capacity"], "-- MiB flash · -- MiB PSRAM");
+  }
+});
 
 test("board pin tables are reused until the displayed configuration changes", () => withDocument((el, renderStatus) => {
   const state = snapshot();
@@ -66,7 +76,8 @@ test("identity RAM stays build accounting while stale inputs show no current val
     cpu_usage_core0_basis_points: 1234 };
   renderStatus(state);
   assert.equal(el("#ram-usage").textContent, "64.0 / 512 KiB (12.5%)");
-  assert.equal(el("#board-model").textContent, "ESP32-S3-DevKitC-1 (ESP32-S3)");
+  assert.equal(el("#board-model").textContent, "ESP32-S3-DevKitC-1");
+  assert.equal(el("#board-mcu").textContent, "ESP32-S3");
   assert.equal(el("#product-name").textContent, "ESPForge (SDMMC)");
   assert.equal(el("#identity-clock").textContent, "240 MHz");
   assert.equal(el("#cpu-usage-core0").textContent, "12.3% / --");

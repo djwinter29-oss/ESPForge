@@ -26,9 +26,8 @@ import { testedWireless } from "./dashboard-api.mjs";
  * @param {{wireless?: WirelessStatus | null, connected?: boolean, wireless_error?: string | null,
  * wireless_cleanup_required?: boolean, hardware?: {capabilities?: number,
  * serial_number?: string} | null}} snapshot
- * @param {string | null} [consoleUrl]
  */
-export function renderWirelessStatus(snapshot, consoleUrl = null) {
+export function renderWirelessStatus(snapshot) {
   const wireless = snapshot.wireless;
   const unavailable = !snapshot.connected ? "--" : snapshot.wireless_error ? "Unavailable" : !wireless ? "--" : null;
   /** @param {string} name @param {() => string} text */
@@ -42,17 +41,6 @@ export function renderWirelessStatus(snapshot, consoleUrl = null) {
   render("wifi", () => !wireless?.wifi_enabled || !wireless.ssid ? "Disabled"
     : `${wireless.ssid} (${wireless.wifi_state === "connected" ? wireless.ipv4
       : wireless.wifi_state === "connecting" ? "connecting" : "disconnected"})`);
-  if (!unavailable && !wireless?.stale && wireless?.wifi_enabled && wireless.wifi_state === "connected"
-      && wireless.ipv4 && wireless.ipv4 !== "0.0.0.0" && consoleUrl) {
-    const status = /** @type {HTMLElement} */ (document.querySelector("#wifi-state"));
-    const link = document.createElement("a");
-    link.href = consoleUrl;
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
-    link.textContent = status.textContent;
-    link.title = "Open the unauthenticated Wi-Fi shell";
-    status.replaceChildren(link);
-  }
   render("ble", () => {
     if (!wireless?.ble_enabled) return "Disabled";
     if (!wireless.ble_key_configured && wireless.ble_state === "off") return "Off (no control key)";

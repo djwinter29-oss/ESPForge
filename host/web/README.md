@@ -12,7 +12,10 @@ the radio's Enabled/Disabled selection. Wireless edits are saved with **Save&Reb
 Both hosts must serve the same ESPForge routes and JSON field names.
 Board-scoped routes take `?board=ID` from `/api/boards`.
 
-The Module memory panel separates internal SRAM, external PSRAM and module SPI flash. `/api/status` adds
+Device information shows compact, aligned values. Product exposes separate Board and MCU rows in its detail pop-up;
+Module memory summarizes flash and PSRAM capacities, with SRAM and reservation accounting in its details.
+Hover or focus either item to see its details; click or tap to toggle them, or press Escape to close.
+The details separate internal SRAM, external PSRAM and module SPI flash. `/api/status` adds
 `hardware.psram_total_bytes`, `psram_reserved_bytes` and `flash_total_bytes`, in bytes, when the firmware advertises
 [memory inventory](../../docs/reference/usb-hid.md#report-id-13-module-memory-inventory).
 Unsupported or unavailable values are `null` or absent and display `--`. RAM reservation is linked accounting,
@@ -79,7 +82,8 @@ Both hosts remain loopback-only and require local request origins.
 
 ## Browser shell
 
-Fresh connected Wi-Fi status becomes a link opening the [diagnostic shell](../../docs/guides/console.md) in a new tab.
+Dashboard Wi-Fi status shows the network and address as plain text, without a shell link.
+Browser-terminal routes and relay APIs remain available for explicit integrations.
 Wi-Fi connectivity does not establish that TCP port 2323 is listening; connection failures are explicit.
 
 `POST /api/console?board=ID` accepts exactly `{}`. The host obtains the address from that board's monitor, sends

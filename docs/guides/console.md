@@ -38,9 +38,12 @@ intentionally rejects that non-default build.
 
 ### In-browser terminal
 
-In the Python and .NET dashboards, click fresh connected Wi-Fi status to open a browser terminal for the selected
-board. Direct offers the same link when served by its local ESPForge server; keep its connected dashboard tab
-open. Static hosting cannot provide a TCP relay. The host connects only to the reported address on port 2323,
+Wi-Fi status is plain text in all dashboards; it does not link to a raw TCP shell. For normal diagnostics,
+use an external terminal as described above.
+
+Loopback browser-terminal routes and relay APIs remain available for explicit integrations. Direct integrations
+must provide a live board-owner channel that validates the connected board and its fresh reported address.
+Static hosting cannot provide a TCP relay. The host connects only to the reported address on port 2323,
 and reports connection errors rather than treating connected Wi-Fi as listener readiness.
 
 The browser relay first sends two Ctrl-C bytes to discard any unfinished input left by a previous TCP client,

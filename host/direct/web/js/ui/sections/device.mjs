@@ -30,6 +30,8 @@ export function deriveDeviceViewModel(state, dashboard = deriveDashboardViewMode
   const psramTotal = hardware?.psram_total_bytes;
   const psramReserved = hardware?.psram_reserved_bytes;
   const flashTotal = hardware?.flash_total_bytes;
+  const capacity = value => Number.isSafeInteger(value) && value > 0
+    ? String(Number((value / 1048576).toFixed(1))) : "--";
   const transport = hardware?.transport === "spi" ? "SPI" : "SDMMC";
   const signals = transport === "SPI" ? ["SCK", "MOSI", "MISO", "CS"] : ["CLK", "CMD", "DAT0", "DAT1", "DAT2", "DAT3"];
   const pin = value => !config ? "--" : value === 255 || value == null ? "Unassigned" : `GPIO${value}`;
@@ -53,9 +55,10 @@ export function deriveDeviceViewModel(state, dashboard = deriveDashboardViewMode
     },
     text: {
       "product-name": hardware ? `${hardware.product_name} (${transport})` : "--",
-      "board-model": hardware ? `${hardware.board_name ?? unknown("board", hardware.board_model)} `
-        + `(${hardware.mcu ?? unknown("MCU", hardware.mcu_id)})` : "--",
+      "board-model": hardware ? hardware.board_name ?? unknown("board", hardware.board_model) : "--",
+      "board-mcu": hardware ? hardware.mcu ?? unknown("MCU", hardware.mcu_id) : "--",
       "firmware-version": hardware?.firmware_version ?? "Unknown",
+      "memory-capacity": `${capacity(flashTotal)} MiB flash · ${capacity(psramTotal)} MiB PSRAM`,
       "identity-clock": runtime
         ? `${(runtime.system_clock_hz / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: 3 })} MHz` : "--",
       "cpu-usage-core0": [runtime?.cpu_usage_core0_basis_points, runtime?.cpu_usage_core1_basis_points]

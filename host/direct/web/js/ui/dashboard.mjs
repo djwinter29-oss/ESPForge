@@ -13,8 +13,7 @@ import { describe } from "./messages.mjs";
 
 /**
  * @typedef {{secure: boolean, hid: boolean, ble: boolean, now: () => number,
- *   clipboard: Pick<Clipboard, "writeText"> | null,
- *   consoleUrl?: (state: import("../state/reducer.mjs").DashboardState) => string | null}} DashboardEnvironment
+ *   clipboard: Pick<Clipboard, "writeText"> | null}} DashboardEnvironment
  * @typedef {{session: import("../board/session.mjs").BoardSession,
  *   selectTransport: (kind: "usb" | "ble") => import("../board/session.mjs").BoardSession,
  *   timers: ReturnType<typeof import("../timers.mjs").createTimerScope>,
@@ -35,7 +34,7 @@ export function mountDashboard({ session, selectTransport, timers, environment }
   const ui = createUiStore();
   /** @param {Partial<import("../state/reducer.mjs").UiState>} changes */
   const setUi = changes => ui.dispatch({ type: "patch", changes });
-  const renderStatus = createDashboardView(environment.consoleUrl);
+  const renderStatus = createDashboardView();
   const usbDialog = queryElement("dialog#usb-connection-dialog");
   const bluetoothDialog = queryElement("dialog#bluetooth-connection-dialog");
   const settingsSave = button("settings-save");
@@ -43,6 +42,28 @@ export function mountDashboard({ session, selectTransport, timers, environment }
   const settingsClock = queryElement("select#settings-clock");
   const settingsRadios = [queryElement("select#direct-settings-wifi"), queryElement("select#direct-settings-ble")];
   const controlKey = queryElement("input#direct-ble-control-key");
+  const identityDetails = ["product-information", "module-memory"].map(id => queryElement(`details#${id}`));
+  for (const details of identityDetails) {
+    const show = () => {
+      for (const other of identityDetails) other.open = other === details;
+    };
+    details.addEventListener("pointerenter", event => {
+      if (event.pointerType === "mouse") show();
+    });
+    details.addEventListener("pointerleave", () => {
+      if (!details.contains(document.activeElement)) details.open = false;
+    });
+    details.addEventListener("focusin", () => {
+      // Pointer focus precedes the native summary toggle; only keyboard focus opens a preview.
+      if (document.activeElement?.matches(":focus-visible")) show();
+    });
+    details.addEventListener("focusout", () => {
+      if (!details.matches(":hover")) details.open = false;
+    });
+    details.addEventListener("keydown", event => {
+      if (event.key === "Escape") details.open = false;
+    });
+  }
   const selectedRadios = () => client.state.hardware?.capabilities & CAP.WIRELESS
     ? Number(settingsRadios[0].value) | Number(settingsRadios[1].value) << 1 : 0;
   const configurationDialog = queryElement("dialog#configuration-dialog");

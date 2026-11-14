@@ -5,38 +5,44 @@
 [![License: BSD 3-Clause](https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)](LICENSE)
 ![Target: ESP32-S3](https://img.shields.io/badge/Target-ESP32--S3-2674b8)
 
-**Your ESP32-S3. Three dashboards. One Zephyr foundation.**
+**A Zephyr foundation for your ESP32-S3 product, with board management already in place.**
 
-ESPForge brings board identity, live telemetry, persistent boot settings and wireless setup into one
-management experience. Connect over **USB HID** or **Bluetooth LE**, choose your dashboard, and build
-your own ESP32-S3 application on top.
+ESPForge provides board identity, diagnostics, persistent settings, wireless provisioning, optional SD storage
+and host tools, so you can focus on your application's hardware and behavior. Its Direct, Python and .NET
+dashboards help you bring up the board and keep management separate from product-specific work.
 
-Built for **ESP32-S3-DevKitC-1 N16R8** with **Zephyr OS**, **16 MB flash**, **8 MB octal PSRAM**
-and **native four-bit SDMMC**, with an alternate **SD-over-SPI** firmware image.
+It shares [PicoForge](https://github.com/djwinter29-oss/PicoForge)'s intent: provide the supporting firmware and
+host tooling that downstream products would otherwise rebuild. ESPForge applies that approach to **ESP32-S3 and Zephyr**,
+rather than PicoForge's RP2040/RP2350 platform. It is not a compatible firmware port.
 
-**[Get started](docs/guides/getting-started.md)** · **[Choose a dashboard](#choose-your-dashboard)** ·
-**[Hardware & wiring](docs/guides/hardware.md)** · **[Explore the docs](docs/README.md)**
+The initial target is **ESP32-S3-DevKitC-1 N16R8**: **16 MB flash** and **8 MB octal PSRAM**.
+Choose native **four-bit SDMMC** or a separate **SD-over-SPI** firmware image.
 
-> **Project status:** software-tested foundation, not hardware-qualified firmware.
-> Physical USB, radio and SD-card acceptance remain pending. You can build the project and launch
-> the dashboards without a board; live measurements require hardware.
+**Start here:** [Firmware releases (choose SD transport)](https://github.com/djwinter29-oss/ESPForge/releases/latest) ·
+[Direct dashboard (firmware required)](https://djwinter29-oss.github.io/ESPForge/) ·
+[Python host app on PyPI (firmware required)](https://pypi.org/project/espforge/) ·
+[Build with ESPForge](#build-on-espforge)
 
-## What you can do
+> **Project status:** software-tested, with functional hardware tests reported on the target N16R8 board.
+> No issues were reported. See the [hardware test report](docs/validation/records/2026-11-14-hardware-tests.md)
+> for coverage and remaining qualification limits.
 
-| | ESPForge provides |
+## What ESPForge provides
+
+| Foundation | Included |
 | --- | --- |
-| **Know your board** | Device identity, firmware version, UART and SD bus pin allocation |
-| **Watch it run** | Uptime, CPU clock, core-0 load, die temperature and firmware RAM accounting |
-| **Configure the next boot** | CPU clock, Wi-Fi/BLE switches and credentials in a CRC-checked flash record |
-| **Set up wireless** | Scan, test and save a 2.4 GHz Wi-Fi network; provision a BLE Control key over USB |
-| **Use storage** | Runtime card detection, FAT mounting and explicit native USB MSC handoff over SDMMC or SPI |
-| **Inspect diagnostics** | Native Zephyr shells over UART and raw TCP; see the [console guide](docs/guides/console.md) |
-| **Build your product** | Separate board/platform code, management services and host clients, with portable firmware tests |
+| **Board management** | Identity, live diagnostics, boot settings, and LED/reboot controls |
+| **Host tools** | USB HID management with Direct, Python and .NET dashboards; Direct also supports Bluetooth LE |
+| **Wireless setup** | Scan, test and save a 2.4 GHz Wi-Fi network; provision a BLE Control key over USB |
+| **Optional SD storage** | SDMMC or SPI, card detection, FAT mounting, explicit USB drive handoff and a confirmed storage benchmark |
+| **Diagnostics** | Native Zephyr shells over UART and raw TCP, separate from dashboard management |
+| **Application foundation** | Board/platform integration, management services, documented wire contracts and portable firmware tests |
 
 Wi-Fi and BLE switches are enabled by default. Wi-Fi needs a saved network to connect;
 BLE management needs a provisioned Control key. An SD card is **optional for basic management**.
+Storage requires a compatible external 3.3 V SD socket or module and wiring for the selected firmware image.
 
-## One board, three ways to connect
+## Management connections
 
 ```mermaid
 flowchart LR
@@ -44,7 +50,7 @@ flowchart LR
     Direct -->|Web Bluetooth| BLE["Bluetooth LE"]
     Python["Python dashboard<br/>Flask + hidapi"] --> USB
     Dotnet[".NET dashboard<br/>ASP.NET Core + HidSharp"] --> USB
-    USB --> Board["ESP32-S3 + Zephyr<br/>Settings · Telemetry · Wi-Fi · SDMMC"]
+    USB --> Board["ESP32-S3 + Zephyr<br/>Settings · Telemetry · Wi-Fi · SD storage"]
     BLE --> Board
     UART["UART connector<br/>Flash + diagnostic shell/logs"] -.-> Board
 ```
@@ -82,11 +88,12 @@ Python and .NET select the first ESPForge board, or one chosen with `--serial SE
 **Linux:** run `bash tools/host/hid-permissions-setup.sh` once, then reconnect the board.
 Keep bridge hosts on loopback and use one management client per board at a time.
 
-## Build something of your own
+## Try ESPForge
 
 1. **Prepare the workspace.** Follow [getting started](docs/guides/getting-started.md) for the pinned
-   Zephyr 4.3.2 / SDK 0.17.4 environment and Espressif dependencies.
-2. **Build and flash.** From the initialized Zephyr workspace with its virtual environment active:
+   Zephyr/SDK environment and Espressif dependencies.
+2. **Choose storage, build and flash.** Match the SDMMC or SPI image to your wiring. For the default SDMMC image,
+   from the initialized Zephyr workspace with its virtual environment active:
 
    ```sh
    bash espforge/tools/firmware/build.sh
@@ -94,51 +101,38 @@ Keep bridge hosts on loopback and use one management client per board at a time.
    ```
 
    Flash only the matching N16R8 module through its UART connector; replace the port with yours.
+   See [hardware setup](docs/guides/hardware.md) before connecting an SD card and
+   [getting started](docs/guides/getting-started.md) for the alternate SPI image.
 3. **Connect and configure.** Attach the USB connector, open a dashboard, then follow
    [wireless setup](docs/guides/wireless.md) to test a network or provision BLE.
-4. **Extend the firmware.** Keep board wiring in overlays and product services out of blocking
-   management paths. Start with the [architecture](docs/reference/architecture.md) and
-   [firmware development guide](docs/development/firmware.md).
 
-| Directory | Responsibility |
+## Build on ESPForge
+
+| ESPForge provides | Your application adds |
 | --- | --- |
-| [firmware/](firmware/) | Zephyr application, platform integration and native unit tests |
-| [host/direct/](host/direct/) | Independent WebHID / Web Bluetooth dashboard |
-| [host/python/](host/python/) | Python USB host, CLI and local dashboard server |
-| [host/dotnet/](host/dotnet/) | .NET USB host and local dashboard server |
-| [host/web/](host/web/) | Shared browser UI for the Python and .NET hosts |
-| [docs/](docs/) | Operating guides, specifications and validation evidence |
+| Board management, settings, connectivity, optional storage and host tools | Product-specific peripherals, processing, commands and user interface |
 
-## Designed for clear contracts
+Use ESPForge as a source-based starting point: fork the repository and pin the source revision and dependencies
+you have validated. Add your application in separate services, keeping pin assignments in board overlays and
+blocking work out of management paths and the shared application lock.
 
-### Reference map
+For example, a sensor application can retain board identification, wireless setup and dashboard diagnostics
+while adding sampling, processing and its own commands. This is a downstream integration pattern, not an included
+capture engine or a guarantee of sampling or recording performance.
 
-| Reference | Covers |
-| --- | --- |
-| [Architecture](docs/reference/architecture.md) | Connection paths, layer responsibilities and service lifecycle |
-| [ESPForge implementation](docs/reference/espforge-implementation.md) | Platform integration and measurement limits |
-| [USB HID](docs/reference/usb-hid.md) | Report layouts, discovery, Control requests and opcode semantics |
-| [Bluetooth LE](docs/reference/bluetooth.md) | Advertising, GATT, session unlock and command proofs |
-| [Boot settings](docs/reference/settings.md) | Next-boot record, CPU/radio settings and flash safety |
-| [SD storage](docs/reference/sdcard.md) | Six-signal wiring, driver configuration, mount behavior and data safety |
+Start with the [architecture](docs/reference/architecture.md) and
+[firmware development guide](docs/development/firmware.md). Coordinate any wire changes across firmware and all
+affected hosts using the [USB HID](docs/reference/usb-hid.md) and [Bluetooth LE](docs/reference/bluetooth.md)
+contracts. See [host development](docs/development/host-tools.md) when extending a dashboard.
 
-USB HID and Bluetooth LE define the wire contracts. The implementation reference describes this board
-and platform; it is **not a separate protocol**.
+## Qualification and security
 
-## Tested in software. Honest about hardware.
+Automated checks cover portable firmware logic, host behavior, dashboard types and the pinned ESP32-S3 build.
+These complement the [reported functional hardware tests](docs/validation/records/2026-11-14-hardware-tests.md);
+neither establishes production qualification of every board, wiring arrangement or application workload.
 
-GitHub automation runs cross-platform host checks, Ceedling / Unity / CMock tests, dashboard
-type-checks and the pinned ESP32-S3 firmware build. Native firmware tests cover control dispatch,
-report encoding, wireless staging/authentication, SHA-256 and boot settings.
-
-Stable version tags drive firmware and host packaging, checksums and qualification notes.
-Release workflows also support Direct Pages deployment, PyPI publication and standalone .NET hosts
-for Linux, Windows and Apple Silicon. Workflow configuration is not proof of an available release:
-see the [release guide](docs/deployment/release.md).
-
-**Know the boundaries before deploying:**
-
-- Physical USB, Wi-Fi, BLE and SD behavior still need [hardware qualification](docs/validation/qualification-gaps.md).
+- Broader compatibility, endurance, fault recovery and performance still need
+  [hardware qualification](docs/validation/qualification-gaps.md).
 - SD storage supports detected insertion/replacement and explicit [USB ownership handoff](docs/reference/sdcard.md).
   There is **no automatic formatting**. An optional [confirmed storage benchmark](docs/reference/sdcard.md#optional-storage-benchmark)
   measures temporary-file write/read verification.
@@ -146,19 +140,23 @@ see the [release guide](docs/deployment/release.md).
 - Settings use a single flash record and are **not power-loss atomic**.
 - The TCP diagnostic shell is unauthenticated plaintext: use only on trusted networks, without port forwarding.
 - The onboard RGB LED has a volatile colour dropdown beside Device information; see the [hardware guide](docs/guides/hardware.md)
-  for the unverified default pin and board-revision alternative.
+  for pin selection and board-revision constraints.
 - There is no file-transfer API or dual-core application workload.
 
 Read the [validation records](docs/validation/records/README.md) for observed evidence, not inferred guarantees.
+The [release guide](docs/deployment/release.md) describes firmware/host packages, checksums and publication;
+workflow configuration alone is not proof of an available release.
 
-## Contribute & explore
+## Documentation and contributing
 
-[Contributing](CONTRIBUTING.md) · [Host development](docs/development/host-tools.md) ·
-[Release procedure](docs/deployment/release.md) · [Security policy](SECURITY.md) ·
-[Documentation index](docs/README.md)
+The [documentation index](docs/README.md) gives reading order and authoritative ownership.
 
-ESPForge was inspired by [PicoForge](https://github.com/djwinter29-oss/PicoForge)'s repository and documentation
-organization. It is an ESP-specific implementation, not a compatible firmware port.
+- **Use the board:** [Getting started](docs/guides/getting-started.md) · [Hardware](docs/guides/hardware.md) ·
+  [Wireless](docs/guides/wireless.md) · [Console](docs/guides/console.md)
+- **Develop a product:** [Architecture](docs/reference/architecture.md) ·
+  [Firmware](docs/development/firmware.md) · [Host tools](docs/development/host-tools.md)
+- **Contribute or maintain:** [Contributing](CONTRIBUTING.md) · [Releases](docs/deployment/release.md) ·
+  [Security policy](SECURITY.md)
 
 ## License
 

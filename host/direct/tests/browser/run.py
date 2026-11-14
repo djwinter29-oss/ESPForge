@@ -70,6 +70,144 @@ def check_version_label(browser: Browser, origin: str) -> None:
         print("PASS long Direct development versions fit desktop, tablet and mobile widths")
 
 
+def check_identity_details(browser: Browser, origin: str) -> None:
+    """Verify aligned identity values and both disclosures with native mouse, keyboard and touch events."""
+    with browser.new_context() as context:
+        page = context.new_page()
+        page.goto(f"{origin}/web/index.html")
+        assert page.locator(".identity > .metric").count() == 5
+        tops = page.locator(".identity strong").evaluate_all(
+            "(nodes) => nodes.map(node => node.getBoundingClientRect().top)")
+        assert max(tops) - min(tops) <= 1, tops
+        for identity in ("product-information", "module-memory"):
+            page.set_viewport_size({"width": 1440, "height": 900})
+            summary = page.locator(f"#{identity} > summary")
+            details = page.locator(f"#{identity} .identity-popover")
+            expect(details).to_be_hidden()
+            summary.hover()
+            expect(details).to_be_visible()
+            if identity == "product-information":
+                expect(page.locator("#board-model")).to_be_visible()
+                expect(page.locator("#board-mcu")).to_be_visible()
+                assert page.locator("#board-mcu").evaluate(
+                    "(node) => node.getBoundingClientRect().top"
+                    " > document.querySelector('#board-model').getBoundingClientRect().bottom")
+            details.hover()
+            expect(details).to_be_visible()
+            page.mouse.move(0, 0)
+            expect(details).to_be_hidden()
+            summary.focus()
+            page.keyboard.press("Tab")
+            page.keyboard.press("Shift+Tab")
+            expect(details).to_be_visible()
+            summary.press("Escape")
+            expect(details).to_be_hidden()
+            summary.press("Enter")
+            expect(details).to_be_visible()
+            summary.press("Enter")
+            expect(details).to_be_hidden()
+            for width in (1440, 720, 320):
+                page.set_viewport_size({"width": width, "height": 900})
+                summary.press("Enter")
+                expect(details).to_be_visible()
+                assert details.evaluate("(node) => node.getBoundingClientRect().left >= 0"
+                                        " && node.getBoundingClientRect().right <= innerWidth")
+                summary.press("Escape")
+                summary.press("Tab")
+                summary.hover()
+                details.hover()
+                expect(details).to_be_visible()
+                page.mouse.move(0, 0)
+                expect(details).to_be_hidden()
+                summary.press("Escape")
+        page.set_viewport_size({"width": 1440, "height": 900})
+        page.locator("#product-information > summary").hover()
+        page.locator("#module-memory > summary").hover()
+        expect(page.locator("#product-information .identity-popover")).to_be_hidden()
+        expect(page.locator("#module-memory .identity-popover")).to_be_visible()
+    with browser.new_context(has_touch=True, viewport={"width": 320, "height": 800}) as context:
+        page = context.new_page()
+        page.goto(f"{origin}/web/index.html")
+        for identity in ("product-information", "module-memory"):
+            page.locator(f"#{identity} > summary").tap()
+            expect(page.locator(f"#{identity} .identity-popover")).to_be_visible()
+            page.locator(f"#{identity} > summary").tap()
+            expect(page.locator(f"#{identity} .identity-popover")).to_be_hidden()
+    print("PASS aligned identity and product/memory hover, keyboard, touch and responsive details")
+
+
+def check_wifi_layout(browser: Browser, origin: str) -> None:
+    """Check Wi-Fi status, network selection and responsive styling with injected read-only test data."""
+    with browser.new_context() as context:
+        page = context.new_page()
+        page.route("**/js/app.mjs", lambda route: route.fulfill(content_type="text/javascript", body="""
+            import { bindWirelessForm } from "./ui/sections/wireless-form.mjs";
+            import { renderWirelessStatus } from "./ui/sections/wireless.mjs";
+            const wireless = {ssid: "Home", ssid_hex: "486f6d65", wifi_enabled: true,
+                wifi_state: "connected", ipv4: "192.168.1.9", ble_enabled: false};
+            const form = bindWirelessForm({
+                supported: () => true, ready: () => true,
+                scan: async () => [
+                    {ssid: "0123456789ABCDEF0123456789ABCDEF",
+                        ssid_hex: "3031323334353637383941424344454630313233343536373839414243444546",
+                        secured: true, security: "RSN (WPA2/WPA3)", rssi: -40},
+                    {ssid: "Open", ssid_hex: "4f70656e", secured: false, rssi: -60},
+                ],
+                test: async () => { throw new Error("Layout checks must not test a real network"); },
+                cancelTest: async () => {},
+            });
+            form.update({wireless});
+            renderWirelessStatus({connected: true, hardware: {capabilities: 128}, wireless});
+            window.wifiLayoutForm = form;
+        """))
+        page.goto(f"{origin}/web/index.html")
+        expect(page.locator("#direct-wifi-state")).to_have_text("Home (192.168.1.9)")
+        wifi = page.locator("#direct-settings-wifi")
+        expect(wifi).to_be_visible()
+        expect(wifi).to_have_value("1")
+        wifi.select_option("configure")
+        dialog = page.locator("#direct-wifi-dialog")
+        expect(dialog).to_be_visible()
+        page.locator("#direct-wifi-scan").click()
+        networks = page.locator("#direct-wifi-networks button")
+        expect(networks).to_have_count(2)
+        networks.first.click()
+        expect(networks.first).to_have_attribute("aria-pressed", "true")
+        networks.nth(1).hover()
+        assert networks.evaluate_all("""nodes => getComputedStyle(nodes[0]).backgroundColor
+            === getComputedStyle(nodes[1]).backgroundColor""")
+        password = page.locator("#direct-wifi-password")
+        expect(password).to_be_visible()
+        password.focus()
+        assert password.evaluate("""node => {
+            const style = getComputedStyle(node);
+            return style.outlineStyle === 'solid' && parseFloat(style.outlineWidth) >= 3;
+        }""")
+        for width in (1440, 720, 320):
+            page.set_viewport_size({"width": width, "height": 900})
+            assert dialog.evaluate("(node) => node.scrollWidth <= node.clientWidth"), width
+            assert page.locator("#direct-wifi-networks").evaluate(
+                "(node) => node.scrollWidth <= node.clientWidth"), width
+            assert networks.first.evaluate("(node) => node.scrollWidth <= node.clientWidth"), width
+            assert dialog.evaluate("""node => [...node.querySelectorAll('.dialog-actions button')].every(button => {
+                const bounds = button.getBoundingClientRect();
+                const dialog = node.getBoundingClientRect();
+                return bounds.left >= dialog.left && bounds.right <= dialog.right;
+            })"""), width
+        networks.nth(1).click()
+        expect(password).to_be_hidden()
+        page.locator("#direct-wifi-other").click()
+        expect(page.locator("#direct-wifi-ssid")).to_be_visible()
+        expect(password).to_be_visible()
+        page.locator("#direct-wifi-cancel").click()
+        expect(dialog).to_be_hidden()
+        page.evaluate("""() => window.wifiLayoutForm.update(null, {wireless: false, settings: false})""")
+        expect(wifi).to_be_disabled()
+        assert wifi.locator('option[value="configure"]').is_disabled()
+        page.evaluate("() => window.wifiLayoutForm.dispose()")
+    print("PASS Wi-Fi controls, live status, secured/open selection and responsive dialog layout")
+
+
 def main() -> None:
     """Fail on browser errors, incomplete checks, or any reported assertion failure."""
     root = Path(__file__).resolve().parents[2]
@@ -98,6 +236,8 @@ def main() -> None:
                                              f"failed assertions: {failures}; page errors: {errors}")
                     check_history(browser, origin)
                     check_version_label(browser, origin)
+                    check_identity_details(browser, origin)
+                    check_wifi_layout(browser, origin)
                 finally:
                     browser.close()
         finally:

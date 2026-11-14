@@ -8,7 +8,7 @@ import { CAPABILITY_SPI, CAPABILITY_SDMMC, CAPABILITY_WIRELESS, operationState }
 /**
  * @typedef {import("./dashboard-api.mjs").StatusSnapshot & {
  * settings_draft?: import("./dashboard-api.mjs").BootSettings,
- * settings_dirty?: boolean, wireless_dirty?: boolean, no_board_selected?: boolean, console_url?: string | null,
+ * settings_dirty?: boolean, wireless_dirty?: boolean, no_board_selected?: boolean,
  * status_read_error?: boolean, status_reading?: boolean}} DashboardView
  */
 /** @param {string} selector */
@@ -83,8 +83,8 @@ export function renderStatus(snapshot, operations = operationState(snapshot, {
   const boardModel = typeof hardware?.board_model === "string" ? hardware.board_model
     : ({ 1: "ESP32-S3-DevKitC-1" })[hardware?.board_model ?? 0]
       ?? (hardware?.board_model !== undefined ? `Unknown (${hardware.board_model})` : "--");
-  element("#board-model").textContent = hardware?.mcu
-    ? `${boardModel} (${hardware.mcu})` : boardModel;
+  element("#board-model").textContent = boardModel;
+  element("#board-mcu").textContent = hardware?.mcu ?? "--";
   element("#firmware-version").textContent = hardware?.firmware_version ?? "Unknown";
   const clock = runtime?.system_clock_hz !== undefined
     ? `${(runtime.system_clock_hz / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: 3 })} MHz`
@@ -113,12 +113,16 @@ export function renderStatus(snapshot, operations = operationState(snapshot, {
     ? `${(psramReserved / 1048576).toFixed(1)} / ${(psramTotal / 1048576).toFixed(1)} MiB`
       + ` (${(psramReserved * 100 / psramTotal).toFixed(1)}%)` : "--";
   const flashTotal = hardware?.flash_total_bytes;
+  /** @param {number | null | undefined} value */
+  const capacity = value => typeof value === "number" && Number.isSafeInteger(value) && value > 0
+    ? String(Number((value / 1048576).toFixed(1))) : "--";
+  element("#memory-capacity").textContent = `${capacity(flashTotal)} MiB flash · ${capacity(psramTotal)} MiB PSRAM`;
   element("#flash-capacity").textContent = typeof flashTotal === "number" && Number.isSafeInteger(flashTotal)
     && flashTotal > 0 ? `${(flashTotal / 1048576).toFixed(1)} MiB` : "--";
   element("#serial").textContent = hardware?.serial_number || "--";
   element("#uptime").textContent = runtime
     ? uptimeLabel(runtime.uptime_milliseconds ?? runtime.uptime_ms) : "--";
-  renderWirelessStatus(snapshot, snapshot.console_url);
+  renderWirelessStatus(snapshot);
   const memory = snapshot.storage_stale ? null : snapshot.memory;
   if (connected && memory && memory.sample_valid !== false)
     cardDetected = memory.presence_known === true ? memory.present === true : memory.initialized === true;

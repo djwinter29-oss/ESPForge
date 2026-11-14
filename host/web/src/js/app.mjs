@@ -28,6 +28,29 @@ let mscBoard = null;
 let configurationIdentity = null;
 const clockControl = /** @type {HTMLSelectElement} */ (document.querySelector("#settings-clock"));
 const rebootControl = /** @type {HTMLButtonElement} */ (document.querySelector("#reboot-control"));
+const identityDetails = ["product-information", "module-memory"]
+  .map(id => /** @type {HTMLDetailsElement} */ (element(id)));
+for (const details of identityDetails) {
+  const show = () => {
+    for (const other of identityDetails) other.open = other === details;
+  };
+  details.addEventListener("pointerenter", event => {
+    if (event.pointerType === "mouse") show();
+  });
+  details.addEventListener("pointerleave", () => {
+    if (!details.contains(document.activeElement)) details.open = false;
+  });
+  details.addEventListener("focusin", () => {
+    // Pointer focus precedes the native summary toggle; only keyboard focus opens a preview.
+    if (document.activeElement?.matches(":focus-visible")) show();
+  });
+  details.addEventListener("focusout", () => {
+    if (!details.matches(":hover")) details.open = false;
+  });
+  details.addEventListener("keydown", event => {
+    if (event.key === "Escape") details.open = false;
+  });
+}
 /** @param {string} id */
 function element(id) {
   const node = /** @type {HTMLElement | null} */ (document.querySelector(`#${id}`));
@@ -290,7 +313,6 @@ function renderStatus(snapshot) {
         : "Command outcome is uncertain. Reconnect the board and reload the dashboard before retrying."
       : boardState.commandFailure?.message ?? boardScanWarning),
     no_board_selected: !selectedBoard,
-    console_url: selectedBoard && statusReadError === null ? boardUrl("/console") : null,
     ...settingsEditState(),
     wireless_dirty: wirelessForm.dirty(),
     settings_message: settingsMessage ?? snapshot.settings_message,
