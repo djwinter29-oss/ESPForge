@@ -36,20 +36,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.event.workflow_run.head_branch || inputs.tag }}
           SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
-        run: |
-          version=$(bash tools/firmware/release-version.sh "$RELEASE_TAG")
-          test "$(gh release view "$RELEASE_TAG" --json isDraft,isPrerelease \
-            --jq '.isDraft == false and .isPrerelease == false')" = true
-          git fetch --no-tags origin "refs/tags/$RELEASE_TAG"
-          if [ -n "$SOURCE_SHA" ]; then
-            test "$(git rev-parse 'FETCH_HEAD^{commit}')" = "$SOURCE_SHA"
-          fi
-          mkdir dist
-          gh release download "$RELEASE_TAG" --pattern "espforge-$version-py3-none-any.whl" \
-            --pattern SHA256SUMS.txt --dir dist
-          cd dist
-          sha256sum --check SHA256SUMS.txt --ignore-missing
-          rm SHA256SUMS.txt
+        run: bash tools/release/download-wheel.sh
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: pypi-distribution
