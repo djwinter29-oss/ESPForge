@@ -17,6 +17,7 @@ Zephyr ESP32-S3 firmware and its USB HID/BLE hosts.
 
 Actions are pinned to commit SHAs. CI has read-only repository access; only the release job
 can publish release assets, and only Pages and PyPI deployment get OIDC write permissions.
+SDK release discovery uses the workflow's read-only GitHub token to avoid anonymous API rate limits.
 PR checks cancel superseded runs; release/publication runs are not cancelled mid-flight.
 No workflow flashes hardware, tests an SD card or runs a dedicated manual-tool test suite.
 
