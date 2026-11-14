@@ -58,6 +58,10 @@ void ef_platform_led_init(void)
 {
 	int err = device_is_ready(strip) ? transmit(0) : -ENODEV;
 
+	/* The first SPI transfer configures MOSI; clear again after its reset/latch interval. */
+	if (err == 0) {
+		err = transmit(0);
+	}
 	if (err != 0) {
 		LOG_ERR("RGB LED initialization failed: %d", err);
 	}

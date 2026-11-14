@@ -43,7 +43,8 @@ capacity. Reservations include linked regions and permanent heap pools, not live
 inventory remains `--`; it is not inferred from the board name. No additional flash chip or interface is configured.
 
 SPI2 is dedicated to the onboard WS2812-compatible RGB LED, with only MOSI allocated; SPI3 remains disabled.
-The MOSI pin has a pull-down configured, and firmware transmits Off during initialization.
+The MOSI pin has a pull-down configured. Startup sends Off twice, separated by the reset/latch interval, so the
+first SPI transfer's output configuration cannot leave a startup colour latched.
 The default LED data pin is GPIO48. This is unverified for the diymore dual-USB-C N16R8 clone; official DevKitC-1
 revisions use GPIO48 (v1.0) or GPIO38 (v1.1). For GPIO38, change the LED pinctrl selection from
 `SPIM2_MOSI_GPIO48` to `SPIM2_MOSI_GPIO38` in the hardware overlay and rebuild. Reported board facts derive from that
