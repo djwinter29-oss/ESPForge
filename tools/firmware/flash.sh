@@ -12,7 +12,7 @@ Missing workspace, Python dependencies and build tools are prepared automaticall
   --dry-run     Validate prerequisites and print the command; do not flash
   -h, --help    Show this help
 
-Close serial clients before flashing. Existing complete builds are reused, not rebuilt.
+Close serial clients before flashing. Existing complete ESP images are reused; incomplete images are rebuilt.
 Environment: PYTHON (default python3), VENV_DIR (default workspace/.venv).
 The venv is created/reused and dependencies installed, including for --dry-run.
 Flashing replaces existing firmware; this script does not request a full-chip erase.
@@ -48,10 +48,14 @@ done
 [[ "$baud" =~ ^[1-9][0-9]*$ ]] || fail "--baud must be a positive integer"
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 build="$root/build/firmware"
+is_esp_image() {
+	[[ -s "$1" ]] && [[ "$(od -An -tx1 -N1 "$1" | tr -d '[:space:]')" == "e9" ]]
+}
 needs_build=false
 for artifact in zephyr.bin zephyr.elf .config runners.yaml; do
 	[[ -s "$build/zephyr/$artifact" ]] || needs_build=true
 done
+is_esp_image "$build/zephyr/zephyr.bin" || needs_build=true
 source "$root/tools/firmware/env.sh"
 if [[ -z "$port" ]]; then
 	port="$(python - <<'PY'
@@ -94,6 +98,8 @@ fi
 for artifact in zephyr.bin zephyr.elf .config runners.yaml; do
 	[[ -s "$build/zephyr/$artifact" ]] || fail "Build did not produce $build/zephyr/$artifact"
 done
+is_esp_image "$build/zephyr/zephyr.bin" ||
+	fail "Build did not produce a valid ESP image at $build/zephyr/zephyr.bin"
 grep -Fxq 'CONFIG_BOARD_TARGET="esp32s3_devkitc/esp32s3/procpu"' "$build/zephyr/.config" ||
 	fail "Build is not for esp32s3_devkitc/esp32s3/procpu; rebuild for the supported target"
 

@@ -43,6 +43,7 @@
 	espforge_led_default: espforge_led_default {
 		mosi {
 			pinmux = <SPIM2_MOSI_GPIO48>;
+			bias-pull-down;
 		};
 	};
 	espforge_sd_default: espforge_sd_default {

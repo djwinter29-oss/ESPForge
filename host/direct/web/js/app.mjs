@@ -12,20 +12,10 @@ import { consoleTarget, serveConsoleTarget } from "./ui/console-target.mjs";
 const timers = createTimerScope();
 const store = createDashboardStore({});
 let consoleAvailable = false;
-if (["localhost", "127.0.0.1"].includes(location.hostname)) {
-  try {
-    const response = await fetch("/api/console/capabilities", { signal: AbortSignal.timeout(1500) });
-    if (response.status !== 404) {
-      if (!response.ok || (await response.json())?.available !== true) throw new Error("Invalid console capability response");
-      consoleAvailable = true;
-    }
-  } catch (error) {
-    console.error("Local Wi-Fi console relay discovery failed", error);
-  }
-}
-const consoleSource = consoleAvailable ? crypto.randomUUID() : "";
-const consoleChannel = consoleAvailable ? new BroadcastChannel(`espforge-console-${consoleSource}`) : null;
-if (consoleChannel !== null) serveConsoleTarget(consoleChannel, store.getState);
+let consoleSource = "";
+/** @type {BroadcastChannel | null} */
+let consoleChannel = null;
+let disposed = false;
 
 function createSession(kind) {
   const transport = kind === "ble"
@@ -56,7 +46,27 @@ const dashboard = mountDashboard({
     return session;
   },
 });
+if (["localhost", "127.0.0.1"].includes(location.hostname)) {
+  void (async () => {
+    try {
+      const response = await fetch("/api/console/capabilities", { signal: AbortSignal.timeout(1500) });
+      if (response.status === 404) return;
+      if (!response.ok || (await response.json())?.available !== true) {
+        throw new Error("Invalid console capability response");
+      }
+      if (disposed) return;
+      consoleSource = crypto.randomUUID();
+      consoleChannel = new BroadcastChannel(`espforge-console-${consoleSource}`);
+      serveConsoleTarget(consoleChannel, store.getState);
+      consoleAvailable = true;
+      dashboard.refresh();
+    } catch (error) {
+      if (!disposed) console.error("Local Wi-Fi console relay discovery failed", error);
+    }
+  })();
+}
 window.addEventListener?.("pagehide", () => {
+  disposed = true;
   dashboard.dispose();
   session.dispose();
   timers.dispose();

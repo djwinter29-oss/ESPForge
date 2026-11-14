@@ -68,7 +68,9 @@ def main() -> None:
                 assert response.status_code == 200, asset
                 assert response.data == content, asset
         assert client.get("/src/js/app.mjs").status_code == 404
-        assert client.get("/console").status_code == 404
+        console = client.get("/console")
+        assert console.status_code == 200
+        assert b"<h1>Wi-Fi shell</h1>" in console.data
         assert client.get("/api/boards").json == {"boards": [], "default_board_id": None}
     finally:
         boards.close()
