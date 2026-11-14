@@ -85,6 +85,7 @@ The release publishes:
 Install the wheel with `python -m pip install espforge-VERSION-py3-none-any.whl` and run `espforge web`.
 Standalone .NET hosts do not require an installed .NET runtime. Their smoke tests start the extracted host without
 hardware, verify every deployed dashboard asset and confirm that `/api/boards` answers with a board list.
+HTML templates are checked through their rendered routes (`/` and `/console`), not their blocked raw-file URLs.
 Windows/macOS packages are not publisher-signed or notarized; local OS security policy may
 require explicit approval. No signing credentials are configured by these workflows.
 

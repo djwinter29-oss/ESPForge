@@ -126,6 +126,7 @@ jobs:
           SOURCE_SHA: ${{ github.sha }}
         run: |
           python - <<'PY'
+          import json
           import os
           from pathlib import Path
           import shutil

@@ -138,8 +138,13 @@ jobs:
                           time.sleep(0.1)
                   else:
                       raise RuntimeError("Standalone dashboard did not become ready")
+                  pages = {"index.html": "/", "console.html": "/console"}
                   for name, content in assets.items():
-                      with urllib.request.urlopen(f"http://127.0.0.1:{port}/{name}", timeout=2) as response:
+                      route = pages.get(name, f"/{name}")
+                      if name in pages:
+                          content = content.replace(b"{{ dashboard_type }}", b".NET").replace(
+                              b"{{ app_version }}", version.encode())
+                      with urllib.request.urlopen(f"http://127.0.0.1:{port}{route}", timeout=2) as response:
                           assert response.read() == content, name
                           assert response.headers["X-Content-Type-Options"] == "nosniff", name
                           expected_type = {".html": "text/html", ".css": "text/css", ".mjs": "text/javascript",
