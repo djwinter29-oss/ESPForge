@@ -97,6 +97,18 @@ class StatusCommandTests(unittest.TestCase):
                     [5000, 4000, 3000, 2000, 1000][:read_count],
                 )
 
+    def test_unadvertised_self_test_report_is_not_published(self):
+        runtime, memory = {"uptime_ms": 1}, {"msc": {"enabled": False}}
+        device = Mock()
+        device.read_input_report.side_effect = [
+            {"kind": "self_test", "data": {"state": "running"}},
+            {"kind": "runtime", "data": runtime},
+            {"kind": "memory", "data": memory},
+        ]
+        with patch("espforge.cli.monotonic", return_value=0):
+            self.assertEqual(_read_status_reports(device), (runtime, memory, None))
+        self.assertEqual(device.read_input_report.call_count, 3)
+
     def test_report_collection_uses_one_overall_deadline(self):
         runtime = {"uptime_ms": 1}
         device = Mock()

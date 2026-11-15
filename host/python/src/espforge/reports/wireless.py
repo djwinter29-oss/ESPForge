@@ -70,6 +70,7 @@ def request_ssid(settings: dict[str, object]) -> bytes:
 
 
 def password_bytes(value: object) -> bytes:
+    """Validate and encode an empty or printable ASCII Wi-Fi password."""
     if not isinstance(value, str) or (value and not 8 <= len(value) <= 63) or any(
             not 32 <= ord(char) <= 126 for char in value):
         raise InvalidRequest("Password must be empty or contain 8..63 printable ASCII characters")

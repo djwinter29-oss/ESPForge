@@ -147,7 +147,8 @@ class WirelessTests(unittest.TestCase):
         validate_wireless_configuration(settings())
         validate_wireless_configuration(settings(ble_key="00" * 32))
         for overrides in ({"confirm_reboot": False}, {"tcp_cli_enabled": 0}, {"tcp_cli_enabled": True}, {"password": "short"},
-                          {"use_tested_wifi": True, "password": "secret12"}, {"unknown": 1}):
+                          {"use_tested_wifi": True, "password": "secret12"}, {"unknown": 1},
+                          {"board": {**BOARD, 1: True, "unknown": True}}):
             with self.subTest(overrides=overrides), self.assertRaises(ValueError):
                 validate_wireless_configuration(settings(**overrides))
 
@@ -585,9 +586,16 @@ class WirelessTests(unittest.TestCase):
         self.assertNotIn("ab" * 32, response.text)
         self.assertEqual(client.post("/api/wireless/scan?board=a").status_code, 200)
         self.assertEqual(client.post("/api/wireless/cancel?board=a").json, {"cancelled": True})
+        monitor_calls = boards.monitor.call_count
+        for body in (None, [], {"ssid": [True]}, {"ssid": [-1]}, {"ssid": [256]}, {"ssid": ["65"]},
+                     {"ssid": "ESP32", "password": 123}):
+            with self.subTest(body=body):
+                self.assertEqual(client.post("/api/wireless/test?board=a", json=body).status_code, 400)
+        dashboard.test_wireless.assert_not_called()
+        self.assertEqual(boards.monitor.call_count, monitor_calls)
         self.assertEqual(client.post("/api/wireless/test?board=a",
                                      json={"ssid": [65, 0, 255], "password": ""}).status_code, 200)
-        dashboard.test_wireless.assert_called_once_with([65, 0, 255], "")
+        dashboard.test_wireless.assert_called_once_with(b"A\0\xff", "")
         boards.monitor.assert_called_with("a")
         self.assertEqual(client.post("/api/wireless/test?board=a",
                                      json={"ssid": "ignored", "ssid_hex": "4100FF", "password": ""}).status_code, 200)

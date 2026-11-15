@@ -319,6 +319,7 @@ class ProtocolTests(unittest.TestCase):
                          bytes([20, 1, 4, 2, 1]) + bytes(64))
         for invalid in ({**settings, "system_clock_mhz": 200}, {**settings, "sdcard_profile": 1},
                         {**settings, "tcp_cli_enabled": True}, {**settings, "radios": 4},
+                        {**settings, 1: True, "unknown": True},
                         {"system_clock_mhz": 100, "sdcard_profile": 0, "radios": 0}):
             with self.subTest(settings=invalid), self.assertRaises(ValueError):
                 build_settings_command_report(invalid)

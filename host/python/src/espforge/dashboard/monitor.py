@@ -56,6 +56,7 @@ class CommandOutcomeUncertain(RuntimeError):
 
 
 def empty_snapshot() -> DashboardSnapshot:
+    """Build a complete disconnected snapshot with unavailable report sections."""
     return {
         "connected": False,
         "reconnecting": False,
