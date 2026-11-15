@@ -33,6 +33,13 @@ test("protocol sources have an incremental noImplicitAny check", () => {
   assert.equal(config.compilerOptions.noImplicitAny, true);
 });
 
+test("timers, domain errors and UI messages have a separate noImplicitAny check", () => {
+  const config = JSON.parse(readFileSync(new URL("../types/tsconfig.core-strict.json", import.meta.url), "utf8"));
+  assert.deepEqual(config.include, ["../../web/js/timers.mjs", "../../web/js/state/errors.mjs",
+    "../../web/js/ui/messages.mjs"]);
+  assert.equal(config.compilerOptions.noImplicitAny, true);
+});
+
 test("dashboard composition stays below its function-size budget", () => {
   const source = readFileSync(new URL("../../web/js/ui/dashboard.mjs", import.meta.url), "utf8");
   const start = source.indexOf("export function mountDashboard(");
@@ -40,4 +47,15 @@ test("dashboard composition stays below its function-size budget", () => {
   assert.ok(start >= 0 && end > start, "mountDashboard remains the dashboard composition entry point");
   const lines = source.slice(start, end + 2).split("\n").length;
   assert.ok(lines <= 170, `mountDashboard is ${lines} lines; maximum is 170`);
+});
+
+test("wireless form orchestration stays separated from Wi-Fi operation handlers", () => {
+  const source = readFileSync(new URL("../../web/js/ui/sections/wireless-form/wireless-form.mjs", import.meta.url),
+    "utf8");
+  const start = source.indexOf("export function bindWirelessForm(");
+  const end = source.lastIndexOf("\n}");
+  assert.ok(start >= 0 && end > start, "bindWirelessForm remains the provisioning form entry point");
+  const lines = source.slice(start, end + 2).split("\n").length;
+  assert.ok(lines <= 220, `bindWirelessForm is ${lines} lines; maximum is 220`);
+  assert.match(source, /bindWifiOperations/);
 });

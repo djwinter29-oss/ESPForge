@@ -130,6 +130,8 @@ class DirectHandler(SimpleHTTPRequestHandler):
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Permissions-Policy", "hid=(self), bluetooth=(self)")
+        self.send_header("Cross-Origin-Opener-Policy", "same-origin")
         cache_control = "no-store" if self.path.partition("?")[0].startswith("/api/") else "no-cache"
         self.send_header("Cache-Control", cache_control)
         super().end_headers()
@@ -256,32 +258,24 @@ class DirectServer(ThreadingHTTPServer):
 
 
 def create_server(bind: str, port: int, directory: Path) -> ThreadingHTTPServer:
-    """Create the dashboard server for ``directory``; the caller owns serving and closing it."""
-    try:
-        loopback = ipaddress.ip_address(bind).is_loopback
-    except ValueError:
-        loopback = False
-    if not loopback:
-        raise ValueError("Direct server bind address must be a loopback IP address")
+    """Create the dashboard server for ``directory`` on the supported loopback address."""
+    if bind != "127.0.0.1":
+        raise ValueError("Direct server bind address must be 127.0.0.1")
     return DirectServer((bind, port), partial(DirectHandler, directory=str(directory)))
 
 
 def main(argv: list[str] | None = None) -> None:
     """Validate options, serve the dashboard (a stamped temporary copy of the source tree), block until Ctrl+C."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--bind", default="127.0.0.1", help="Local bind address (default: 127.0.0.1)")
+    parser.add_argument("--bind", default="127.0.0.1", help="Bind address (only 127.0.0.1 is supported)")
     parser.add_argument("--port", type=int, default=8000, help="Local HTTP port (default: 8000)")
     parser.add_argument("--directory", type=Path, default=_DEFAULT_WEB_ROOT,
                         help="Dashboard directory (default: the adjacent web/ directory)")
     args = parser.parse_args(argv)
     if not 1 <= args.port <= 65535:
         parser.error("--port must be between 1 and 65535")
-    try:
-        loopback = ipaddress.ip_address(args.bind).is_loopback
-    except ValueError:
-        loopback = False
-    if not loopback:
-        parser.error("--bind must be a loopback IP address")
+    if args.bind != "127.0.0.1":
+        parser.error("--bind must be 127.0.0.1")
     if not args.directory.is_dir() or not (args.directory / "index.html").is_file():
         parser.error(f"dashboard directory must contain index.html: {args.directory}")
     with TemporaryDirectory(prefix="espforge-direct-") as directory:
@@ -293,8 +287,7 @@ def main(argv: list[str] | None = None) -> None:
             web = Path(directory) / "site"
             build_site(args.directory, web, version, commit, dirty)
         server = create_server(args.bind, args.port, web)
-        host = "127.0.0.1" if args.bind == "0.0.0.0" else args.bind
-        print(f"Direct dashboard: http://{host}:{args.port}/ (Chrome or Edge; stop with Ctrl+C)", flush=True)
+        print(f"Direct dashboard: http://{args.bind}:{args.port}/ (Chrome or Edge; stop with Ctrl+C)", flush=True)
         try:
             server.serve_forever()
         except KeyboardInterrupt:

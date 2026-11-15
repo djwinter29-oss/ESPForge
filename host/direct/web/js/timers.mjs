@@ -8,17 +8,32 @@
 import { REASON } from "./state/errors.mjs";
 
 /** @typedef {ReturnType<typeof globalThis.setTimeout> & {unref?: () => void}} TimerHandle */
+/** @typedef {(...args: unknown[]) => void} TimerCallback */
+/**
+ * @typedef {object} TimerScope
+ * @property {(callback: TimerCallback, delay: number, ...args: unknown[]) => TimerHandle} setTimeout
+ * @property {(callback: TimerCallback, delay: number, ...args: unknown[]) => TimerHandle} setInterval
+ * @property {(handle: TimerHandle) => void} clearTimeout
+ * @property {(handle: TimerHandle) => void} clearInterval
+ * @property {() => TimerScope} createChild
+ * @property {() => void} dispose
+ * @property {(child: TimerScope) => void} removeChild
+ */
 
 /** @brief Create a timer scope whose disposal cancels its timers and child scopes; `parent` forgets it then. */
+/** @param {TimerScope | null} [parent] */
 export function createTimerScope(parent = null) {
   const timeouts = new Set();
   const intervals = new Set();
   const children = new Set();
   let disposed = false;
+  /** @type {TimerScope} */
   const scope = {
     /** @return {TimerHandle} Browser timer ID, or an unref-capable handle in host tests. */
+    /** @param {TimerCallback} callback @param {number} delay @param {...unknown} args */
     setTimeout(callback, delay, ...args) {
       if (disposed) throw new Error("Timer scope is disposed");
+      /** @type {TimerHandle} */
       let handle;
       handle = globalThis.setTimeout(() => {
         timeouts.delete(handle);
@@ -28,6 +43,7 @@ export function createTimerScope(parent = null) {
       return handle;
     },
     /** @return {TimerHandle} */
+    /** @param {TimerCallback} callback @param {number} delay @param {...unknown} args */
     setInterval(callback, delay, ...args) {
       if (disposed) throw new Error("Timer scope is disposed");
       const handle = globalThis.setInterval(() => {
@@ -36,20 +52,24 @@ export function createTimerScope(parent = null) {
       intervals.add(handle);
       return handle;
     },
+    /** @param {TimerHandle} handle */
     clearTimeout(handle) {
       globalThis.clearTimeout(handle);
       timeouts.delete(handle);
     },
+    /** @param {TimerHandle} handle */
     clearInterval(handle) {
       globalThis.clearInterval(handle);
       intervals.delete(handle);
     },
+    /** @return {TimerScope} */
     createChild() {
       if (disposed) throw new Error("Timer scope is disposed");
       const child = createTimerScope(scope);
       children.add(child);
       return child;
     },
+    /** @brief Cancel every owned timer and child scope; idempotent. */
     dispose() {
       if (disposed) return;
       disposed = true;
@@ -61,6 +81,7 @@ export function createTimerScope(parent = null) {
       children.clear();
       parent?.removeChild(scope);
     },
+    /** @param {TimerScope} child */
     removeChild(child) { children.delete(child); },
   };
   return scope;
@@ -68,7 +89,10 @@ export function createTimerScope(parent = null) {
 
 /**
  * @brief Resolve after `milliseconds`, or reject with the abort reason when `signal` aborts first.
+ * @param {number} milliseconds
+ * @param {AbortSignal} [signal]
  * @param {Pick<typeof globalThis, "setTimeout" | "clearTimeout">} [timers]
+ * @return {Promise<void>}
  */
 export function wait(milliseconds, signal, timers = globalThis) {
   return new Promise((resolve, reject) => {
@@ -93,23 +117,39 @@ export function wait(milliseconds, signal, timers = globalThis) {
 /**
  * @brief Settle with `operation`, or reject with IO_TIMEOUT after `milliseconds` or the abort reason first.
  * The operation itself is not cancelled; a late outcome is ignored, so callers treat a timeout as uncertain.
+ * @template Value
+ * @param {Value | PromiseLike<Value>} operation
+ * @param {number} milliseconds
+ * @param {AbortSignal} [signal]
  * @param {Pick<typeof globalThis, "setTimeout" | "clearTimeout">} [timers]
+ * @return {Promise<Value>}
  */
 export function withTimeout(operation, milliseconds, signal, timers = globalThis) {
   return new Promise((resolve, reject) => {
     let settled = false;
-    const finish = (callback, value) => {
-      if (settled) return;
-      settled = true;
+    const cleanup = () => {
       timers.clearTimeout(timer);
       signal?.removeEventListener("abort", abort);
-      callback(value);
     };
-    const abort = () => finish(reject, signal.reason ?? new DOMException(REASON.OPERATION_CANCELLED, "AbortError"));
-    const timer = timers.setTimeout(() => finish(reject,
-      new DOMException(REASON.IO_TIMEOUT, "TimeoutError")), milliseconds);
+    /** @param {Value} value */
+    const finishResolve = value => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(value);
+    };
+    /** @param {unknown} error */
+    const finishReject = error => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
+    };
+    const abort = () => finishReject(signal.reason ?? new DOMException(REASON.OPERATION_CANCELLED, "AbortError"));
+    const timer = timers.setTimeout(() => finishReject(new DOMException(REASON.IO_TIMEOUT, "TimeoutError")),
+      milliseconds);
     if (signal?.aborted) abort();
     else signal?.addEventListener("abort", abort, { once: true });
-    Promise.resolve(operation).then(value => finish(resolve, value), error => finish(reject, error));
+    Promise.resolve(operation).then(finishResolve, finishReject);
   });
 }

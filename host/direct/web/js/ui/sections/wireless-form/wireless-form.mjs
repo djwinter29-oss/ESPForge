@@ -4,12 +4,11 @@
 import { OP } from "../../../protocol/constants.mjs";
 import { createTimerScope } from "../../../timers.mjs";
 import { queryElement, setText } from "../../dom.mjs";
-import { describe } from "../../messages.mjs";
-import { BoardError, REASON } from "../../../state/errors.mjs";
 import { bindBleKeyForm } from "./ble-key-form.mjs";
 import { renderWirelessForm } from "./wireless-form-view.mjs";
 import { formTransition, IDLE_FORM } from "./wireless-form-state.mjs";
 import { createWirelessFormTimers } from "./wireless-form-timers.mjs";
+import { bindWifiOperations } from "./wifi-operations.mjs";
 
 /**
  * @typedef {Partial<ReturnType<typeof import("../../../protocol/codec.mjs").decodeWireless>>} WirelessStatus
@@ -63,8 +62,6 @@ export function bindWirelessForm({
   const input = id => queryElement(`input#${id}`);
   /** @param {string} id */
   const select = id => queryElement(`select#${id}`);
-  /** @type {HTMLDialogElement} */
-  const wifiDialog = queryElement("dialog#direct-wifi-dialog");
   let loaded = false;
   let lifecycleController = new AbortController();
   /** @type {WirelessStatus | null} */
@@ -121,77 +118,13 @@ export function bindWirelessForm({
     signal: () => lifecycleController.signal, configured: () => Boolean(status?.ble_key_configured),
     enable: () => enableRadio("direct-settings-ble"), changed: notify, clipboard,
   });
-  const clearWifiInputs = () => {
-    input("direct-wifi-password").value = "";
-  };
-  /** Forget the staged or edited Wi-Fi pair and its expiry countdown. */
-  const clearWifiStage = () => {
-    formTimers.clearStaged();
-    dispatch({ type: "clearWifiStage" });
-    input("direct-wifi-ssid").value = "";
-    clearWifiInputs();
-  };
-  /** @param {Awaited<ReturnType<WirelessFormOptions["scan"]>>} networks */
-  const renderNetworks = networks => {
-    const list = el("direct-wifi-networks");
-    list.replaceChildren();
-    networks.forEach(network => {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "wifi-network";
-      button.dataset.ssidHex = network.ssid_hex;
-      const name = document.createElement("span");
-      name.textContent = network.ssid;
-      const details = document.createElement("small");
-      details.textContent = `${network.security ?? (network.secured ? "Secured" : "Open")} · ${network.rssi} dBm`;
-      button.append(name, details);
-      button.addEventListener("click", () => {
-        input("direct-wifi-ssid").value = network.ssid;
-        dispatch({ type: "selectNetwork", ssidHex: network.ssid_hex });
-        el("direct-wifi-manual-label").hidden = true;
-        el("direct-wifi-password-label").hidden = !network.secured;
-        clearWifiInputs();
-        refresh();
-      });
-      list.append(button);
-    });
-  };
-  const discardWifi = async () => {
-    if (form.phase === "canceling" || form.cancelNeedsReconnect) return false;
-    if (form.wifiTestAttempted) {
-      const signal = lifecycleController.signal;
-      dispatch({ type: "cancel" });
-      notify();
-      try {
-        await cancelTest(signal);
-      } catch (error) {
-        if (signal.aborted) return false;
-        dispatch({ type: "cancelFailed", error: describe(error), needsReconnect: !ready() });
-        setStatus("direct-wifi-status", `Could not clear the temporary Wi-Fi test: ${describe(error)}`);
-        notify();
-        return false;
-      }
-      if (signal.aborted) return false;
-    }
-    dispatch({ type: "cleared" });
-    clearWifiStage();
-    notify();
-    return true;
-  };
-
-  const openWifi = () => {
-    input("direct-wifi-ssid").value = form.wifiStage?.ssid ?? status?.ssid ?? "";
-    dispatch({ type: "loadSsid", ssidHex: form.wifiStage?.ssid_hex ?? status?.ssid_hex });
-    el("direct-wifi-password-label").hidden = false;
-    el("direct-wifi-manual-label").hidden = false;
-    if (form.phase !== "cancelFailed") {
-      setStatus("direct-wifi-status", "Choose a network and test the connection. "
-        + "Save requires a successful, unexpired test; Cancel clears temporary credentials.");
-    }
-    wifiDialog.showModal();
-  };
+  const wifi = bindWifiOperations({
+    form: () => form, dispatch, status: () => status, signal: () => lifecycleController.signal,
+    scan, test, cancelTest, ready, now, timers: formTimers, setStatus, refresh, notify,
+    enableWifi: () => enableRadio("direct-settings-wifi"),
+  });
   // "input" fires before "change", so the dashboards' change handlers only ever see Enabled or Disabled.
-  for (const [id, open] of /** @type {[string, () => void][]} */ ([["direct-settings-wifi", openWifi],
+  for (const [id, open] of /** @type {[string, () => void][]} */ ([["direct-settings-wifi", wifi.open],
     ["direct-settings-ble", bleKey.open]])) {
     let previous = select(id).value;
     select(id).addEventListener("focus", () => { previous = select(id).value; });
@@ -202,7 +135,7 @@ export function bindWirelessForm({
       } else if (previous === "1" && select(id).value === "0" && id === "direct-settings-wifi"
           && form.wifiTestAttempted) {
         const signal = lifecycleController.signal;
-        void discardWifi().then(cleared => {
+        void wifi.discard().then(cleared => {
           if (signal.aborted) return;
           if (cleared) {
             previous = "0";
@@ -210,7 +143,7 @@ export function bindWirelessForm({
           } else {
             select(id).value = "1";
             previous = "1";
-            openWifi();
+            wifi.open();
             notify();
           }
         });
@@ -221,100 +154,6 @@ export function bindWirelessForm({
       refresh();
     });
   }
-  el("direct-wifi-scan").addEventListener("click", async () => {
-    const signal = lifecycleController.signal;
-    dispatch({ type: "scan" });
-    setStatus("direct-wifi-status", "Scanning for nearby networks…");
-    notify();
-    try {
-      const networks = await scan(signal);
-      if (signal.aborted) return;
-      renderNetworks(networks);
-      setStatus("direct-wifi-status", networks.length ? `Found ${networks.length} networks.` : "No networks found.");
-    } catch (error) {
-      if (!signal.aborted) setStatus("direct-wifi-status", describe(error));
-    } finally {
-      if (!signal.aborted) {
-        dispatch({ type: "done" });
-        notify();
-      }
-    }
-  });
-  el("direct-wifi-other").addEventListener("click", () => {
-    dispatch({ type: "manualSsid" });
-    input("direct-wifi-ssid").value = "";
-    el("direct-wifi-manual-label").hidden = false;
-    el("direct-wifi-password-label").hidden = false;
-    refresh();
-    el("direct-wifi-ssid").focus();
-  });
-  el("direct-wifi-ssid").addEventListener("input", () => {
-    dispatch({ type: "editSsid" });
-    refresh();
-  });
-  el("direct-wifi-password").addEventListener("input", () => {
-    refresh();
-  });
-  el("direct-wifi-connect").addEventListener("click", async () => {
-    const ssid = input("direct-wifi-ssid").value;
-    const password = input("direct-wifi-password").value;
-    if (!ssid) return;
-    const signal = lifecycleController.signal;
-    const started = now();
-    dispatch({ type: "testStarted" });
-    // Staging a replacement pair invalidates the board's previous test, even if the replacement fails.
-    formTimers.clearStaged();
-    let succeeded = false;
-    let step = "Starting";
-    const progress = () => {
-      const elapsed = Math.floor((now() - started) / 1000);
-      setStatus("direct-wifi-status", elapsed < 30
-        ? `Testing “${ssid}”: ${step}… ${elapsed}s (up to 30s).`
-        : `Testing “${ssid}”: ${step}… ${elapsed}s; waiting for the final result.`);
-    };
-    progress();
-    formTimers.startTest(progress);
-    notify();
-    try {
-      const rawSsid = form.selectedSsidHex === undefined ? {} : { ssid_hex: form.selectedSsidHex };
-      const result = await test({ ssid, password, ...rawSsid }, next => {
-        if (signal.aborted || !next || next === step) return;
-        step = describe(next);
-        progress();
-      }, signal);
-      if (signal.aborted) return;
-      if (!Number.isInteger(result.remaining_seconds) || result.remaining_seconds < 1 ||
-          result.remaining_seconds > 600) throw new BoardError(REASON.LIFETIME_INVALID);
-      dispatch({ type: "testSucceeded", pair: { ssid, ...rawSsid, use_tested_wifi: true, tested_at: now(),
-        remaining_seconds: result.remaining_seconds } });
-      formTimers.startStaged();
-      enableRadio("direct-settings-wifi");
-      clearWifiInputs();
-      setStatus("direct-wifi-status",
-        `Connected to “${ssid}” (${result.ipv4 || "IP assigned"}). Click Save&Reboot.`);
-      succeeded = true;
-    } catch (error) {
-      if (!signal.aborted) setStatus("direct-wifi-status", describe(error));
-    } finally {
-      if (!signal.aborted) {
-        formTimers.stopTest();
-        dispatch({ type: "done" });
-        notify();
-        if (succeeded) wifiDialog.close();
-      }
-    }
-  });
-  el("direct-wifi-cancel").addEventListener("click", async () => {
-    if (working()) return;
-    const signal = lifecycleController.signal;
-    if (await discardWifi() && !signal.aborted) wifiDialog.close();
-  });
-  wifiDialog.addEventListener("cancel", event => {
-    event.preventDefault();
-    if (working()) return;
-    const signal = lifecycleController.signal;
-    void discardWifi().then(cleared => { if (cleared && !signal.aborted) wifiDialog.close(); });
-  });
   return {
     /** @brief Draft lifecycle; reset aborts it so old save completions cannot change a new draft. */
     get signal() { return lifecycleController.signal; },
@@ -342,11 +181,11 @@ export function bindWirelessForm({
     },
     /** @param {WirelessStatus | null} saved @param {string} [error] */
     finish(saved, error) {
-      clearWifiInputs();
+      wifi.clearInputs();
       bleKey.finish(Boolean(saved), error);
       if (saved) {
         status = { ...status, ...saved };
-        clearWifiStage();
+        wifi.clearStage();
         loaded = true;
         setStatus("direct-wifi-status", "Wireless settings saved.");
       } else {
@@ -361,10 +200,10 @@ export function bindWirelessForm({
       dispatch({ type: "reset" });
       status = null;
       loaded = false;
-      clearWifiStage();
+      wifi.clearStage();
       bleKey.reset();
       el("direct-wifi-networks").replaceChildren();
-      if (wifiDialog.open) wifiDialog.close();
+      wifi.close();
     },
     dispose() {
       this.reset();
@@ -380,7 +219,7 @@ export function bindWirelessForm({
       if (form.phase === "cancelFailed" && state?.connected && !state.outcome_uncertain) {
         dispatch({ type: "recovered" });
         if (state.recovered_opcode === OP.CANCEL_TEST) {
-          clearWifiStage();
+          wifi.clearStage();
           dispatch({ type: "reset" });
           setStatus("direct-wifi-status", "Temporary Wi-Fi test cleared after reconnect.");
           recoveredCancellation = true;

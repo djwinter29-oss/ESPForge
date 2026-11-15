@@ -39,8 +39,9 @@ python3 server.py --port 8000
 ```
 
 For either local option, open **<http://127.0.0.1:8000/>**. The local server requires Python, but does not require the
-ESPForge Python host package. The server rejects non-loopback bind addresses; do not expose it on a LAN interface.
-Local startup does not require reverse DNS resolution of the bind address.
+ESPForge Python host package. It binds only to `127.0.0.1`, sends same-origin-only WebHID/Web Bluetooth permissions
+and isolates top-level browsing contexts. These headers do not add encryption or change browser-granted device
+permissions. Local startup does not require reverse DNS resolution.
 
 Local checkout launches serve a temporary, versioned copy without editing the source assets. Like the other hosts,
 versions use `vMAJOR.MINOR.PATCH` Git tags: the next commit after `v1.2.3` displays `1.2.4-dev.1`.
@@ -226,6 +227,7 @@ qualification.
 node host/direct/tests/run-tests.mjs
 python3 -m unittest host.direct.tests.test_server -v
 npx --yes --package typescript@5.9.3 tsc --project host/direct/tests/types/tsconfig.json
+npx --yes --package typescript@5.9.3 tsc --project host/direct/tests/types/tsconfig.core-strict.json
 npx --yes --package typescript@5.9.3 tsc --project host/direct/tests/types/tsconfig.protocol-strict.json
 ```
 
@@ -258,13 +260,15 @@ The runner owns an ephemeral loopback server and fails on incomplete checks, ass
 It also runs the vendored axe-core 4.10.3 WCAG 2.1 A/AA and best-practice rules against the dashboard and each dialog;
 its MPL-2.0 and bundled third-party notices are in `tests/browser/vendor/`. Checks cover dialog focus/Escape,
 narrow viewports, invalid keys, Wi-Fi selection/cancellation/reset, save/reconnect ownership, failed-key-save
-recovery, and telemetry render coalescing. A fake WebHID board drives the production entry point through connect,
-input reports, and Save. A history-navigation check verifies draft disposal and journal retention. They do not
-exercise real hardware.
+recovery, module request count/transfer size, and telemetry render coalescing. A fake WebHID board drives the
+production entry point through connect, input reports, and Save. A history-navigation check verifies draft
+disposal and journal retention. They do not exercise real hardware.
 
 The JavaScript runner enforces aggregate coverage of 90% lines, 80% branches, and 85% functions, plus per-file floors
-of 80% lines, 50% branches, and 50% functions. The type check covers the complete runtime module graph; a separate
-`noImplicitAny` check covers protocol modules while the remaining JavaScript strictness is migrated incrementally.
+of 80% lines, 55% branches, and 50% functions. LCOV output provides per-file metrics independently of Node's
+human-readable coverage table. The type check covers the complete runtime module graph; separate `noImplicitAny`
+checks cover protocol modules, timers, domain errors and UI messages while the remaining JavaScript strictness is
+migrated incrementally.
 
 ## Further reading
 

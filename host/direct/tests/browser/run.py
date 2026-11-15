@@ -5,19 +5,29 @@
 
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from math import ceil
 from pathlib import Path
+from statistics import median
 from threading import Thread
 
-from playwright.sync_api import Browser, expect, sync_playwright
+from playwright.sync_api import Browser, BrowserContext, expect, sync_playwright
 
 
-def check_accessibility(browser: Browser, origin: str) -> None:
+def monitored_context(browser: Browser, errors: list[str], **options) -> BrowserContext:
+    """Collect uncaught page errors from every page created in a test context."""
+    context = browser.new_context(**options)
+    context.on("page", lambda page: page.on("pageerror", lambda error: errors.append(str(error))))
+    return context
+
+
+def check_accessibility(browser: Browser, origin: str, errors: list[str]) -> None:
     """Run pinned axe-core rules on both pages in light and dark modes."""
     dialogs = (None, "usb-connection-dialog", "bluetooth-connection-dialog", "msc-dialog",
                "benchmark-start-dialog", "configuration-dialog", "reboot-dialog", "direct-wifi-dialog",
                "direct-ble-dialog")
     for scheme in ("light", "dark"):
-        with browser.new_page(color_scheme=scheme) as page:
+        with monitored_context(browser, errors, color_scheme=scheme) as context:
+            page = context.new_page()
             page.goto(f"{origin}/web/index.html")
             scheme_used = page.evaluate("getComputedStyle(document.documentElement).colorScheme")
             if scheme_used != scheme:
@@ -53,9 +63,10 @@ def audit_accessibility(page):
     }""")
 
 
-def check_forced_colors(browser: Browser, origin: str) -> None:
+def check_forced_colors(browser: Browser, origin: str, errors: list[str]) -> None:
     """Ensure forced-colors mode retains visible keyboard focus."""
-    with browser.new_page() as page:
+    with monitored_context(browser, errors) as context:
+        page = context.new_page()
         page.goto(f"{origin}/web/index.html")
         page.emulate_media(forced_colors="active")
         if not page.evaluate("matchMedia('(forced-colors: active)').matches"):
@@ -70,9 +81,9 @@ def check_forced_colors(browser: Browser, origin: str) -> None:
     print("PASS forced-colors mode retains a visible keyboard focus outline")
 
 
-def check_history(browser: Browser, origin: str) -> None:
+def check_history(browser: Browser, origin: str, errors: list[str]) -> None:
     """Navigate a real cached page; require reload without resuming drafts or the board connection."""
-    with browser.new_context() as context:
+    with monitored_context(browser, errors) as context:
         page = context.new_page()
         page.add_init_script("""
             // Registering WebHID listeners makes Chromium pages ineligible for its history cache.
@@ -115,9 +126,9 @@ def check_history(browser: Browser, origin: str) -> None:
         print("PASS index history-cache restoration reloads without replay")
 
 
-def check_version_label(browser: Browser, origin: str) -> None:
+def check_version_label(browser: Browser, origin: str, errors: list[str]) -> None:
     """Long development versions must remain readable without horizontal page overflow."""
-    with browser.new_context() as context:
+    with monitored_context(browser, errors) as context:
         page = context.new_page()
         page.goto(f"{origin}/web/index.html")
         label = page.get_by_label("Host application version")
@@ -129,9 +140,9 @@ def check_version_label(browser: Browser, origin: str) -> None:
         print("PASS long Direct development versions fit desktop, tablet and mobile widths")
 
 
-def check_identity_details(browser: Browser, origin: str) -> None:
+def check_identity_details(browser: Browser, origin: str, errors: list[str]) -> None:
     """Verify aligned identity values and both disclosures with native mouse, keyboard and touch events."""
-    with browser.new_context() as context:
+    with monitored_context(browser, errors) as context:
         page = context.new_page()
         page.goto(f"{origin}/web/index.html")
         assert page.locator(".identity > .metric").count() == 5
@@ -184,7 +195,7 @@ def check_identity_details(browser: Browser, origin: str) -> None:
         page.locator("#module-memory > summary").hover()
         expect(page.locator("#product-information .identity-popover")).to_be_hidden()
         expect(page.locator("#module-memory .identity-popover")).to_be_visible()
-    with browser.new_context(has_touch=True, viewport={"width": 320, "height": 800}) as context:
+    with monitored_context(browser, errors, has_touch=True, viewport={"width": 320, "height": 800}) as context:
         page = context.new_page()
         page.goto(f"{origin}/web/index.html")
         for identity in ("product-information", "module-memory"):
@@ -195,9 +206,9 @@ def check_identity_details(browser: Browser, origin: str) -> None:
     print("PASS aligned identity and product/memory hover, keyboard, touch and responsive details")
 
 
-def check_wifi_layout(browser: Browser, origin: str) -> None:
+def check_wifi_layout(browser: Browser, origin: str, errors: list[str]) -> None:
     """Check Wi-Fi status, network selection and responsive styling with injected read-only test data."""
-    with browser.new_context() as context:
+    with monitored_context(browser, errors) as context:
         page = context.new_page()
         page.route("**/js/app.mjs", lambda route: route.fulfill(content_type="text/javascript", body="""
             import { bindWirelessForm } from "./ui/sections/wireless-form/wireless-form.mjs";
@@ -267,6 +278,36 @@ def check_wifi_layout(browser: Browser, origin: str) -> None:
     print("PASS Wi-Fi controls, live status, secured/open selection and responsive dialog layout")
 
 
+def check_module_loading(browser: Browser, origin: str, errors: list[str]) -> None:
+    """Measure cold runtime-module loading and keep request count/transfer size within a reviewed budget."""
+    samples = []
+    for _ in range(5):
+        with monitored_context(browser, errors) as context:
+            page = context.new_page()
+            page.goto(f"{origin}/web/index.html", wait_until="load")
+            sample = page.evaluate("""() => {
+                const navigation = performance.getEntriesByType('navigation')[0];
+                const modules = performance.getEntriesByType('resource')
+                    .filter(entry => new URL(entry.name).pathname.endsWith('.mjs'));
+                return {
+                    count: modules.length,
+                    bytes: modules.reduce((total, entry) =>
+                        total + (entry.transferSize || entry.encodedBodySize), 0),
+                    duration: Math.max(...modules.map(entry => entry.responseEnd)) - navigation.startTime,
+                    load: navigation.loadEventEnd - navigation.startTime,
+                };
+            }""")
+            samples.append(sample)
+    if any(sample["count"] < 1 or sample["count"] > 45 or sample["bytes"] > 300_000 for sample in samples):
+        raise AssertionError(f"Cold module graph exceeds its 45-request/300 kB budget: {samples}")
+    durations = sorted(sample["duration"] for sample in samples)
+    p95 = durations[ceil(0.95 * len(durations)) - 1]
+    print(f"PASS cold module graph budget: {samples[0]['count']} modules, "
+          f"{max(sample['bytes'] for sample in samples)} bytes; "
+          f"median {median(durations):.1f}ms, p95 {p95:.1f}ms, "
+          f"load median {median(sample['load'] for sample in samples):.1f}ms")
+
+
 def main() -> None:
     """Fail on browser errors, incomplete checks, or any reported assertion failure."""
     root = Path(__file__).resolve().parents[2]
@@ -278,27 +319,30 @@ def main() -> None:
                 browser = playwright.chromium.launch(channel="chromium",
                                                      ignore_default_args=["--disable-back-forward-cache"])
                 try:
-                    page = browser.new_page()
                     errors: list[str] = []
-                    page.on("pageerror", lambda error: errors.append(str(error)))
-                    origin = f"http://127.0.0.1:{server.server_port}"
-                    page.goto(f"{origin}/tests/browser/index.html")
-                    page.wait_for_function("document.querySelector('#results').dataset.complete === 'true'")
-                    results = page.locator("#results li").all_text_contents()
-                    print("\n".join(results))
-                    print(f"Dashboard telemetry burst: "
-                          f"{page.locator('#results').get_attribute('data-dashboard-median-ms')}ms median, "
-                          f"{page.locator('#results').get_attribute('data-dashboard-p95-ms')}ms p95")
-                    failures = page.locator('#results li[data-result="fail"]').count()
-                    if len(results) != 8 or failures or errors:
-                        raise AssertionError(f"Expected 8 checks, got {len(results)}; "
-                                             f"failed assertions: {failures}; page errors: {errors}")
-                    check_history(browser, origin)
-                    check_version_label(browser, origin)
-                    check_identity_details(browser, origin)
-                    check_wifi_layout(browser, origin)
-                    check_accessibility(browser, origin)
-                    check_forced_colors(browser, origin)
+                    with monitored_context(browser, errors) as context:
+                        page = context.new_page()
+                        origin = f"http://127.0.0.1:{server.server_port}"
+                        page.goto(f"{origin}/tests/browser/index.html")
+                        page.wait_for_function("document.querySelector('#results').dataset.complete === 'true'")
+                        results = page.locator("#results li").all_text_contents()
+                        print("\n".join(results))
+                        print(f"Dashboard telemetry burst: "
+                              f"{page.locator('#results').get_attribute('data-dashboard-median-ms')}ms median, "
+                              f"{page.locator('#results').get_attribute('data-dashboard-p95-ms')}ms p95")
+                        failures = page.locator('#results li[data-result="fail"]').count()
+                        if len(results) != 8 or failures:
+                            raise AssertionError(f"Expected 8 checks, got {len(results)}; "
+                                                 f"failed assertions: {failures}")
+                    check_module_loading(browser, origin, errors)
+                    check_history(browser, origin, errors)
+                    check_version_label(browser, origin, errors)
+                    check_identity_details(browser, origin, errors)
+                    check_wifi_layout(browser, origin, errors)
+                    check_accessibility(browser, origin, errors)
+                    check_forced_colors(browser, origin, errors)
+                    if errors:
+                        raise AssertionError(f"Browser page errors: {errors}")
                 finally:
                     browser.close()
         finally:

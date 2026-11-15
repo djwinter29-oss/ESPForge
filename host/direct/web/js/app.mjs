@@ -10,17 +10,20 @@ import { BleTransport } from "./transport/ble.mjs";
 import { createDashboardStore } from "./state/store.mjs";
 import { createTimerScope } from "./timers.mjs";
 import { mountDashboard } from "./ui/dashboard.mjs";
-import { consoleTarget, serveConsoleTarget } from "./ui/console/console-target.mjs";
+import { createConsoleBootstrap } from "./ui/console/console-bootstrap.mjs";
 
 const timers = createTimerScope();
 const store = createDashboardStore({});
 /** @return {Navigator & {hid?: unknown, bluetooth?: unknown}} */
 const deviceNavigator = () => /** @type {Navigator & {hid?: unknown, bluetooth?: unknown}} */ (navigator);
-let consoleAvailable = false;
-let consoleSource = "";
-/** @type {BroadcastChannel | null} */
-let consoleChannel = null;
 let disposed = false;
+const consoleBootstrap = createConsoleBootstrap({
+  localServer: ["localhost", "127.0.0.1"].includes(location.hostname),
+  fetchCapabilities: () => fetch("/api/console/capabilities", { signal: AbortSignal.timeout(1500) }),
+  createChannel: name => new BroadcastChannel(name),
+  createSource: () => crypto.randomUUID(),
+  getState: store.getState,
+});
 
 /** @param {"usb" | "ble"} kind */
 function createSession(kind) {
@@ -38,10 +41,7 @@ const environment = {
   get clipboard() { return navigator.clipboard ?? null; },
   now: () => Date.now(),
   /** @param {import("./state/reducer.mjs").DashboardState} state */
-  consoleUrl(state) {
-    const target = consoleAvailable ? consoleTarget(state) : null;
-    return target === null ? null : `/console.html?${new URLSearchParams({ source: consoleSource, ...target })}`;
-  },
+  consoleUrl: state => consoleBootstrap.consoleUrl(state),
 };
 
 let session = createSession("usb");
@@ -54,31 +54,17 @@ const dashboard = mountDashboard({
     return session;
   },
 });
-if (["localhost", "127.0.0.1"].includes(location.hostname)) {
-  void (async () => {
-    try {
-      const response = await fetch("/api/console/capabilities", { signal: AbortSignal.timeout(1500) });
-      if (response.status === 404) return;
-      if (!response.ok || (await response.json())?.available !== true) {
-        throw new Error("Invalid console capability response");
-      }
-      if (disposed) return;
-      consoleSource = crypto.randomUUID();
-      consoleChannel = new BroadcastChannel(`espforge-console-${consoleSource}`);
-      serveConsoleTarget(consoleChannel, store.getState);
-      consoleAvailable = true;
-      dashboard.refresh();
-    } catch (error) {
-      if (!disposed) console.error("Local Wi-Fi console relay discovery failed", error);
-    }
-  })();
-}
+void consoleBootstrap.start().then(available => {
+  if (available) dashboard.refresh();
+}).catch(error => {
+  if (!disposed) console.error("Local Wi-Fi console relay discovery failed", error);
+});
 window.addEventListener?.("pagehide", () => {
   disposed = true;
   dashboard.dispose();
   session.dispose();
   timers.dispose();
-  consoleChannel?.close();
+  consoleBootstrap.dispose();
 }, { once: true });
 window.addEventListener?.("pageshow", event => {
   // Cached pages have disposed sessions; reload preserves the journal without resuming stale device state.

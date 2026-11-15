@@ -74,6 +74,8 @@ class DirectServerTests(unittest.TestCase):
         self.assertEqual(meta_directives, [item for item in header_directives if not item.startswith("frame-ancestors")])
         self.assertEqual(headers["X-Content-Type-Options"], "nosniff")
         self.assertEqual(headers["X-Frame-Options"], "DENY")
+        self.assertEqual(headers["Permissions-Policy"], "hid=(self), bluetooth=(self)")
+        self.assertEqual(headers["Cross-Origin-Opener-Policy"], "same-origin")
         self.assertEqual(headers["Referrer-Policy"], "no-referrer")
         self.assertEqual(headers["Cache-Control"], "no-cache")
 
@@ -147,9 +149,10 @@ class DirectServerTests(unittest.TestCase):
             create_server("127.0.0.1", 0, _DEFAULT_WEB_ROOT)
         bridge.return_value.close_all.assert_called_once_with()
 
-    def test_server_factory_rejects_non_loopback_bind(self):
-        with self.assertRaisesRegex(ValueError, "loopback IP address"):
-            create_server("0.0.0.0", 0, _DEFAULT_WEB_ROOT)
+    def test_server_factory_rejects_unsupported_bind_address(self):
+        for bind in ("0.0.0.0", "192.168.1.2", "localhost", "::1", "127.0.0.2"):
+            with self.subTest(bind=bind), self.assertRaisesRegex(ValueError, "127.0.0.1"):
+                create_server(bind, 0, _DEFAULT_WEB_ROOT)
 
     def test_release_server_runs_without_checkout_or_host_dependencies(self):
         source = Path(__file__).resolve().parents[1]
@@ -195,12 +198,12 @@ class DirectServerArgumentTests(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("--port must be between 1 and 65535", message)
 
-    def test_bind_must_be_a_loopback_ip_address(self):
-        for bind in ("0.0.0.0", "192.168.1.2", "localhost"):
+    def test_bind_must_match_the_supported_loopback_origin(self):
+        for bind in ("0.0.0.0", "192.168.1.2", "localhost", "::1", "127.0.0.2"):
             with self.subTest(bind=bind):
                 code, message = self.run_main("--bind", bind)
                 self.assertEqual(code, 2)
-                self.assertIn("--bind must be a loopback IP address", message)
+                self.assertIn("--bind must be 127.0.0.1", message)
 
     def test_directory_must_contain_index(self):
         with tempfile.TemporaryDirectory() as directory:

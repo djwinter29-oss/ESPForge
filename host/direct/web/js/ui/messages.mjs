@@ -7,6 +7,7 @@
 import { errorCode, REASON } from "../state/errors.mjs";
 
 /** @brief Display names of the field IDs carried by INVALID_REPORT and INVALID_INPUT. */
+/** @type {Readonly<Record<string, string>>} */
 export const FIELDS = Object.freeze({
   "identity": "identity", "board-configuration": "board configuration", "telemetry": "telemetry",
   "storage-status": "storage status", "transaction-id": "transaction ID",
@@ -18,15 +19,22 @@ export const FIELDS = Object.freeze({
 });
 
 /** @brief Feature 12 wireless test detail byte (1-6) to text; 0 means no detail. */
+/** @type {readonly string[]} */
 const WIFI_DETAILS = Object.freeze([
   "", "Radio initialization failed", "Network not found", "Password rejected",
   "No DHCP address", "Timed out", "Test connection lost",
 ]);
 
 /** @brief Text for a firmware enum value the codec could not name (decoded as null). */
-export const unknown = (kind, value) => `Unknown ${kind} (${value})`;
+/** @param {string} kind @param {unknown} value */
+export const unknown = (kind, value) => `Unknown ${kind} (${String(value)})`;
+
+/** @param {unknown} detail */
+const detailIndex = detail => typeof detail === "number" || typeof detail === "string" && detail.trim() !== ""
+  ? Number(detail) : Number.NaN;
 
 /** @brief Lead text for browser DOMException names; other uncoded errors read "Unexpected error". */
+/** @type {Readonly<Record<string, string>>} */
 const BROWSER = Object.freeze({
   NotAllowedError: "The browser refused the device request", SecurityError: "The browser refused the device request",
   NetworkError: "The board connection failed", InvalidStateError: "The board is not open",
@@ -35,25 +43,31 @@ const BROWSER = Object.freeze({
 
 /** @brief Dynamic confirmation-dialog and settings status copy owned by the presentation layer. */
 export const UI_TEXT = Object.freeze({
+  /** @param {number} size */
   benchmarkWarning: size => `Firmware writes and verifies ${size} MiB in EFTEST.BIN, then deletes that file. `
     + "Back up the card first; the benchmark causes card wear.",
   benchmarkBoardChanged: "Board changed; reopen the benchmark.",
   storageBoardChanged: "Board changed; reopen the storage dialog.",
+  /** @param {boolean} enabled */
   storageTitle: enabled => enabled ? "Enable USB drive?" : "Return card to firmware?",
+  /** @param {boolean} enabled */
   storageWarning: enabled => enabled
     ? "Firmware will unmount the card and give Linux/Windows exclusive access. USB reconnects briefly; "
       + "unsaved dashboard edits may be lost."
     : "Safely eject the USB drive in Linux/Windows first. Confirm only after eject completes; firmware cannot "
       + "verify the host cache is flushed.",
+  /** @param {boolean} enabled */
   storageConfirm: enabled => enabled ? "Enable USB drive" : "I have safely ejected",
   wirelessSaveWarning: "Wi-Fi and Bluetooth credentials are saved with these settings. Keep a copy of "
     + "the Control key; it cannot be read back. Flash credentials are not encrypted.",
+  /** @param {number | null} clock @param {boolean | null} wifiEnabled @param {boolean} bleEnabled */
   configurationProfile(clock, wifiEnabled, bleEnabled) {
     return `System clock: ${clock ? `${clock} MHz` : "Default"}.`
       + (wifiEnabled === null ? "" : ` Wi-Fi: ${wifiEnabled ? "Enabled" : "Disabled"}.`
         + ` Bluetooth: ${bleEnabled ? "Enabled" : "Disabled"}.`);
   },
   settingsSaved: "Settings saved. Waiting for the board to reboot.",
+  /** @param {string} error */
   settingsSaveFailed: error => `Save failed: ${error}`,
   rebootStaged: "Staged wireless credentials and their expiry marker will be discarded.",
   rebootUnsaved: "Unsaved dashboard changes will be lost.",
@@ -61,6 +75,7 @@ export const UI_TEXT = Object.freeze({
 });
 
 /** @brief English text per reason code: a string, or a function of the code's detail. */
+/** @type {Readonly<Record<string, string | ((detail: unknown) => string)>>} */
 export const MESSAGES = Object.freeze({
   [REASON.COMMAND_BLOCKED]: "Command unavailable or previous outcome uncertain",
   [REASON.USB_ONLY]: "This operation requires USB.",
@@ -70,6 +85,7 @@ export const MESSAGES = Object.freeze({
   [REASON.WIRELESS_STORAGE]: "Wireless configuration requires USB and fresh storage status.",
   [REASON.REBOOT_CONFIRMATION]: "Reboot requires explicit confirmation",
   [REASON.QUEUE_BUSY]: "Command unavailable while another command owns the queue",
+  /** @param {{opcode: number, status: number, error: number, detail?: number}} result */
   [REASON.COMMAND_FAILED]: ({ opcode, status, error, detail }) =>
     `Command ${opcode}: status ${status}, error ${error}${detail === undefined ? "" : `, detail ${detail}`}`,
   [REASON.OUTCOME_UNCERTAIN]: "Command outcome uncertain after disconnect",
@@ -78,14 +94,18 @@ export const MESSAGES = Object.freeze({
   [REASON.NOT_CONFIRMED]: "Firmware did not confirm the selected values",
   [REASON.SCAN_MISMATCH]: "Scan entry did not match the requested generation and index",
   [REASON.STORAGE_UNAVAILABLE]: "Session storage is unavailable; refusing an untracked device write.",
+  /** @param {unknown} detail */
   [REASON.RECOVERY_UNAVAILABLE]: detail =>
     `Pending operation recovery data is unavailable or invalid: ${describe(detail)}`,
+  /** @param {unknown} detail */
   [REASON.RECOVERY_CLEAR_FAILED]: detail =>
     `Command was not sent, but recovery state could not be cleared: ${describe(detail)}`,
   [REASON.CONNECTION_CHANGED]: "Board connection changed",
   [REASON.CONNECTION_CANCELLED]: "Connection cancelled",
+  /** @param {{cause: unknown, close: string}} failure */
   [REASON.CLOSE_FAILED]: ({ cause, close }) => `${describe(cause)}; closing the transport failed: ${close}`,
   [REASON.WRONG_BOARD]: "Select the original board to resolve its pending operation.",
+  /** @param {unknown} detail */
   [REASON.STATUS_READ_FAILED]: detail => `Board status read failed: ${describe(detail)}`,
   [REASON.RECOVERY_NOT_CONFIRMED]: "Firmware did not confirm the selected values after reconnect",
   [REASON.RECOVERED_COMMAND]: "Pending command result confirmed after reconnect.",
@@ -100,18 +120,25 @@ export const MESSAGES = Object.freeze({
   [REASON.SCAN_GENERATION_CHANGED]: "Wireless scan generation changed",
   [REASON.TEST_GENERATION_CHANGED]: "Wireless test generation changed",
   // The firmware phase text names the failure when present.
-  [REASON.TEST_FAILED]: detail => WIFI_DETAILS[detail] || "Test credentials expired",
-  [REASON.WIFI_DETAIL]: detail => WIFI_DETAILS[detail] || unknown("detail", detail),
+  /** @param {unknown} detail */
+  [REASON.TEST_FAILED]: detail => WIFI_DETAILS[Number(detail)] || "Test credentials expired",
+  /** @param {unknown} detail */
+  [REASON.WIFI_DETAIL]: detail => WIFI_DETAILS[detailIndex(detail)] || unknown("detail", detail),
   [REASON.PASSWORD_INVALID]: "Password must contain 8-63 printable ASCII characters or be empty for an open network",
   [REASON.PASSWORD_REQUIRED]: "A changed SSID requires an explicit password (empty for an open network)",
   [REASON.SSID_REQUIRED]: "SSID is required for a connection test",
   [REASON.NETWORK_REQUIRED]: "Wi-Fi requires a network",
   [REASON.WIRELESS_CONFIG_INVALID]: "Invalid wireless configuration",
   [REASON.TESTED_PAIR_CHANGED]: "Tested Wi-Fi pair no longer matches; test again",
+  /** @param {string} field */
   [REASON.INVALID_REPORT]: field => `Invalid HID ${FIELDS[field] ?? field}`,
+  /** @param {string} field */
   [REASON.INVALID_INPUT]: field => `Invalid ${FIELDS[field] ?? field}`,
+  /** @param {number} size */
   [REASON.REPORT_LENGTH]: size => `Expected exactly ${size} HID payload bytes`,
+  /** @param {number} version */
   [REASON.LAYOUT_VERSION]: version => `Unsupported HID layout version ${version}`,
+  /** @param {number} product */
   [REASON.UNKNOWN_PRODUCT]: product => `Unknown product (0x${Number(product).toString(16).padStart(4, "0")})`,
   [REASON.SSID_HEX_LENGTH]: "SSID hex must encode at most 32 bytes",
   [REASON.SSID_MISSING]: "SSID is required",
@@ -138,7 +165,8 @@ export const MESSAGES = Object.freeze({
   [REASON.DEVICE_DISCONNECTED]: "Device disconnected",
   [REASON.WIRELESS_CONNECTING]: "Connecting",
   // The browser chooser's cancel needs no diagnostic; everything else keeps the raw message for support.
-  [REASON.UNEXPECTED]: ({ name, message }) => name === "NotFoundError" ? "No board was selected."
+  /** @param {{name?: string, message?: string}} error */
+  [REASON.UNEXPECTED]: ({ name = "Error", message = "" }) => name === "NotFoundError" ? "No board was selected."
     : `${BROWSER[name] ?? "Unexpected error"}: ${message}`,
 });
 
