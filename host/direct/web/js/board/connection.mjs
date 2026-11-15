@@ -21,6 +21,7 @@ export const PHASE = Object.freeze({
   RECOVERING: "recovering", /**< Board identified; settling journalled requests before user commands. */
   READY: "ready", /**< Board identified, recovery done, polling running. */
 });
+/** @typedef {typeof PHASE[keyof typeof PHASE]} Phase */
 
 /**
  * @brief Forward edges of the lifecycle. Any phase may also stay where it is or close to DISCONNECTED or
@@ -39,8 +40,10 @@ export const TRANSITIONS = Object.freeze({
 export const canTransition = (from, to) => from === to || to === PHASE.DISCONNECTED || to === PHASE.RECONNECTING
   || Boolean(TRANSITIONS[from]?.includes(to));
 
-/** @brief Per-connection facts (state/reducer.mjs CONNECTION_FACTS) reset on connect and disconnect. */
-/** @type {Readonly<Partial<import("../state/reducer.mjs").DashboardState>>} */
+/**
+ * @brief Per-connection facts (state/reducer.mjs CONNECTION_FACTS) reset on connect and disconnect.
+ * @type {Readonly<Partial<import("../state/reducer.mjs").DashboardState>>}
+ */
 export const EMPTY = Object.freeze({
   hardware: null, settings: null, settings_supported: false,
   runtime: null, memory: null, filesystem_format: null,
@@ -49,8 +52,25 @@ export const EMPTY = Object.freeze({
   reboot_pending: false,
 });
 
+/**
+ * @typedef {object} ConnectionSession
+ * @property {import("../state/reducer.mjs").DashboardState} state
+ * @property {import("../transport/transport.mjs").Transport} transport
+ * @property {object | null} device
+ * @property {{recoveryError: import("../state/reducer.mjs").ReasonValue | null}} commands
+ * @property {{onInputReport: (event: Event) => void, expireReports: (suspended?: boolean) => void, reset: () => void,
+ *   scheduleExpiry: () => void, pollReports: () => Promise<void>, pollWireless: () => void}} polling
+ * @property {{run: (device: object | null, signal: AbortSignal, current: () => boolean) => Promise<void>}} recovery
+ * @property {number} timeout
+ * @property {ReturnType<typeof import("../timers.mjs").createTimerScope>} timers
+ * @property {(type: string, changes: Partial<import("../state/reducer.mjs").DashboardState>) => void} emit
+ */
+
+/**
+ * @brief Own transport connection lifecycle, initialization, recovery and link generation.
+ */
 export class Connection {
-  /** @param {import("./session.mjs").BoardSession} session */
+  /** @param {ConnectionSession} session Connection services used by the lifecycle coordinator. */
   constructor(session) {
     this.session = session;
     /** Incremented whenever the connection is cleared; fences every in-flight read and write. */

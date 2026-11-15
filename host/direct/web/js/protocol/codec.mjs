@@ -2,14 +2,17 @@
 // Copyright (c) 2026 Ji Dong
 
 /**
- * Pure version-1 HID report codecs and shared value rules for the Direct dashboard. No browser or device state.
+ * @file Pure version-1 HID report codecs and shared value rules for the Direct dashboard. No browser or device state.
  */
 import {
-  CAP, CONFIG_FLAGS, DEVICE_FILTER, ESPFORGE_CAPABILITIES, PRODUCT_ID, PRODUCT_IDS,
+  CAP, CONFIG_FLAGS, DEVICE_FILTER, ESPFORGE_CAPABILITIES, PRODUCT_ID, PRODUCT_IDS, RADIOS,
 } from "./constants.mjs";
 import { decodeSettings, OPCODES, validSettings } from "./opcodes.mjs";
 import { BoardError, REASON } from "../state/errors.mjs";
 
+/** @typedef {DataView | Uint8Array} HidReport */
+
+/** @param {HidReport} report @param {number} size */
 function payload(report, size) {
   const view = report instanceof DataView ? report
     : report instanceof Uint8Array ? new DataView(report.buffer, report.byteOffset, report.byteLength) : null;
@@ -20,25 +23,35 @@ function payload(report, size) {
 }
 
 /** @brief Throw INVALID_REPORT naming `field` (a field ID shown by ui/messages.mjs) unless `condition` holds. */
+/** @param {boolean} condition @param {string} field */
 export function requireValid(condition, field) {
   if (!condition) throw new BoardError(REASON.INVALID_REPORT, field);
 }
 
+/** @brief Lower-case hex of `bytes` without separators. */
+/** @param {Uint8Array} bytes */
 export const bytesToHex = bytes => [...bytes].map(byte => byte.toString(16).padStart(2, "0")).join("");
-/** Decode already-validated even-length hex; use parseHexBytes at trust boundaries. */
+/** @brief Decode already-validated even-length hex; use parseHexBytes at trust boundaries. */
+/** @param {string} hex */
 export const hexToBytes = hex => Uint8Array.from(hex.match(/../g) ?? [], byte => parseInt(byte, 16));
+/** @brief Decode exactly `length` bytes of hex, or throw INVALID_INPUT naming `field`. */
+/** @param {unknown} value @param {number} length @param {string} [field] */
 export function parseHexBytes(value, length, field = "control-key") {
   if (typeof value !== "string" || value.length !== length * 2 || !/^[a-f0-9]+$/i.test(value)) {
     throw new BoardError(REASON.INVALID_INPUT, field);
   }
   return hexToBytes(value);
 }
+/** @param {DataView} view @param {number} offset @param {number} size */
 const bytesAt = (view, offset, size) => new Uint8Array(view.buffer, view.byteOffset + offset, size);
+/** @param {Uint8Array} bytes */
 const zero = bytes => bytes.every(byte => byte === 0);
 
 /** @brief Highest ESP32-S3 GPIO number. */
 const MAX_GPIO = 48;
 
+/** @brief Decode and validate Feature 1 identity. */
+/** @param {HidReport} report */
 export function decodeIdentityReport(report) {
   const view = payload(report, 26);
   const product = view.getUint16(1, true);
@@ -64,6 +77,8 @@ export function decodeIdentityReport(report) {
   };
 }
 
+/** @brief Decode and validate Feature 13 memory inventory; absent memories are null. */
+/** @param {HidReport} report */
 export function decodeMemoryInventory(report) {
   const view = payload(report, 16);
   const flags = view.getUint8(1);
@@ -77,6 +92,8 @@ export function decodeMemoryInventory(report) {
     flash_total_bytes: flags & 2 ? flash : null };
 }
 
+/** @brief Decode and validate Feature 2 board configuration against the board's identity capabilities. */
+/** @param {HidReport} report @param {ReturnType<typeof decodeIdentityReport>} identity */
 export function decodeConfigReport(report, identity) {
   const view = payload(report, 17);
   const flags = view.getUint8(13);
@@ -104,6 +121,8 @@ export function decodeConfigReport(report, identity) {
     storage_gpios: gpios, board_flags: flags, reset_cause: view.getUint8(14), card_detect_gpio: detect, led_gpio: led };
 }
 
+/** @brief Decode and validate Input 3 telemetry; `identity` additionally checks the LED capability. */
+/** @param {HidReport} report @param {ReturnType<typeof decodeIdentityReport> | null} [identity] */
 export function decodeTelemetryReport(report, identity = null) {
   const view = payload(report, 22);
   const flags = view.getUint8(21);
@@ -123,7 +142,9 @@ export function decodeTelemetryReport(report, identity = null) {
     cpu_usage_core1_basis_points: loads[1] === 65535 ? null : loads[1] };
 }
 
+/** @param {Uint8Array} cid */
 function decodeCid(cid) {
+  /** @param {number} start @param {number} end */
   const ascii = (start, end) => String.fromCharCode(...cid.slice(start, end)).replace(/[\0 ]+$/, "");
   return { id: cid[0], oem_id: ascii(1, 3), product_name: ascii(3, 8),
     product_revision: `${cid[8] >> 4}.${cid[8] & 15}`,
@@ -131,6 +152,8 @@ function decodeCid(cid) {
     manufacture_year: 2000 + ((cid[13] & 15) << 4) + (cid[14] >> 4), manufacture_month: cid[14] & 15 };
 }
 
+/** @brief Decode and validate Input 10 storage status; `identity` additionally checks the storage bus mode. */
+/** @param {HidReport} report @param {ReturnType<typeof decodeIdentityReport> | null} [identity] */
 export function decodeStorageReport(report, identity = null) {
   const view = payload(report, 34);
   const flags = view.getUint8(2);
@@ -168,6 +191,8 @@ export function decodeStorageReport(report, identity = null) {
   };
 }
 
+/** @brief Decode and validate Input 11 benchmark status with derived progress and throughput. */
+/** @param {HidReport} report */
 export function decodeBenchmarkReport(report) {
   const view = payload(report, 32);
   const state = view.getUint8(2);
@@ -187,24 +212,30 @@ export function decodeBenchmarkReport(report) {
   return { sequence: view.getUint8(1),
     state: ["idle", "queued", "preparing", "writing", "reading", "cleanup", "passed", "failed", "cancelled"][state],
     state_id: state, active: state >= 1 && state <= 5, target_bytes: target, written_bytes: written, read_bytes: read,
-    write_elapsed_ms: writeMs, read_elapsed_ms: readMs, mismatch_count: mismatches, error, filesystem_result: filesystem,
+    write_elapsed_ms: writeMs, read_elapsed_ms: readMs, mismatch_count: mismatches, error,
+    filesystem_result: filesystem,
     file_remains: Boolean(flags & 1), volume_mounted: Boolean(flags & 2),
     progress_percent: target ? (written + read) * 50 / target : 0,
     write_bytes_per_second: writeMs ? written * 1000 / writeMs : null,
     read_bytes_per_second: readMs ? read * 1000 / readMs : null };
 }
 
+/** @brief Build a 68-byte Feature 20 request; throws unless the opcode descriptor accepts it. */
+/** @param {number} transaction @param {number} opcode @param {{flags?: number, args?: ArrayLike<number>}} [options] */
 export function buildControlRequest(transaction, opcode, { flags = 0, args = [] } = {}) {
+  const values = Array.from(args);
   requireValid(Number.isInteger(transaction) && transaction >= 1 && transaction <= 255, "transaction-id");
   requireValid(Number.isInteger(opcode) && opcode >= 0 && opcode <= 255
     && Number.isInteger(flags) && flags >= 0 && flags <= 255
-    && args.length <= 64 && [...args].every(value => Number.isInteger(value) && value >= 0 && value <= 255),
+    && values.length <= 64 && values.every(value => Number.isInteger(value) && value >= 0 && value <= 255),
   "command-arguments");
-  const report = Uint8Array.from([1, transaction, opcode, flags, ...args, ...Array(64 - args.length).fill(0)]);
+  const report = Uint8Array.from([1, transaction, opcode, flags, ...values, ...Array(64 - values.length).fill(0)]);
   requireValid(OPCODES[opcode]?.request(report, offset => zero(report.subarray(offset))), "control-request");
   return report;
 }
 
+/** @brief Decode and validate a Feature 20 result; `ble` applies the Bluetooth opcode and detail policy. */
+/** @param {HidReport} report @param {{ble?: boolean}} [options] */
 export function decodeControlResult(report, { ble = false } = {}) {
   const view = payload(report, 68);
   const transaction = view.getUint8(1);
@@ -221,7 +252,8 @@ export function decodeControlResult(report, { ble = false } = {}) {
     , "control-result");
   const data = bytesAt(view, 5, 63).slice();
   const detail = [3, 5, 6].includes(status) ? data[0] : 0;
-  requireValid((ble || detail !== 28) && (!ble || !descriptor || descriptor.ble || status === 4 && error === 4),
+  requireValid((ble || detail !== 28) && (!ble || !descriptor || descriptor.ble !== null
+    || status === 4 && error === 4),
     "transport-result");
   if ([3, 5, 6].includes(status)) {
     requireValid(zero(data.subarray(1)) && (!detail || descriptor?.details?.[detail] === status
@@ -236,16 +268,23 @@ export function decodeControlResult(report, { ble = false } = {}) {
     commit_mask: saved ? data[4] : 0, settings: saved ? decodeSettings(data) : null };
 }
 
+/** @brief Whether a WebHID device exposes the ESPForge VID:PID and vendor collection. */
+/** @param {{vendorId: number, productId: number, collections: Array<{usagePage: number, usage: number}>}} device */
 export function matchesEspForge(device) {
   return device.vendorId === DEVICE_FILTER.vendorId && PRODUCT_IDS.includes(device.productId)
     && device.collections.some(collection => collection.usagePage === DEVICE_FILTER.usagePage
       && collection.usage === DEVICE_FILTER.usage);
 }
 
+/** @param {HidReport} report */
 const bytesOf = report => report instanceof DataView
   ? new Uint8Array(report.buffer, report.byteOffset, report.byteLength) : report;
 
-/** Preserve opaque bytes separately from the printable, never round-tripped label. */
+const UTF8 = new TextDecoder("utf-8", { fatal: true });
+const UTF8_ENCODER = new TextEncoder();
+
+/** @brief Printable SSID label with `\xHH` escapes; never round-tripped, so callers keep the raw bytes. */
+/** @param {Uint8Array} bytes */
 export function displaySsid(bytes) {
   let text = "";
   for (let index = 0; index < bytes.length;) {
@@ -255,7 +294,7 @@ export function displaySsid(bytes) {
     let decoded;
     try {
       if (!size || index + size > bytes.length) throw new Error();
-      decoded = new TextDecoder("utf-8", { fatal: true }).decode(bytes.subarray(index, index + size));
+      decoded = UTF8.decode(bytes.subarray(index, index + size));
     } catch { decoded = null; }
     if (!decoded || /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(decoded)) {
       text += `\\x${byte.toString(16).padStart(2, "0").toUpperCase()}`;
@@ -265,6 +304,8 @@ export function displaySsid(bytes) {
   return text;
 }
 
+/** @brief SSID bytes from `ssid_hex` or UTF-8 `ssid`, limited to 32 bytes. */
+/** @param {{ssid?: string, ssid_hex?: string}} settings */
 export function ssidBytes(settings) {
   if (settings.ssid_hex !== undefined) {
     if (typeof settings.ssid_hex !== "string" || !/^(?:[a-f0-9]{2}){0,32}$/i.test(settings.ssid_hex)) {
@@ -273,11 +314,13 @@ export function ssidBytes(settings) {
     return hexToBytes(settings.ssid_hex);
   }
   if (typeof settings.ssid !== "string") throw new BoardError(REASON.SSID_MISSING);
-  const bytes = new TextEncoder().encode(settings.ssid);
+  const bytes = UTF8_ENCODER.encode(settings.ssid);
   if (bytes.length > 32) throw new BoardError(REASON.SSID_LENGTH);
   return bytes;
 }
 
+/** @brief Decode and validate Feature 12 wireless status; `settings` adds the configured radio switches. */
+/** @param {HidReport} report @param {{radios: number}} [settings] */
 export function decodeWireless(report, settings) {
   const bytes = bytesOf(report);
   if (!(bytes instanceof Uint8Array) || bytes.length !== 48 || bytes[0] !== 1 || bytes[1] > 6
@@ -295,7 +338,9 @@ export function decodeWireless(report, settings) {
   }
   const ssid = bytes.subarray(10, 10 + bytes[9]);
   return {
-    ...(settings ? { wifi_enabled: Boolean(settings.radios & 1), ble_enabled: Boolean(settings.radios & 2) } : {}),
+    ...(settings
+      ? { wifi_enabled: Boolean(settings.radios & RADIOS.WIFI), ble_enabled: Boolean(settings.radios & RADIOS.BLE) }
+      : {}),
     wifi_state: ["disabled", "connecting", "connected", "failed", "testing", "test_joined", "test_failed"][bytes[1]],
     state: bytes[1], detail: bytes[2] <= 6 ? bytes[2] : 0,
     ble_state: ["off", "advertising", "connected"][bytes[3]],
@@ -308,12 +353,14 @@ export function decodeWireless(report, settings) {
   };
 }
 
+/** @brief Decode the scan-entry data of a completed opcode 12 result. */
+/** @param {Pick<ReturnType<typeof decodeControlResult>, "data">} result */
 export function decodeScanEntry(result) {
   const data = result.data;
   const raw = data.subarray(4, 4 + data[3]);
   const security = data[37];
   return { generation: data[0] | data[1] << 8, index: data[2], ssid: displaySsid(raw), ssid_hex: bytesToHex(raw),
-    rssi: new DataView(data.buffer, data.byteOffset).getInt8(36), secured: Boolean(security),
+    rssi: new DataView(data.buffer, data.byteOffset, data.byteLength).getInt8(36), secured: Boolean(security),
     security: security & 4 ? security & 2 ? "WPA/RSN" : "RSN (WPA2/WPA3)"
       : security & 2 ? "WPA" : security & 1 ? "WEP" : "Open" };
 }

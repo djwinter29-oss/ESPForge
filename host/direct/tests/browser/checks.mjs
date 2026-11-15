@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 // Copyright (c) 2026 Ji Dong
 
-import { bindWirelessForm } from "../../web/js/ui/sections/wireless-form.mjs";
+import { bindWirelessForm } from "../../web/js/ui/sections/wireless-form/wireless-form.mjs";
 
 const results = document.querySelector("#results");
 const report = (name, error) => {
@@ -316,7 +316,8 @@ await run("telemetry bursts coalesce and avoid unchanged connection-label writes
     let provisioningWrites = 0;
     const provisioningObserver = new MutationObserver(records => { provisioningWrites += records.length; });
     for (const id of ["direct-wireless-summary", "direct-wifi-status", "direct-ble-status"]) {
-      provisioningObserver.observe(page.querySelector(`#${id}`), { childList: true, characterData: true, subtree: true });
+      provisioningObserver.observe(page.querySelector(`#${id}`),
+        { childList: true, characterData: true, subtree: true });
     }
     try {
       for (let index = 0; index < 60; index++) {

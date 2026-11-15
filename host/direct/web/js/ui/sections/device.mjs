@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 // Copyright (c) 2026 Ji Dong
 
+import { REPORT } from "../../protocol/constants.mjs";
 import { queryElement, setText } from "../dom.mjs";
 import { unknown } from "../messages.mjs";
 import { deriveDashboardViewModel } from "./status-model.mjs";
@@ -21,6 +22,7 @@ function uptimeLabel(milliseconds) {
   return days > 0 ? `${days}d ${hours}h ${minutes}m` : `${hours}h ${minutes}m ${seconds % 60}s`;
 }
 
+/** @brief Identity, runtime, pin-map and freshness text for the device panels; pure. */
 export function deriveDeviceViewModel(state, dashboard = deriveDashboardViewModel(state)) {
   const hardware = state.hardware;
   const runtime = state.runtime;
@@ -44,7 +46,7 @@ export function deriveDeviceViewModel(state, dashboard = deriveDashboardViewMode
     ...dashboard,
     active: Boolean(state.connected && runtime),
     error: Boolean(state.error),
-    freshness: [[3, "telemetry"], [10, "storage"]].map(([id, label]) => ({
+    freshness: [[REPORT.TELEMETRY, "telemetry"], [REPORT.STORAGE, "storage"]].map(([id, label]) => ({
       label, hidden: state.freshness?.[id] === "fresh", text: `${label}: ${state.freshness?.[id] ?? "unavailable"}`,
     })),
     pins: {
@@ -86,6 +88,7 @@ export function deriveDeviceViewModel(state, dashboard = deriveDashboardViewMode
   };
 }
 
+/** @brief Apply the device view model; pin tables are rebuilt only when the board configuration changes. */
 export function renderDevice(state, dashboard) {
   const model = deriveDeviceViewModel(state, dashboard);
   setText({ ...model.text, "connection-label": model.connection_label, "status-message": model.status_message });

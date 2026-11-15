@@ -9,7 +9,6 @@ export class ConsoleTerminal {
   column = 0;
   saved = [0, 0];
   escape = "";
-  lineOffset = 0;
 
   /** @param {string} text */
   write(text) {
@@ -38,7 +37,6 @@ export class ConsoleTerminal {
       }
       if (this.lines.length > 1000) {
         this.lines.shift();
-        this.lineOffset++;
         this.row--;
         this.saved[0] = Math.max(0, this.saved[0] - 1);
       }

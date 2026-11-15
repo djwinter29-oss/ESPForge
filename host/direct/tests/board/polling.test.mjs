@@ -9,7 +9,9 @@ import { BoardSession } from "../../web/js/board/session.mjs";
 import {
   telemetry, storage, result, fakeConnection, emit, attachDevice, says, patchState,
 } from "../support/fixtures.mjs";
-import { lifecycleOutcome, ReportReceipts, wirelessPollInterval } from "../../web/js/board/polling.mjs";
+import {
+  ReportReceipts, wirelessLifecycleOutcome, wirelessPollIntervalMs,
+} from "../../web/js/board/polling.mjs";
 import { REASON } from "../../web/js/state/errors.mjs";
 import { BleTransport } from "../../web/js/transport/ble.mjs";
 import { status, connected } from "../support/wireless.mjs";
@@ -64,7 +66,7 @@ test("Report12 freshness uses active500ms/idle2s and invalid reads never refresh
   now = 6000; setup.client.expireReports(); assert.equal(setup.client.state.wireless, null);
   current = status({ state: 4, flags: 48, testGeneration: 1 });
   await setup.client.readWireless();
-  assert.equal(wirelessPollInterval(setup.client.state.wireless), 500);
+  assert.equal(wirelessPollIntervalMs(setup.client.state.wireless), 500);
   current = new Uint8Array(53);
   now = 7499; await assert.rejects(setup.client.readWireless());
   setup.client.expireReports(); assert.ok(setup.client.state.wireless);
@@ -79,7 +81,8 @@ test("slow BLE polling keeps valid snapshots visible but still expires missing a
   const client = new BoardSession(transport, { pendingStore: setup.pendingStore, now: () => now,
     wirelessPolling: false });
   patchState(client, { ...setup.client.state, link: "ble",
-    hardware: { ...setup.client.state.hardware, capabilities: setup.client.state.hardware.capabilities | CAP.SELF_TEST } });
+    hardware: { ...setup.client.state.hardware,
+      capabilities: setup.client.state.hardware.capabilities | CAP.SELF_TEST } });
   setup.client.dispose();
   transport.device = Object.assign(new EventTarget(), { gatt: { connected: true, disconnect() {} } });
   const benchmark = new Uint8Array(32); benchmark[0] = 1;
@@ -242,17 +245,40 @@ test("a BLE command that times out behind a status read must never write later",
   } finally { release?.(); client.dispose(); }
 });
 
-test("lifecycleOutcome reads one Feature 12 snapshot against the accepted generation", () => {
+test("wirelessLifecycleOutcome reads one Feature 12 snapshot against the accepted generation", () => {
   const scan = { operation: OP.SCAN, generation: 4 };
-  assert.equal(lifecycleOutcome({ scan_generation: 4, scan_state: 1 }, scan), null);
-  assert.equal(lifecycleOutcome({ scan_generation: 4, scan_state: 2 }, scan).kind, "completed");
-  const failed = lifecycleOutcome({ scan_generation: 4, scan_state: 3 }, scan);
+  assert.equal(wirelessLifecycleOutcome({ scan_generation: 4, scan_state: 1 }, scan), null);
+  assert.equal(wirelessLifecycleOutcome({ scan_generation: 4, scan_state: 2 }, scan).kind, "completed");
+  const failed = wirelessLifecycleOutcome({ scan_generation: 4, scan_state: 3 }, scan);
   assert.deepEqual([failed.kind, describe(failed.error)], ["failed", "Wireless scan failed"]);
-  assert.throws(() => lifecycleOutcome({ scan_generation: 5, scan_state: 2 }, scan), says(/generation changed/));
+  assert.throws(() => wirelessLifecycleOutcome({ scan_generation: 5, scan_state: 2 }, scan),
+    says(/generation changed/));
   const wifiTest = { operation: OP.TEST_WIFI, generation: 2 };
-  assert.equal(lifecycleOutcome({ test_generation: 2, state: 5, pair_tested: true }, wifiTest).result
+  assert.equal(wirelessLifecycleOutcome({ test_generation: 2, state: 5, pair_tested: true }, wifiTest).result
     .remaining_seconds, 599);
-  assert.ok(says(/^Password rejected$/)(lifecycleOutcome({ test_generation: 2, state: 6, detail: 3 }, wifiTest).error));
+  assert.ok(says(/^Password rejected$/)(
+    wirelessLifecycleOutcome({ test_generation: 2, state: 6, detail: 3 }, wifiTest).error));
+});
+
+test("invalidate publishes all listed reports stale in one event and ignores an empty list", async () => {
+  const { client, device } = fakeConnection({ capabilities: 0xb6 });
+  await client.connect();
+  emit(device, 3, telemetry()); emit(device, 10, storage());
+  let dispatches = 0;
+  const unsubscribe = client.store.subscribe(() => { dispatches++; });
+  try {
+    client.polling.invalidate([]);
+    client.polling.invalidate();
+    assert.equal(dispatches, 0);
+    client.polling.invalidate([3, 10]);
+    assert.equal(dispatches, 1);
+    assert.equal(client.state.freshness[3], "stale");
+    assert.equal(client.state.freshness[10], "stale");
+    assert.equal(client.state.runtime, null);
+    assert.equal(client.state.memory, null);
+    assert.equal(client.polling.receipts.size, 0);
+  } finally { unsubscribe(); }
+  await client.disconnect();
 });
 
 test("report receipts expire each snapshot after its own lifetime and on suspend", () => {

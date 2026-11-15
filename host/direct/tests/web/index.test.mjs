@@ -20,7 +20,8 @@ test("standalone dashboard labels profiles, active measurements, controls and ac
   }
   assert.doesNotMatch(html, /settings-tcp-auth|ble-view-only|ble-authorize|bluetooth-access-step/);
   assert.match(html, /id="direct-ble-control-key"[^>]*type="password"/);
-  assert.doesNotMatch(html, /settings-storage|High-Speed|tcp-cli|TCP CLI/, "ESPForge has one SD profile and no TCP CLI");
+  assert.doesNotMatch(html, /settings-storage|High-Speed|tcp-cli|TCP CLI/,
+    "ESPForge has one SD profile and no TCP CLI");
   assert.match(html, /id="settings-save"[^>]*>Save&amp;Reboot/);
   assert.match(html, /id="settings-reboot"[^>]*>Reboot/);
   for (const path of ["../../web/index.html"]) {
@@ -41,7 +42,7 @@ test("standalone dashboard labels profiles, active measurements, controls and ac
     assert.match(dashboard, /<dialog[^>]*id="direct-ble-dialog"/);
     assert.doesNotMatch(dashboard, /id="wireless-save"/);
     assert.match(dashboard, /id="direct-configuration-wireless-warning" hidden/);
-    assert.match(footer, /role="status" aria-live="polite"/);
+    assert.match(footer, /id="status-message" role="status" aria-live="polite"/);
     assert.match(footer, /id="status-message"[\s\S]*id="settings-note"/);
     assert.equal([...dashboard.matchAll(/id="settings-note"/g)].length, 1);
     assert.doesNotMatch(dashboard, /self-test|console/);
@@ -78,8 +79,9 @@ test("standalone dashboard labels profiles, active measurements, controls and ac
   assert.doesNotMatch(html, /id="memory-mode"/);
   assert.match(html, /<details class="pin-map-disclosure">/);
   assert.match(html, /id="board-uart"[\s\S]*id="board-storage-pins"/);
-  assert.deepEqual([...html.matchAll(/<dialog class="confirmation-dialog" id="([^"]+)-dialog"/g)].map(match => match[1]),
-    ["msc", "configuration", "reboot", "usb-connection"]);
+  const dialogs = [...html.matchAll(/<dialog class="confirmation-dialog" id="([^"]+)-dialog"/g)];
+  assert.deepEqual(dialogs.map(match => match[1]),
+    ["msc", "benchmark-start", "configuration", "reboot", "usb-connection"]);
   for (const name of ["telemetry", "storage"]) {
     assert.match(html, new RegExp(`id="${name}-freshness" role="status"`));
   }
@@ -97,4 +99,12 @@ test("page assets and local modules use stable same-origin URLs without hand-mai
       assert.doesNotMatch(specifier, /\?v=/, `${path}: ${specifier} must use a stable local URL`);
     }
   }
+});
+
+test("dashboard styles support dark, high-contrast and forced-colors preferences", () => {
+  const css = readFileSync(new URL("../../web/css/direct.css", import.meta.url), "utf8");
+  assert.match(css, /@media \(prefers-color-scheme: dark\)/);
+  assert.match(css, /@media \(prefers-contrast: more\)/);
+  assert.match(css, /@media \(forced-colors: active\)/);
+  assert.match(css, /@media \(forced-colors: active\)[\s\S]*outline: 2px solid Highlight/);
 });

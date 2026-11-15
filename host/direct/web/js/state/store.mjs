@@ -37,10 +37,13 @@ export function createStore(reducer, initial) {
 /** @param {DashboardState} [initial] */
 export const createDashboardStore = (initial = {}) => createStore(dashboardReducer, initial);
 
-/** @brief Initial dashboard-only state; reset whenever the board disconnects. */
-/** @type {Readonly<import("./reducer.mjs").UiState>} */
+/**
+ * @brief Initial dashboard-only state; reset whenever the board disconnects.
+ * @type {Readonly<import("./reducer.mjs").UiState>}
+ */
 export const UI_INITIAL = Object.freeze({
   settings_dirty: false, wireless_form_busy: false, settings_message: null, action_error: null,
 });
 
+/** @brief Create the dashboard-only presentation store, separate from board domain state. */
 export const createUiStore = () => createStore(uiReducer, { ...UI_INITIAL });

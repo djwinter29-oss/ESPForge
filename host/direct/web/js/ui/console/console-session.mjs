@@ -2,10 +2,15 @@
 // Copyright (c) 2026 Ji Dong
 
 // @ts-check
+/** @file Console page controller: relay session lifetime, bounded input queue and terminal rendering. */
 import { ConsoleTerminal, consoleKey } from "./console-terminal.mjs";
 
+const UTF8_ENCODER = new TextEncoder();
+
 /**
- * @param {{openUrl: string, openBody: object, check?: () => Promise<void>}} options
+ * @brief Bind the console page to the loopback relay. Input that may have reached the board is never retried.
+ * @param {{openUrl: string, openBody: object, check?: () => Promise<void>}} options `check` re-validates the target
+ *   before each open and input write.
  */
 export function mountConsole({ openUrl, openBody, check = async () => {} }) {
   const toggle = /** @type {HTMLButtonElement} */ (document.querySelector("#console-toggle"));
@@ -109,7 +114,7 @@ export function mountConsole({ openUrl, openBody, check = async () => {} }) {
     life.sending = true;
     try {
       while (active === life && life.pending) {
-        const bytes = new TextEncoder().encode(life.pending);
+        const bytes = UTF8_ENCODER.encode(life.pending);
         life.pending = "";
         await check();
         if (active !== life) return;
@@ -131,7 +136,7 @@ export function mountConsole({ openUrl, openBody, check = async () => {} }) {
   function enqueue(text) {
     const life = active;
     if (life === null || life.token === null || !text) return;
-    if (new TextEncoder().encode(life.pending + text).length > 1024) {
+    if (UTF8_ENCODER.encode(life.pending + text).length > 1024) {
       status.textContent = "Input exceeds the 1024-byte queue limit; this input was not sent.";
       return;
     }
@@ -162,7 +167,8 @@ export function mountConsole({ openUrl, openBody, check = async () => {} }) {
       output.focus();
       void read(life);
     } catch (error) {
-      await disconnect(`Cannot connect: ${String(error)}. An unconfirmed connection expires after 15 idle seconds.`, life);
+      await disconnect(`Cannot connect: ${String(error)}. An unconfirmed connection expires after 15 idle seconds.`,
+        life);
     }
   }
 

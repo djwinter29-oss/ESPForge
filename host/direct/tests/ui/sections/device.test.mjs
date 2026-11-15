@@ -7,7 +7,8 @@ import { withDocument, snapshot } from "../../support/view.mjs";
 import { deriveDashboardViewModel } from "../../../web/js/ui/sections/status-model.mjs";
 import { deriveDeviceViewModel } from "../../../web/js/ui/sections/device.mjs";
 
-test("module memory keeps PSRAM separate from SRAM and unavailable flash unknown", () => withDocument((el, renderStatus) => {
+test("module memory keeps PSRAM separate from SRAM and unavailable flash unknown",
+  () => withDocument((el, renderStatus) => {
   const state = snapshot();
   state.hardware = { ...state.hardware, psram_total_bytes: 8 << 20, psram_reserved_bytes: 1 << 20,
     flash_total_bytes: 16 << 20 };

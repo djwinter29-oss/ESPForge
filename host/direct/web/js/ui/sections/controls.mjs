@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: BSD-3-Clause
 // Copyright (c) 2026 Ji Dong
 
+/** @file Board-control view model and rendering: clock options, settings form gates and control buttons. */
+import { CAP, CLOCKS_MHZ, CONFIG_FLAGS, REPORT } from "../../protocol/constants.mjs";
 import { canRun } from "../../state/selectors.mjs";
 import { queryElement, setText } from "../dom.mjs";
 import { describe } from "../messages.mjs";
@@ -13,17 +15,23 @@ const element = id => queryElement(`#${id}`);
  *   wirelessDirty: boolean, wirelessSaveBlockReason: string | null}} ControlsUi
  */
 
+/**
+ * @brief Clock choices for an MCU; a saved unsupported clock stays visible but disabled.
+ * @param {string | null | undefined} mcu Reported MCU name; only ESP32-S3 offers the selectable clocks.
+ * @param {number | null | undefined} savedClock Saved next-boot clock in MHz.
+ * @return {{signature: string, choices: Array<[number, string, boolean?]>}} `signature` changes with the choices.
+ */
 export function deriveClockOptions(mcu, savedClock) {
+  /** @type {Array<[number, string, boolean?]>} */
   const choices = mcu === "ESP32-S3"
-    ? [[0, "Default (240 MHz)"], [80, "80 MHz"], [160, "160 MHz"], [240, "240 MHz"]] : [[0, "Default"]];
+    ? CLOCKS_MHZ.map(mhz => [mhz, mhz ? `${mhz} MHz` : "Default (240 MHz)"]) : [[0, "Default"]];
   const unsupported = Number.isInteger(savedClock) && savedClock !== 0
     && !choices.some(([value]) => value === savedClock) ? savedClock : null;
-  return {
-    signature: `${mcu ?? "unknown"}:${unsupported ?? ""}`,
-    choices: [...choices, ...(unsupported === null ? [] : [[unsupported, `${unsupported} MHz (saved; unsupported)`, true]])],
-  };
+  if (unsupported !== null) choices.push([unsupported, `${unsupported} MHz (saved; unsupported)`, true]);
+  return { signature: `${mcu ?? "unknown"}:${unsupported ?? ""}`, choices };
 }
 
+/** @brief Rebuild the clock select only when its choices change, preserving a still-valid selection. */
 export function renderClockOptions(state) {
   const model = deriveClockOptions(state.hardware?.mcu, state.settings?.system_clock_mhz);
   const select = queryElement("select#settings-clock");
@@ -94,7 +102,8 @@ export function deriveControlsViewModel(state, ui, environment) {
             : !bluetooth && state.connected ? "Connected through USB." : "Select an ESPForge board to connect.",
       "bluetooth-connection-status": bleUnsupported
         ? "Web Bluetooth requires a supported browser and operating system on HTTPS or localhost."
-        : bluetooth && state.error ? state.error : bluetooth && state.busy ? "Select a nearby board; connecting through Bluetooth…"
+        : bluetooth && state.error ? state.error
+          : bluetooth && state.busy ? "Select a nearby board; connecting through Bluetooth…"
           : bluetooth && state.connected ? `Connected to ${ui.bleName || state.hardware?.board_name || "ESPForge"}.`
             : "Enter the control key, then scan for nearby ESPForge boards.",
       "settings-note": settingsNote,
@@ -103,16 +112,18 @@ export function deriveControlsViewModel(state, ui, environment) {
   };
 }
 
-/** @copydoc deriveControlsViewModel */
-/** @type {(state: Parameters<typeof deriveControlsViewModel>[0], ui: ControlsUi,
- *   environment: Parameters<typeof deriveControlsViewModel>[2]) => void} */
+/**
+ * @brief Apply the controls view model and the LED and USB storage visibility.
+ * @type {(state: Parameters<typeof deriveControlsViewModel>[0], ui: ControlsUi,
+ *   environment: Parameters<typeof deriveControlsViewModel>[2]) => void}
+ */
 export function renderControls(state, ui, environment) {
   const model = deriveControlsViewModel(state, ui, environment);
-  element("led-control").hidden = !((state.hardware?.capabilities ?? 0) & 1);
-  queryElement("select#led-colour").value = state.freshness?.[3] === "fresh"
+  element("led-control").hidden = !((state.hardware?.capabilities ?? 0) & CAP.LED);
+  queryElement("select#led-colour").value = state.freshness?.[REPORT.TELEMETRY] === "fresh"
     ? String(state.runtime?.led_colour ?? "") : "";
   queryElement("select#led-colour").disabled = ui.formBusy || !ui.eligibility.ledReady;
-  element("msc-controls").hidden = !((state.settings?.board_flags ?? 0) & 64) || state.link === "ble";
+  element("msc-controls").hidden = !((state.settings?.board_flags ?? 0) & CONFIG_FLAGS.MSC) || state.link === "ble";
   if (model.settingsValues) {
     queryElement("select#settings-clock").value = String(model.settingsValues.system_clock_mhz);
     ["direct-settings-wifi", "direct-settings-ble"].forEach((id, bit) => {

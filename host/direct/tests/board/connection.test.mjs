@@ -19,7 +19,8 @@ test("advertised memory inventory is required at connection and legacy firmware 
   assert.ok(broken.client.state.error);
 });
 
-test("mandatory connection reads reject malformed identity/config failures and ignore unknown input reports", async () => {
+test("mandatory connection reads reject malformed identity/config failures and ignore unknown input reports",
+  async () => {
   const { client, device, reads } = fakeConnection({ capabilities: 2 | 4 | 16 });
   await client.connect();
   assert.deepEqual(reads, [1, 2]);

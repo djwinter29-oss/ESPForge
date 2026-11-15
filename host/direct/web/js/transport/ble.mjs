@@ -7,15 +7,22 @@ import { CAP } from "../protocol/constants.mjs";
 import { wait } from "../timers.mjs";
 import { BoardError, REASON } from "../state/errors.mjs";
 
+/** @brief ESPForge's primary Bluetooth LE service UUID. */
 export const BLE_SERVICE = "ef5c0000-7c91-4d70-8b32-6e856443f502";
 const characteristic = id => `ef5c${id.toString(16).padStart(4, "0")}-7c91-4d70-8b32-6e856443f502`;
 const GATT_SERVICE = 0x1801;
 const SERVICE_CHANGED = 0x2a05;
 /** @brief Required characteristics; benchmark and module-memory mirrors are discovered from identity. */
 const CHARACTERISTICS = [1, 2, 3, 10, 12, 20, 256, 257];
+const encoder = new TextEncoder();
+const PROOF_DOMAIN = encoder.encode("PFBLECTL1");
+const SESSION_REQUEST = encoder.encode("SESSION01");
 
 /** @typedef {import("./transport.mjs").Transport} Transport */
-/** @implements {Transport} */
+/**
+ * @brief Web Bluetooth byte pipe over the ESPForge GATT report mirrors, with session and per-request HMAC proofs.
+ * @implements {Transport}
+ */
 export class BleTransport extends EventTarget {
   constructor(bluetooth, { sleep = wait } = {}) {
     super();
@@ -35,11 +42,7 @@ export class BleTransport extends EventTarget {
     this.sleep = sleep;
     this.onDisconnect = () => {
       if (this.connecting) return;
-      this.bleKey = null;
-      this.gattQueue = Promise.resolve();
-      this.characteristics.clear();
-      this.device?.removeEventListener("gattserverdisconnected", this.onDisconnect);
-      this.device = null;
+      this.detach();
       this.dispatchEvent(new Event("disconnect"));
     };
   }
@@ -58,6 +61,7 @@ export class BleTransport extends EventTarget {
     } finally { if (bytes instanceof Uint8Array) bytes.fill(0); }
   }
 
+  /** @brief Answer a fresh nonce with the truncated HMAC of nonce, board UID, proof domain and `request`. */
   async prove(uid, request, signal) {
     signal.throwIfAborted();
     const value = await this.characteristics.get(256).readValue();
@@ -66,18 +70,19 @@ export class BleTransport extends EventTarget {
     if (nonce.length !== 16) {
       throw Object.assign(new BoardError(REASON.BLE_CHALLENGE), { final: true });
     }
-    const message = new Uint8Array([...nonce, ...uid, ...new TextEncoder().encode("PFBLECTL1"), ...request]);
+    const message = new Uint8Array([...nonce, ...uid, ...PROOF_DOMAIN, ...request]);
     const mac = new Uint8Array(await crypto.subtle.sign("HMAC", this.bleKey, message));
     signal.throwIfAborted();
     await this.characteristics.get(257).writeValueWithResponse(mac.slice(0, 16));
     signal.throwIfAborted();
   }
 
+  /** @brief Read identity and prove the session with the Control key; @return the decoded identity. */
   async unlock(signal) {
     const value = await this.readReport(1, signal);
     const hardware = decodeIdentityReport(value);
     this.uid = hardware.serial_number;
-    try { await this.prove(hexToBytes(this.uid), new TextEncoder().encode("SESSION01"), signal); }
+    try { await this.prove(hexToBytes(this.uid), SESSION_REQUEST, signal); }
     catch (error) {
       if (signal.aborted || error.final || !this.device?.gatt.connected) throw error;
       throw Object.assign(new BoardError(REASON.BLE_UNLOCK_REJECTED), { final: true });
@@ -85,6 +90,10 @@ export class BleTransport extends EventTarget {
     return hardware;
   }
 
+  /**
+   * @brief Import `key`, prompt for a board, discover its mirrors and unlock the session.
+   * @return {Promise<boolean>} true once unlocked; failures disconnect and rethrow.
+   */
   async connect(key, signal) {
     if (!this.api) throw new BoardError(this.unavailableReason);
     signal.throwIfAborted();
@@ -99,7 +108,7 @@ export class BleTransport extends EventTarget {
       signal.throwIfAborted();
       this.device = device;
       device.addEventListener("gattserverdisconnected", this.onDisconnect);
-      // ponytail: retry only read-only setup, at most three times on the selected board; never retry a command.
+      // Retry only read-only setup, at most three times on the selected board; never retry a command.
       for (let attempt = 1; ; attempt++) {
         try {
           const server = await device.gatt.connect();
@@ -159,6 +168,7 @@ export class BleTransport extends EventTarget {
     return result;
   }
 
+  /** @brief Read a mirror; a 9-byte control result is zero-extended to the 68-byte Feature 20 layout. */
   async readReport(id, signal) {
     return this.runGatt(async () => {
       const value = await this.characteristics.get(id).readValue();
@@ -171,6 +181,7 @@ export class BleTransport extends EventTarget {
     }, signal);
   }
 
+  /** @brief Write a control request as its 9-byte prefix, after a proof unless the opcode is exempt. */
   async writeReport(id, report, signal) {
     signal.throwIfAborted();
     // Framing only: the BLE request is the 9-byte prefix; link policy is enforced by the session before writing.
@@ -191,14 +202,19 @@ export class BleTransport extends EventTarget {
     }, signal);
   }
 
-  async disconnect() {
+  /** @brief Forget the session key, queued GATT work and handles; @return the detached device, if any. */
+  detach() {
+    const device = this.device;
     this.bleKey = null;
     this.gattQueue = Promise.resolve();
     this.characteristics.clear();
-    this.device?.removeEventListener("gattserverdisconnected", this.onDisconnect);
-    this.device?.gatt.disconnect();
+    device?.removeEventListener("gattserverdisconnected", this.onDisconnect);
     this.device = null;
+    return device;
   }
+
+  /** @brief Detach, then close the GATT connection. */
+  async disconnect() { this.detach()?.gatt.disconnect(); }
 
   async dispose() { await this.disconnect(); }
 }

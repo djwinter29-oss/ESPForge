@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Ji Dong
 
 /** @file Wireless form presentation: apply a readiness/draft snapshot without performing device I/O. */
-import { queryElement, setText } from "../dom.mjs";
+import { queryElement, setText } from "../../dom.mjs";
 
 /**
  * @typedef {object} WirelessFormView
@@ -10,7 +10,7 @@ import { queryElement, setText } from "../dom.mjs";
  * @property {boolean} wirelessReady
  * @property {boolean} radioReady
  * @property {import("./wireless-form.mjs").WirelessStatus | null} status
- * @property {import("./wireless-form.mjs").FormState} form
+ * @property {import("./wireless-form-state.mjs").FormState} form
  * @property {import("./wireless-form.mjs").TestedPair | null} wifiStage
  * @property {number} remainingSeconds
  * @property {string | undefined} selectedSsidHex
@@ -48,7 +48,8 @@ export function renderWirelessForm({
   }
   queryElement("button#direct-wifi-connect").disabled ||= !queryElement("input#direct-wifi-ssid").value;
   el("direct-wifi-connect").textContent = form.phase === "testing" ? "Testing…" : "Test connection";
-  queryElement("button#direct-wifi-cancel").disabled = working || form.phase === "canceling" || form.cancelNeedsReconnect;
+  queryElement("button#direct-wifi-cancel").disabled = working || form.phase === "canceling"
+    || form.cancelNeedsReconnect;
   el("direct-wifi-cancel").textContent = form.phase === "canceling" ? "Clearing…"
     : form.phase === "cancelFailed" ? "Retry clearing test" : "Cancel";
   for (const id of ["direct-wifi-ssid", "direct-wifi-password"]) queryElement(`input#${id}`).disabled = blocked;

@@ -20,7 +20,8 @@ test("storage does not infer absence from an unavailable sample or mount from ca
   state.memory.present = true; state.memory.initialized = false;
   renderStatus(state);
   assert.equal(el('[aria-labelledby="memory-title"]').hidden, false);
-  assert.equal(el("#memory-note").textContent, "Card detected but not initialized; check UART logs and SD-card wiring.");
+  assert.equal(el("#memory-note").textContent,
+    "Card detected but not initialized; check UART logs and SD-card wiring.");
   state.memory.presence_known = false; state.memory.present = false;
   renderStatus(state);
   assert.equal(el("#memory-note").textContent, "No card mounted; check card insertion and SD-card wiring.");
@@ -39,7 +40,8 @@ test("Direct dashboard retains storage visibility through stale reports without 
       state.storage_stale = true;
       state.freshness[10] = "stale";
       render(state);
-      assert.equal(el('[aria-labelledby="memory-title"]').hidden, true, "A missing report must not reveal absent storage");
+      assert.equal(el('[aria-labelledby="memory-title"]').hidden, true,
+        "A missing report must not reveal absent storage");
 
       state.memory = { sample_valid: true, presence_known: true, present: true, initialized: true, configured: true };
       state.storage_stale = false;

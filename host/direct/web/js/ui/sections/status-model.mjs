@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 // Copyright (c) 2026 Ji Dong
 
+/** @file Pure presentation model: connection banner text and form-aware operation eligibility. */
 import { deriveOperationEligibility } from "../../state/selectors.mjs";
 
 /**
@@ -25,14 +26,17 @@ export function deriveViewEligibility(state, formBusy = false) {
  */
 export function deriveDashboardViewModel(state, formBusy = false) {
   const connected = Boolean(state.connected);
+  const bluetooth = state.link === "ble";
+  const rebooting = bluetooth ? "Reboot accepted; reconnect Bluetooth after the board restarts"
+    : "Reboot accepted; waiting for USB reconnection";
   return {
     eligibility: deriveViewEligibility(state, formBusy),
     connection_state: state.error ? "error" : connected ? "connected" : "disconnected",
     connection_label: state.error ? "Attention" : state.reconnecting ? "Reconnecting"
       : connected ? "Connected" : "Disconnected",
     status_message: state.error ?? (state.reconnecting ? "USB device reconnecting; reopening HID automatically"
-      : state.recovery_message ?? (state.reboot_pending ? "Reboot accepted; waiting for USB reconnection"
-        : state.runtime ? "HID status is live"
+      : state.recovery_message ?? (state.reboot_pending ? rebooting
+        : state.runtime ? `${bluetooth ? "Bluetooth" : "USB"} status is live`
           : connected ? "Waiting for first status report" : "Select an ESPForge device")),
   };
 }

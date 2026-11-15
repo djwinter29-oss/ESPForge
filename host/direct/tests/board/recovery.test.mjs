@@ -12,7 +12,8 @@ import {
 } from "../support/fixtures.mjs";
 import { connected, radio } from "../support/wireless.mjs";
 
-test("disconnect during GET clears caches and reconnect resolves only the original result, without SET replay", async () => {
+test("disconnect during GET clears caches and reconnect resolves only the original result, without SET replay",
+  async () => {
   const { client, device, hid, sent } = fakeConnection();
   await client.connect();
   emit(device, 3, telemetry());

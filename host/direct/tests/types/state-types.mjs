@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Ji Dong
 
 import { createDashboardStore, createUiStore } from "../../web/js/state/store.mjs";
-import { bindWirelessForm } from "../../web/js/ui/sections/wireless-form.mjs";
+import { bindWirelessForm } from "../../web/js/ui/sections/wireless-form/wireless-form.mjs";
 import { mountDashboard } from "../../web/js/ui/dashboard.mjs";
 import { deriveControlsViewModel } from "../../web/js/ui/sections/controls.mjs";
 import { queryElement } from "../../web/js/ui/dom.mjs";
@@ -84,7 +84,7 @@ function checkControlTypes(controls) {
   // @ts-expect-error Save blockers are user-facing text or null, not a second boolean gate.
   controls.wirelessSaveBlockReason = false;
 }
-/** @param {ReturnType<typeof import("../../web/js/ui/sections/wireless-form.mjs").bindWirelessForm>} form */
+/** @param {ReturnType<typeof import("../../web/js/ui/sections/wireless-form/wireless-form.mjs").bindWirelessForm>} form */
 function checkFormSnapshot(form) {
   // @ts-expect-error Render-only readiness has boolean gates.
   form.update({}, { wireless: true, settings: "ready" });

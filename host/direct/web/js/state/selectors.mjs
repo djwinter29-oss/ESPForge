@@ -5,7 +5,7 @@
  * @file Single source of operation readiness. BoardSession guards and every view gate derive from these functions
  * so buttons and device writes cannot disagree.
  */
-import { CAP } from "../protocol/constants.mjs";
+import { CAP, CONFIG_FLAGS, REPORT } from "../protocol/constants.mjs";
 import { REASON } from "./errors.mjs";
 
 const { COMMAND_BLOCKED: BLOCKED, CAPABILITY_UNAVAILABLE: NO_CAPABILITY } = REASON;
@@ -34,9 +34,9 @@ export function commandBlocked(state) {
 export function deriveOperationEligibility(state) {
   const bluetooth = state.link === "ble";
   const caps = state.hardware?.capabilities ?? 0;
-  const storageFresh = state.freshness?.[10] === "fresh" && Boolean(state.memory);
+  const storageFresh = state.freshness?.[REPORT.STORAGE] === "fresh" && Boolean(state.memory);
   const benchmarkSupported = Boolean(caps & CAP.SELF_TEST);
-  const benchmarkFresh = state.freshness?.[11] === "fresh" && Boolean(state.self_test);
+  const benchmarkFresh = state.freshness?.[REPORT.BENCHMARK] === "fresh" && Boolean(state.self_test);
   const benchmarkPending = benchmarkSupported && (!benchmarkFresh || state.self_test?.active);
   const storageReady = storageFresh && state.memory?.sample_valid !== false
     && !state.memory?.msc?.enabled && !state.memory?.msc?.transition_pending && !benchmarkPending;
@@ -44,7 +44,7 @@ export function deriveOperationEligibility(state) {
   return {
     blocked,
     storageReady,
-    ledReady: !blocked && Boolean(caps & CAP.LED) && state.freshness?.[3] === "fresh"
+    ledReady: !blocked && Boolean(caps & CAP.LED) && state.freshness?.[REPORT.TELEMETRY] === "fresh"
       && state.runtime?.led_available === true,
     benchmarkSupported,
     benchmarkReady: !blocked && !bluetooth && benchmarkSupported && benchmarkFresh && storageReady
@@ -53,7 +53,8 @@ export function deriveOperationEligibility(state) {
       && state.self_test?.active === true,
     settingsReady: !blocked && storageReady,
     wirelessReady: !blocked && !bluetooth && storageReady && Boolean(caps & CAP.WIRELESS),
-    mscReady: !blocked && !bluetooth && !benchmarkPending && storageFresh && Boolean((state.settings?.board_flags ?? 0) & 64)
+    mscReady: !blocked && !bluetooth && !benchmarkPending && storageFresh
+      && Boolean((state.settings?.board_flags ?? 0) & CONFIG_FLAGS.MSC)
       && !state.memory?.msc?.transition_pending && (state.memory?.msc?.enabled || state.memory?.sample_valid !== false),
     connectionLocked: Boolean(state.connected || state.reconnecting || commandPending(state)
       || state.outcome_uncertain),
@@ -62,9 +63,9 @@ export function deriveOperationEligibility(state) {
 
 /**
  * @brief Per-operation precondition: return the first failing reason code (state/errors.mjs), or null.
+ * @type {Record<Operation, (state: DashboardState, eligibility: ReturnType<typeof deriveOperationEligibility>,
+ *   capabilities: number) => string | null>}
  */
-/** @type {Record<Operation, (state: DashboardState, eligibility: ReturnType<typeof deriveOperationEligibility>,
- *   capabilities: number) => string | null>} */
 const RULES = {
   led: (state, e) => e.ledReady ? null : BLOCKED,
   reboot: (state, e, caps) => !e.storageReady ? REASON.REBOOT_STORAGE

@@ -3,8 +3,8 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { renderWirelessForm } from "../../../web/js/ui/sections/wireless-form-view.mjs";
-import { createDocument } from "../../support/dom.mjs";
+import { renderWirelessForm } from "../../../../web/js/ui/sections/wireless-form/wireless-form-view.mjs";
+import { createDocument } from "../../../support/dom.mjs";
 
 test("wireless form presentation derives phase gates, key availability and accurate test summaries", () => {
   const previous = globalThis.document;

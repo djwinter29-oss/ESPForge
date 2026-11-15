@@ -2,9 +2,14 @@
 // Copyright (c) 2026 Ji Dong
 
 // @ts-check
-import { REPORT } from "../protocol/constants.mjs";
+/** @file Same-browser handshake that lets the console page confirm its owning dashboard still sees the board. */
+import { REPORT } from "../../protocol/constants.mjs";
 
-/** @param {import("../state/reducer.mjs").DashboardState} state */
+/**
+ * @brief The shell target for a fresh, connected Wi-Fi station on a private IPv4 address, or null.
+ * @param {import("../../state/reducer.mjs").DashboardState} state
+ * @return {{ipv4: string, serial: string} | null}
+ */
 export function consoleTarget(state) {
   const wireless = state.wireless;
   if (!state.connected || state.wireless_error || !wireless || state.freshness?.[REPORT.WIRELESS] !== "fresh"
@@ -19,8 +24,9 @@ export function consoleTarget(state) {
 }
 
 /**
+ * @brief Answer console-page target checks from the dashboard's current state.
  * @param {BroadcastChannel} channel
- * @param {() => import("../state/reducer.mjs").DashboardState} state
+ * @param {() => import("../../state/reducer.mjs").DashboardState} state
  */
 export function serveConsoleTarget(channel, state) {
   channel.addEventListener("message", event => {
@@ -33,7 +39,11 @@ export function serveConsoleTarget(channel, state) {
   });
 }
 
-/** @param {BroadcastChannel} channel @param {{ipv4: string, serial: string}} target */
+/**
+ * @brief Resolve when the owning dashboard confirms the same board and address within one second; otherwise reject.
+ * @param {BroadcastChannel} channel
+ * @param {{ipv4: string, serial: string}} target
+ */
 export function checkConsoleTarget(channel, target) {
   return new Promise((resolve, reject) => {
     const id = crypto.randomUUID();

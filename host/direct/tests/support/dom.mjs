@@ -7,7 +7,9 @@ export function createDocument() {
   const makeElement = () => ({
     namespaceURI: "http://www.w3.org/1999/xhtml",
     value: "0", text: "", dataset: {}, children: [], open: false, disabled: false, valueAsNumber: 32,
-    get textContent() { return this.children.length ? this.children.map(child => child.textContent).join("") : this.text; },
+    get textContent() {
+      return this.children.length ? this.children.map(child => child.textContent).join("") : this.text;
+    },
     set textContent(value) { this.text = String(value); this.children = []; },
     options: ["0", "1", "configure"].map(value => ({ value })),
     listeners: new Map(),

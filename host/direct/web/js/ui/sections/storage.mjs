@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: BSD-3-Clause
 // Copyright (c) 2026 Ji Dong
 
+import { CAP, REPORT } from "../../protocol/constants.mjs";
 import { queryElement, setText } from "../dom.mjs";
-import { CAP } from "../../protocol/constants.mjs";
 
 function formatBytes(bytes) {
   const gibibytes = bytes / 1024 ** 3;
@@ -18,7 +18,10 @@ function formatManufacturer(manufacturer) {
   return `${names[id] ?? "Unknown manufacturer"} (0x${id.toString(16).padStart(2, "0")})`;
 }
 
-/** Retained card details are display-only; they never participate in operation eligibility. */
+/**
+ * @brief Card, filesystem and USB-drive text. Retained card details are display-only; they never participate in
+ * operation eligibility.
+ */
 export function deriveStorageViewModel(state, previous = {}) {
   let memory = state.memory;
   let filesystemFormat = state.filesystem_format;
@@ -33,7 +36,8 @@ export function deriveStorageViewModel(state, previous = {}) {
     : !memory.sample_valid ? "" : !memory.configured ? "No SD-card transport configured"
       : memory.presence_known && !memory.present
         ? "No card detected. Check card insertion and SD-card wiring."
-        : memory.present && !memory.initialized ? "Card detected but not initialized; check UART logs and SD-card wiring."
+        : memory.present && !memory.initialized
+          ? "Card detected but not initialized; check UART logs and SD-card wiring."
           : memory.initialized ? "" : "No card mounted; check card insertion and SD-card wiring.";
   if (busy && details) ({ memory, filesystemFormat } = details);
   const manufacturer = memory?.manufacturer;
@@ -46,7 +50,8 @@ export function deriveStorageViewModel(state, previous = {}) {
         : state.memory?.msc?.enabled ? "USB drive" : label,
       "memory-note": state.memory?.msc?.transition_pending ? "Waiting for storage handoff."
         : state.memory?.msc?.enabled ? "Safely eject in Linux/Windows before returning the card to firmware."
-          : state.memory?.msc?.request_rejected ? "Storage handoff failed or the card changed. Check UART logs and retry explicitly."
+          : state.memory?.msc?.request_rejected
+            ? "Storage handoff failed or the card changed. Check UART logs and retry explicitly."
             : note,
       "memory-speed": memory?.sample_valid !== false && memory?.initialized && memory?.bus_clock_hz
         ? `${(memory.bus_clock_hz / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: 3 })} MHz` : "--",
@@ -61,6 +66,7 @@ export function deriveStorageViewModel(state, previous = {}) {
   };
 }
 
+/** @brief Create the storage and benchmark renderer; it retains card details across busy samples. */
 export function createStorageSection() {
   let previous = {};
   return state => {
@@ -69,11 +75,12 @@ export function createStorageSection() {
     setText(model.text);
     queryElement("#memory-note").hidden = !model.text["memory-note"];
     queryElement('[aria-labelledby="memory-title"]').hidden = model.hidden;
-    const status = state.freshness?.[11] === "fresh" ? state.self_test : null;
+    const status = state.freshness?.[REPORT.BENCHMARK] === "fresh" ? state.self_test : null;
     queryElement("#benchmark-controls").hidden = !((state.hardware?.capabilities ?? 0) & CAP.SELF_TEST);
     const rate = value => value == null ? "--" : `${(value / 1024 ** 2).toFixed(2)} MiB/s`;
     setText({
-      "benchmark-state": status ? `${status.state} (${status.progress_percent.toFixed(1)}%)` : "Waiting for fresh status",
+      "benchmark-state": status ? `${status.state} (${status.progress_percent.toFixed(1)}%)`
+        : "Waiting for fresh status",
       "benchmark-write": rate(status?.write_bytes_per_second),
       "benchmark-read": rate(status?.read_bytes_per_second),
       "benchmark-result": status?.error ? `Error ${status.error}; filesystem ${status.filesystem_result}`

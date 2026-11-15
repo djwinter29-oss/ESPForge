@@ -4,9 +4,9 @@
 /**
  * @file Bluetooth key draft: generation, clipboard feedback and secret disposal. No board I/O.
  */
-import { bytesToHex } from "../../protocol/codec.mjs";
-import { queryElement, setText } from "../dom.mjs";
-import { describe } from "../messages.mjs";
+import { bytesToHex } from "../../../protocol/codec.mjs";
+import { queryElement, setText } from "../../dom.mjs";
+import { describe } from "../../messages.mjs";
 
 /**
  * @brief Bind the Bluetooth key dialog; the wireless coordinator owns readiness and the draft lifecycle.
@@ -67,13 +67,19 @@ export function bindBleKeyForm({ signal, configured, enable, changed, clipboard 
         : "No Control key is saved. Bluetooth stays off until a key is saved." });
       dialog.showModal();
     },
-    /** @brief Return a replacement, an explicit removal, or undefined to retain the saved key. */
-    /** @param {boolean} enabled @return {string | undefined} */
+    /**
+     * @brief Return a replacement, an explicit removal, or undefined to retain the saved key.
+     * @param {boolean} enabled
+     * @return {string | undefined}
+     */
     request(enabled) {
       return enabled && dirty ? secret.value : !enabled && configured() ? "" : undefined;
     },
-    /** @brief Wipe submitted key text on every outcome; a failed replacement must be regenerated. */
-    /** @param {boolean} saved @param {string} [error] */
+    /**
+     * @brief Wipe submitted key text on every outcome; a failed replacement must be regenerated.
+     * @param {boolean} saved
+     * @param {string} [error]
+     */
     finish(saved, error) {
       const failedReplacement = !saved && dirty;
       clear();

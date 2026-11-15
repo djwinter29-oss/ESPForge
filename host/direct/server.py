@@ -51,6 +51,7 @@ CONTENT_SECURITY_POLICY = (
 
 
 def git(root: Path, *args: str) -> str:
+    """Run one git query in ``root`` and return its trimmed output; raises when git fails."""
     return subprocess.run(["git", "-C", str(root), *args], check=True, text=True,
                           stdout=subprocess.PIPE, stderr=subprocess.PIPE).stdout.strip()
 
@@ -129,7 +130,8 @@ class DirectHandler(SimpleHTTPRequestHandler):
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
-        self.send_header("Cache-Control", "no-store")
+        cache_control = "no-store" if self.path.partition("?")[0].startswith("/api/") else "no-cache"
+        self.send_header("Cache-Control", cache_control)
         super().end_headers()
 
     def list_directory(self, path):  # type: ignore[override]
@@ -145,6 +147,7 @@ class DirectHandler(SimpleHTTPRequestHandler):
         self.wfile.write(body)
 
     def _local_console(self) -> bool:
+        """Allow relay calls only from a same-origin loopback page; otherwise send 403 and return False."""
         host = self.headers.get("Host", "")
         try:
             authority = urlsplit(f"http://{host}")
@@ -160,6 +163,7 @@ class DirectHandler(SimpleHTTPRequestHandler):
         return valid
 
     def _payload(self):
+        """Read one bounded JSON request body; raises ValueError for any other framing."""
         try:
             length = int(self.headers.get("Content-Length", "0"))
         except ValueError as error:
@@ -252,10 +256,18 @@ class DirectServer(ThreadingHTTPServer):
 
 
 def create_server(bind: str, port: int, directory: Path) -> ThreadingHTTPServer:
+    """Create the dashboard server for ``directory``; the caller owns serving and closing it."""
+    try:
+        loopback = ipaddress.ip_address(bind).is_loopback
+    except ValueError:
+        loopback = False
+    if not loopback:
+        raise ValueError("Direct server bind address must be a loopback IP address")
     return DirectServer((bind, port), partial(DirectHandler, directory=str(directory)))
 
 
 def main(argv: list[str] | None = None) -> None:
+    """Validate options, serve the dashboard (a stamped temporary copy of the source tree), block until Ctrl+C."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--bind", default="127.0.0.1", help="Local bind address (default: 127.0.0.1)")
     parser.add_argument("--port", type=int, default=8000, help="Local HTTP port (default: 8000)")
@@ -264,6 +276,12 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
     if not 1 <= args.port <= 65535:
         parser.error("--port must be between 1 and 65535")
+    try:
+        loopback = ipaddress.ip_address(args.bind).is_loopback
+    except ValueError:
+        loopback = False
+    if not loopback:
+        parser.error("--bind must be a loopback IP address")
     if not args.directory.is_dir() or not (args.directory / "index.html").is_file():
         parser.error(f"dashboard directory must contain index.html: {args.directory}")
     with TemporaryDirectory(prefix="espforge-direct-") as directory:

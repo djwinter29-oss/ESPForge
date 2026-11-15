@@ -43,8 +43,10 @@ test("Direct dashboard shows live Wi-Fi and Bluetooth state without treating una
       [{ ble_enabled: true, ble_key_configured: true, ble_state: "off" }, "ESPForge-892BA313F9BB56E1 (starting)"],
       [{ ble_enabled: true, ble_key_configured: true, ble_state: "advertising" },
         "ESPForge-892BA313F9BB56E1 (advertising)"],
-      [{ ble_enabled: true, ble_key_configured: true, ble_state: "connected" }, "ESPForge-892BA313F9BB56E1 (connected)"],
-      [{ ble_enabled: true, ble_key_configured: false, ble_state: "connected" }, "ESPForge-892BA313F9BB56E1 (connected)"],
+      [{ ble_enabled: true, ble_key_configured: true, ble_state: "connected" },
+        "ESPForge-892BA313F9BB56E1 (connected)"],
+      [{ ble_enabled: true, ble_key_configured: false, ble_state: "connected" },
+        "ESPForge-892BA313F9BB56E1 (connected)"],
       [{ ble_enabled: true, ble_key_configured: false, ble_state: "advertising" },
         "ESPForge-892BA313F9BB56E1 (advertising)"],
       [null, "--"],
@@ -104,6 +106,9 @@ test("fresh connected Wi-Fi links to the local shell over USB and BLE only while
       const url = "/console.html?source=owner&serial=board-a&ipv4=192.168.1.9";
       renderWirelessStatus(state, url);
       assert.equal(wifi.children.length, 1);
+      const shell = wifi.children[0];
+      renderWirelessStatus(state, url);
+      assert.equal(wifi.children[0], shell, "polling renders keep the focused link element");
       assert.equal(wifi.children[0].textContent, "<script> (192.168.1.9)");
       assert.equal(wifi.children[0].href, url);
       assert.equal(wifi.children[0].target, "_blank");

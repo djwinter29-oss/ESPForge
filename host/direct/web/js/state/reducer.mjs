@@ -71,7 +71,7 @@ export const UI_KEYS = Object.freeze([
 /**
  * @typedef {object} DashboardState
  * @property {"usb" | "ble"} [link]
- * @property {typeof import("../board/connection.mjs").PHASE[keyof typeof import("../board/connection.mjs").PHASE]} [phase]
+ * @property {import("../board/connection.mjs").Phase} [phase]
  * @property {boolean} [connected]
  * @property {boolean} [reconnecting]
  * @property {boolean} [busy]
@@ -130,8 +130,8 @@ export function dashboardReducer(state, action) {
 }
 
 /**
- * @brief Allowlisted UI snapshots; board facts cannot enter this store.
- * ponytail: one generic patch action is enough for a single UI writer with no state transitions.
+ * @brief Allowlisted UI snapshots; board facts cannot enter this store. One generic patch action suffices because
+ * the dashboard is the only UI writer and UI state has no transitions to enforce.
  * @type {(state: UiState, action: StateAction<UiState>) => UiState}
  */
 export function uiReducer(state, action) {

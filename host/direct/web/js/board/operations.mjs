@@ -8,7 +8,7 @@
 import {
   buildControlRequest, bytesToHex as hex, decodeScanEntry, displaySsid, parseHexBytes, requireValid, ssidBytes,
 } from "../protocol/codec.mjs";
-import { OP, STAGED_EXPIRED } from "../protocol/constants.mjs";
+import { OP, RADIOS, STAGED_EXPIRED } from "../protocol/constants.mjs";
 import { encodeSettings, validSettings } from "../protocol/opcodes.mjs";
 import { BoardError, errorValue, REASON } from "../state/errors.mjs";
 import { canRun } from "../state/selectors.mjs";
@@ -20,6 +20,22 @@ import { canRun } from "../state/selectors.mjs";
  * @typedef {Pick<import("../state/reducer.mjs").BoardSettings, "system_clock_mhz" | "sdcard_profile" | "radios">}
  *   BootSettings
  * @typedef {{settings: BootSettings, wireless: WirelessConfiguration | null}} ConfigurationIntent
+ * @typedef {{kind: "completed", result: ReturnType<typeof import("../protocol/codec.mjs").decodeWireless>}
+ *   | {kind: "failed", error: Error}} LifecycleOutcome
+ * @typedef {object} OperationsSession
+ * @property {import("../state/reducer.mjs").DashboardState} state
+ * @property {{expireReports: () => void, readWireless: (signal?: AbortSignal) =>
+ *   Promise<ReturnType<typeof import("../protocol/codec.mjs").decodeWireless>>,
+ *   waitLifecycle: (pending: {operation: number, generation: number},
+ *   onProgress?: (progress: import("../state/reducer.mjs").ReasonValue) => void, signal?: AbortSignal)
+ *   => Promise<LifecycleOutcome>, savedSsidHex: string | null}} polling
+ * @property {{settleWireless: () => void}} commands
+ * @property {(opcode: number, options?: import("./commands.mjs").CommandOptions)
+ *   => Promise<ReturnType<typeof import("../protocol/codec.mjs").decodeControlResult>>} command
+ * @property {(settings: WirelessConfiguration & {board: BootSettings}, signal?: AbortSignal)
+ *   => Promise<ReturnType<typeof import("../protocol/codec.mjs").decodeWireless>>} saveWireless
+ * @property {(settings: BootSettings) => Promise<unknown>} saveSettings
+ * @property {(type: string, changes: Partial<import("../state/reducer.mjs").DashboardState>) => void} emit
  */
 
 async function stage(context, opcode, bytes, signal) {
@@ -53,8 +69,13 @@ async function finish(context, pending, onProgress, signal) {
   return outcome.result;
 }
 
+/**
+ * @brief Product use cases that coordinate validated commands and board-state updates.
+ */
 export class Operations {
-  /** @param {import("./session.mjs").BoardSession} session */
+  /**
+   * @param {OperationsSession} session State, command and lifecycle services used by workflows.
+   */
   constructor(session) {
     this.session = session;
     /** Token of the wireless workflow that holds the queue while `wireless_busy` is set. */
@@ -114,8 +135,8 @@ export class Operations {
   async saveConfiguration({ settings, wireless }) {
     const s = this.session;
     if (wireless && s.state.link === "usb") {
-      return s.saveWireless({ ...wireless, wifi_enabled: Boolean(settings.radios & 1),
-        ble_enabled: Boolean(settings.radios & 2), board: settings });
+      return s.saveWireless({ ...wireless, wifi_enabled: Boolean(settings.radios & RADIOS.WIFI),
+        ble_enabled: Boolean(settings.radios & RADIOS.BLE), board: settings });
     }
     await s.saveSettings(settings);
     return null;

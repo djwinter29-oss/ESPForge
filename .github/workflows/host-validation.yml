@@ -73,7 +73,8 @@ jobs:
         if: matrix.os == 'ubuntu-24.04' && matrix.python == '3.12'
         run: |
           npx --yes --package typescript@5.9.3 tsc --project host/web/tsconfig.json
-          npx --yes --package typescript@5.9.3 tsc --project host/direct/web/js/tsconfig.json
+          npx --yes --package typescript@5.9.3 tsc --project host/direct/tests/types/tsconfig.json
+          npx --yes --package typescript@5.9.3 tsc --project host/direct/tests/types/tsconfig.protocol-strict.json
 
       - name: Setup .NET
         if: matrix.python == '3.12'

@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: BSD-3-Clause
 // Copyright (c) 2026 Ji Dong
 
-import { REASON } from "./state/errors.mjs";
 // @ts-check
 /**
  * @file Page-owned timer scopes so connection replacement and page teardown cancel scheduled work.
  */
+import { REASON } from "./state/errors.mjs";
 
 /** @typedef {ReturnType<typeof globalThis.setTimeout> & {unref?: () => void}} TimerHandle */
 
+/** @brief Create a timer scope whose disposal cancels its timers and child scopes; `parent` forgets it then. */
 export function createTimerScope(parent = null) {
   const timeouts = new Set();
   const intervals = new Set();
@@ -65,7 +66,10 @@ export function createTimerScope(parent = null) {
   return scope;
 }
 
-/** @param {Pick<typeof globalThis, "setTimeout" | "clearTimeout">} [timers] */
+/**
+ * @brief Resolve after `milliseconds`, or reject with the abort reason when `signal` aborts first.
+ * @param {Pick<typeof globalThis, "setTimeout" | "clearTimeout">} [timers]
+ */
 export function wait(milliseconds, signal, timers = globalThis) {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
@@ -86,7 +90,11 @@ export function wait(milliseconds, signal, timers = globalThis) {
   });
 }
 
-/** @param {Pick<typeof globalThis, "setTimeout" | "clearTimeout">} [timers] */
+/**
+ * @brief Settle with `operation`, or reject with IO_TIMEOUT after `milliseconds` or the abort reason first.
+ * The operation itself is not cancelled; a late outcome is ignored, so callers treat a timeout as uncertain.
+ * @param {Pick<typeof globalThis, "setTimeout" | "clearTimeout">} [timers]
+ */
 export function withTimeout(operation, milliseconds, signal, timers = globalThis) {
   return new Promise((resolve, reject) => {
     let settled = false;

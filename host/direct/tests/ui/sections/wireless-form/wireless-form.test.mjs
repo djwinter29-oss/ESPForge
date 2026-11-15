@@ -3,9 +3,9 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { bindWirelessForm, formTransition } from "../../../web/js/ui/sections/wireless-form.mjs";
-import { createDocument } from "../../support/dom.mjs";
-import { OP } from "../../../web/js/protocol/constants.mjs";
+import { bindWirelessForm } from "../../../../web/js/ui/sections/wireless-form/wireless-form.mjs";
+import { createDocument } from "../../../support/dom.mjs";
+import { OP } from "../../../../web/js/protocol/constants.mjs";
 
 test("failed replacement-key Save can be abandoned by disabling Bluetooth", async () => {
   const previous = globalThis.document;
@@ -186,7 +186,8 @@ test("radio switches follow readiness and expired test credentials block saving"
     assert.equal(el("direct-settings-wifi").label.hidden, false);
     const bleOn = () => el("direct-settings-ble").options.find(option => option.value === "1");
     assert.equal(bleOn().disabled, true, "Bluetooth cannot be enabled without a saved or staged key");
-    Object.defineProperty(globalThis, "crypto", { configurable: true, value: { getRandomValues: bytes => bytes.fill(1) } });
+    Object.defineProperty(globalThis, "crypto",
+      { configurable: true, value: { getRandomValues: bytes => bytes.fill(1) } });
     await fire("#direct-ble-generate", "click");
     assert.equal(bleOn().disabled, false);
     assert.equal(el("direct-settings-ble").value, "1", "generating a key enables Bluetooth");
@@ -382,21 +383,6 @@ test("known cancellation recovery clears the staged pair without replaying cance
     assert.equal(el("#direct-wifi-ssid").value, "");
     assert.match(el("#direct-wifi-status").textContent, /cleared after reconnect/);
   } finally { form.dispose(); globalThis.document = previous; }
-});
-
-test("formTransition serializes one phase and requires reconnect recovery before a retry", () => {
-  const step = (form, ...events) => events.reduce((value, type) =>
-    formTransition(value, typeof type === "string" ? { type } : type), form);
-  const idle = step({}, "reset");
-  assert.equal(idle.phase, "idle");
-  assert.equal(step(idle, "scan", "test").phase, "scanning", "a running scan rejects a test");
-  assert.equal(step(idle, "scan", "done").phase, "idle");
-  assert.equal(step(idle, "test", "cancel").phase, "testing", "cancel waits for the test to finish");
-  const failed = step(idle, "cancel", { type: "cancelFailed", error: "x", needsReconnect: true });
-  assert.deepEqual(failed, { phase: "cancelFailed", cancelError: "x", cancelNeedsReconnect: true });
-  assert.equal(step(failed, "cancel"), failed, "retry is refused until the board reconnects");
-  assert.equal(step(failed, "recovered", "cancel", "cleared").phase, "idle");
-  assert.equal(step(idle, "test", "reset").phase, "idle", "reset drops any in-flight phase");
 });
 
 test("obsolete cancellation and clipboard completions cannot mutate a reset wireless form", async () => {

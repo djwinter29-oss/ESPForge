@@ -3,8 +3,8 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { bindBleKeyForm } from "../../../web/js/ui/sections/ble-key-form.mjs";
-import { createDocument } from "../../support/dom.mjs";
+import { bindBleKeyForm } from "../../../../web/js/ui/sections/wireless-form/ble-key-form.mjs";
+import { createDocument } from "../../../support/dom.mjs";
 
 test("Bluetooth key drafts own generation, save outcomes, retention and explicit removal", async context => {
   const previous = globalThis.document;

@@ -17,7 +17,6 @@ export const FIELDS = Object.freeze({
   "control-key": "Control key (64 hex digits)",
 });
 
-/** @brief Lead text for browser DOMException names; other uncoded errors read "Unexpected error". */
 /** @brief Feature 12 wireless test detail byte (1-6) to text; 0 means no detail. */
 const WIFI_DETAILS = Object.freeze([
   "", "Radio initialization failed", "Network not found", "Password rejected",
@@ -27,10 +26,38 @@ const WIFI_DETAILS = Object.freeze([
 /** @brief Text for a firmware enum value the codec could not name (decoded as null). */
 export const unknown = (kind, value) => `Unknown ${kind} (${value})`;
 
+/** @brief Lead text for browser DOMException names; other uncoded errors read "Unexpected error". */
 const BROWSER = Object.freeze({
   NotAllowedError: "The browser refused the device request", SecurityError: "The browser refused the device request",
   NetworkError: "The board connection failed", InvalidStateError: "The board is not open",
   NotSupportedError: "The browser does not support this device operation",
+});
+
+/** @brief Dynamic confirmation-dialog and settings status copy owned by the presentation layer. */
+export const UI_TEXT = Object.freeze({
+  benchmarkWarning: size => `Firmware writes and verifies ${size} MiB in EFTEST.BIN, then deletes that file. `
+    + "Back up the card first; the benchmark causes card wear.",
+  benchmarkBoardChanged: "Board changed; reopen the benchmark.",
+  storageBoardChanged: "Board changed; reopen the storage dialog.",
+  storageTitle: enabled => enabled ? "Enable USB drive?" : "Return card to firmware?",
+  storageWarning: enabled => enabled
+    ? "Firmware will unmount the card and give Linux/Windows exclusive access. USB reconnects briefly; "
+      + "unsaved dashboard edits may be lost."
+    : "Safely eject the USB drive in Linux/Windows first. Confirm only after eject completes; firmware cannot "
+      + "verify the host cache is flushed.",
+  storageConfirm: enabled => enabled ? "Enable USB drive" : "I have safely ejected",
+  wirelessSaveWarning: "Wi-Fi and Bluetooth credentials are saved with these settings. Keep a copy of "
+    + "the Control key; it cannot be read back. Flash credentials are not encrypted.",
+  configurationProfile(clock, wifiEnabled, bleEnabled) {
+    return `System clock: ${clock ? `${clock} MHz` : "Default"}.`
+      + (wifiEnabled === null ? "" : ` Wi-Fi: ${wifiEnabled ? "Enabled" : "Disabled"}.`
+        + ` Bluetooth: ${bleEnabled ? "Enabled" : "Disabled"}.`);
+  },
+  settingsSaved: "Settings saved. Waiting for the board to reboot.",
+  settingsSaveFailed: error => `Save failed: ${error}`,
+  rebootStaged: "Staged wireless credentials and their expiry marker will be discarded.",
+  rebootUnsaved: "Unsaved dashboard changes will be lost.",
+  rebootSaved: "Saved next-boot settings will be applied.",
 });
 
 /** @brief English text per reason code: a string, or a function of the code's detail. */

@@ -13,11 +13,16 @@ import { Operations } from "./operations.mjs";
 import { Polling } from "./polling.mjs";
 import { Recovery } from "./recovery.mjs";
 
+/**
+ * @brief Facade for one board connection, command session and its domain-state store.
+ */
 export class BoardSession {
   /**
    * @param {import("../transport/transport.mjs").Transport} transport Byte pipe to one board.
-   * @param {{store?: ReturnType<typeof createDashboardStore>, now?: () => number, sleep?: Function, timeout?: number,
-   *   pendingStore?: Storage | null, timerScope?: ReturnType<typeof createTimerScope>, wirelessPolling?: boolean}} [options]
+   * @param {{store?: ReturnType<typeof createDashboardStore>, now?: () => number,
+   *   sleep?: (milliseconds: number, signal?: AbortSignal, timers?: ReturnType<typeof createTimerScope>) => Promise<void>,
+   *   timeout?: number, pendingStore?: Storage | null, timerScope?: ReturnType<typeof createTimerScope>,
+   *   wirelessPolling?: boolean}} [options]
    *   `store` (shared domain store, reset here), `now`, `sleep`, `timeout` (ms per report),
    *   `pendingStore` (journal storage; default sessionStorage), `timerScope`, `wirelessPolling`.
    */
@@ -48,6 +53,10 @@ export class BoardSession {
   get state() { return this.store.getState(); }
   get device() { return this.transport.device; }
   get connectionSignal() { return this.connection.signal; }
+  /** @brief Increments whenever the link closes; compare it to ignore late completions from an older link. */
+  get connectionGeneration() { return this.connection.generation; }
+  /** @brief Browser-reported name of the open device, or null. */
+  get deviceName() { return this.transport.name; }
 
   /**
    * @brief Commit one named domain event (state/reducer.mjs); board modules are the only callers.
@@ -90,7 +99,8 @@ export class BoardSession {
   testWireless(settings, onProgress, signal) { return this.operations.testWireless(settings, onProgress, signal); }
   cancelWireless(signal) { return this.operations.cancelWireless(signal); }
   /**
-   * @param {import("./operations.mjs").WirelessConfiguration & {board: import("./operations.mjs").BootSettings}} settings
+   * @param {import("./operations.mjs").WirelessConfiguration
+   *   & {board: import("./operations.mjs").BootSettings}} settings
    * @param {AbortSignal} [signal]
    */
   saveWireless(settings, signal) { return this.operations.saveWireless(settings, signal); }

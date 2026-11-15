@@ -10,7 +10,8 @@ Copyright (c) 2026 Ji Dong
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'">
+    content="default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self';
+      object-src 'none'; base-uri 'none'; form-action 'self'">
   <meta name="referrer" content="no-referrer">
   <title>ESPForge Dashboard | Direct</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
@@ -41,7 +42,7 @@ Copyright (c) 2026 Ji Dong
     <section aria-labelledby="identity-title">
       <div class="section-heading">
         <h2 id="identity-title">Device information</h2>
-        <div class="actions" aria-label="Board controls">
+        <div class="actions" role="group" aria-label="Board controls">
           <label id="led-control" hidden>Board LED
             <select id="led-colour" aria-label="Board LED colour" disabled>
               <option value="" disabled>--</option>
@@ -61,7 +62,7 @@ Copyright (c) 2026 Ji Dong
             aria-haspopup="dialog">Bluetooth</button>
         </div>
       </div>
-      <div class="identity" aria-label="Hardware identity">
+      <div class="identity" role="group" aria-label="Hardware identity">
       <details class="metric identity-details" id="product-information">
         <summary><span>Product <span aria-hidden="true">i</span></span>
           <strong id="product-name">--</strong></summary>
@@ -208,6 +209,16 @@ Copyright (c) 2026 Ji Dong
       </div>
     </dialog>
 
+    <dialog class="confirmation-dialog" id="benchmark-start-dialog" aria-labelledby="benchmark-start-dialog-title"
+      aria-describedby="benchmark-start-warning">
+      <h2 id="benchmark-start-dialog-title">Start storage benchmark?</h2>
+      <p class="configuration-warning" id="benchmark-start-warning"></p>
+      <div class="dialog-actions">
+        <button class="button button-cancel" id="cancel-benchmark-start" type="button" autofocus>Cancel</button>
+        <button class="button button-danger" id="confirm-benchmark-start" type="button">Start benchmark</button>
+      </div>
+    </dialog>
+
     <dialog class="confirmation-dialog" id="configuration-dialog" aria-labelledby="configuration-dialog-title"
       aria-describedby="configuration-dialog-profile configuration-warning direct-configuration-wireless-warning">
       <h2 id="configuration-dialog-title">Save and reboot?</h2>
@@ -240,9 +251,9 @@ Copyright (c) 2026 Ji Dong
       </div>
     </dialog>
 
-    <footer class="status-line" role="status" aria-live="polite">
+    <footer class="status-line">
       <span class="status-mark" aria-hidden="true"></span>
-      <span id="status-message">Select an ESPForge device</span>
+      <span id="status-message" role="status" aria-live="polite">Select an ESPForge device</span>
       <p class="settings-note" id="settings-note">Connect to read the saved settings.</p>
     </footer>
   </main>
@@ -268,23 +279,26 @@ Copyright (c) 2026 Ji Dong
       <button class="button button-secondary" id="bluetooth-connection-close" type="button">Close</button>
     </div>
   </dialog>
-  <dialog class="confirmation-dialog wireless-dialog" id="direct-wifi-dialog" aria-labelledby="direct-wifi-dialog-title">
+  <dialog class="confirmation-dialog wireless-dialog" id="direct-wifi-dialog"
+    aria-labelledby="direct-wifi-dialog-title">
     <h2 id="direct-wifi-dialog-title">Connect to Wi-Fi</h2>
     <p>Scan for nearby networks or enter a network name. A connection test does not save credentials to flash.</p>
     <button class="button button-secondary" id="direct-wifi-scan" type="button">Scan for networks</button>
     <p id="direct-wifi-status" role="status" aria-live="polite"></p>
-    <div id="direct-wifi-networks" class="direct-wifi-networks" role="group" aria-label="Available Wi-Fi networks"></div>
+    <div id="direct-wifi-networks" class="direct-wifi-networks" role="group"
+      aria-label="Available Wi-Fi networks"></div>
     <button class="button button-secondary" id="direct-wifi-other" type="button">Other network…</button>
     <label id="direct-wifi-manual-label" hidden>Network name (SSID)
       <input id="direct-wifi-ssid" maxlength="32" autocomplete="off"></label>
-    <label id="direct-direct-wifi-password-label">Password (leave blank for an open network)
+    <label id="direct-wifi-password-label">Password (leave blank for an open network)
       <input id="direct-wifi-password" type="password" maxlength="63" autocomplete="new-password"></label>
     <div class="dialog-actions">
       <button class="button" id="direct-wifi-connect" type="button">Test connection</button>
       <button class="button button-secondary" id="direct-wifi-cancel" type="button">Cancel</button>
     </div>
   </dialog>
-  <dialog class="confirmation-dialog wireless-dialog" id="direct-ble-dialog" aria-labelledby="direct-ble-dialog-title">
+  <dialog class="confirmation-dialog wireless-dialog" id="direct-ble-dialog"
+    aria-labelledby="direct-ble-dialog-title">
     <h2 id="direct-ble-dialog-title">Bluetooth access</h2>
     <p>Generate a new key and save it with Board configuration. The key authenticates control commands; it does not
       encrypt the Bluetooth connection. The board cannot show a saved key again.</p>

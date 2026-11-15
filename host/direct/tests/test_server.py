@@ -15,6 +15,7 @@ import unittest
 import urllib.error
 import urllib.request
 from pathlib import Path
+from html.parser import HTMLParser
 
 from unittest.mock import Mock, patch
 
@@ -57,10 +58,24 @@ class DirectServerTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn(b"ESPForge", body)
         self.assertEqual(headers["Content-Security-Policy"], CONTENT_SECURITY_POLICY)
+        class PolicyParser(HTMLParser):
+            policy = None
+
+            def handle_starttag(self, tag, attrs):
+                attributes = dict(attrs)
+                if tag == "meta" and attributes.get("http-equiv") == "Content-Security-Policy":
+                    self.policy = attributes.get("content")
+
+        parser = PolicyParser()
+        parser.feed(body.decode("utf-8"))
+        self.assertIsNotNone(parser.policy)
+        meta_directives = [" ".join(item.split()) for item in parser.policy.split(";")]
+        header_directives = [" ".join(item.split()) for item in CONTENT_SECURITY_POLICY.split(";")]
+        self.assertEqual(meta_directives, [item for item in header_directives if not item.startswith("frame-ancestors")])
         self.assertEqual(headers["X-Content-Type-Options"], "nosniff")
         self.assertEqual(headers["X-Frame-Options"], "DENY")
         self.assertEqual(headers["Referrer-Policy"], "no-referrer")
-        self.assertEqual(headers["Cache-Control"], "no-store")
+        self.assertEqual(headers["Cache-Control"], "no-cache")
 
     def test_modules_styles_and_favicon_have_browser_types(self):
         for path, expected in (("/js/app.mjs", "text/javascript"), ("/css/direct.css", "text/css"),
@@ -68,6 +83,21 @@ class DirectServerTests(unittest.TestCase):
             status, headers, _ = self.fetch(path)
             self.assertEqual(status, 200, path)
             self.assertTrue(headers["Content-Type"].startswith(expected), (path, headers["Content-Type"]))
+
+    def test_static_assets_revalidate_while_api_responses_are_not_stored(self):
+        status, headers, body = self.fetch("/js/app.mjs")
+        self.assertEqual(status, 200)
+        self.assertTrue(body)
+        self.assertIn("Last-Modified", headers)
+        cached_status, cached_headers, cached_body = self.fetch(
+            "/js/app.mjs", headers={"If-Modified-Since": headers["Last-Modified"]})
+        self.assertEqual(cached_status, 304)
+        self.assertEqual(cached_headers["Cache-Control"], "no-cache")
+        self.assertFalse(cached_body)
+        self.assertEqual(self.fetch("/api/console/capabilities")[1]["Cache-Control"], "no-store")
+
+    def test_development_type_configuration_is_not_served(self):
+        self.assertEqual(self.fetch("/js/tsconfig.json")[0], 404)
 
     def test_directories_are_not_listed_and_paths_cannot_escape(self):
         self.assertEqual(self.fetch("/js/")[0], 404)
@@ -82,7 +112,7 @@ class DirectServerTests(unittest.TestCase):
         status, _, body = self.fetch("/api/console/capabilities")
         self.assertEqual(status, 200)
         self.assertEqual(json.loads(body), {"available": True})
-        for path in ("/console.html", "/css/console.css", "/js/console.mjs"):
+        for path in ("/console.html", "/css/console.css", "/js/console.mjs", "/js/ui/console/console-session.mjs"):
             self.assertEqual(self.fetch(path)[0], 200, path)
         for headers in ({"Origin": "https://foreign.example"}, {"Host": "foreign.example"}):
             self.assertEqual(self.fetch("/api/console", "POST", {"ipv4": "192.168.1.9"}, headers)[0], 403)
@@ -117,6 +147,10 @@ class DirectServerTests(unittest.TestCase):
             create_server("127.0.0.1", 0, _DEFAULT_WEB_ROOT)
         bridge.return_value.close_all.assert_called_once_with()
 
+    def test_server_factory_rejects_non_loopback_bind(self):
+        with self.assertRaisesRegex(ValueError, "loopback IP address"):
+            create_server("0.0.0.0", 0, _DEFAULT_WEB_ROOT)
+
     def test_release_server_runs_without_checkout_or_host_dependencies(self):
         source = Path(__file__).resolve().parents[1]
         with tempfile.TemporaryDirectory() as directory:
@@ -134,7 +168,7 @@ thread = threading.Thread(target=server.serve_forever)
 thread.start()
 try:
     base = f"http://127.0.0.1:{server.server_address[1]}"
-    for path in ("/console.html", "/js/console.mjs", "/js/ui/console-session.mjs"):
+    for path in ("/console.html", "/js/console.mjs", "/js/ui/console/console-session.mjs"):
         with urllib.request.urlopen(base + path, timeout=2) as response:
             assert response.status == 200 and response.read()
     with urllib.request.urlopen(base + "/api/console/capabilities", timeout=2) as response:
@@ -160,6 +194,13 @@ class DirectServerArgumentTests(unittest.TestCase):
         code, message = self.run_main("--port", "0")
         self.assertEqual(code, 2)
         self.assertIn("--port must be between 1 and 65535", message)
+
+    def test_bind_must_be_a_loopback_ip_address(self):
+        for bind in ("0.0.0.0", "192.168.1.2", "localhost"):
+            with self.subTest(bind=bind):
+                code, message = self.run_main("--bind", bind)
+                self.assertEqual(code, 2)
+                self.assertIn("--bind must be a loopback IP address", message)
 
     def test_directory_must_contain_index(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -241,7 +282,8 @@ class DirectVersionTests(unittest.TestCase):
             return server
 
         with patch("host.direct.server.identity", return_value=("1.2.4-dev.1+gabcdef.dirty", "a" * 40, True)), \
-                patch("host.direct.server.create_server", side_effect=create), contextlib.redirect_stdout(io.StringIO()):
+                patch("host.direct.server.create_server", side_effect=create), \
+                contextlib.redirect_stdout(io.StringIO()):
             main([])
         self.assertFalse(staged[0].exists())
         server.server_close.assert_called_once()

@@ -8,7 +8,7 @@
  */
 import { buildControlRequest, decodeControlResult } from "../protocol/codec.mjs";
 import { OP, REPORT, RESULT } from "../protocol/constants.mjs";
-import { allowedOnLink, OPCODES } from "../protocol/opcodes.mjs";
+import { allowedOnLink, hasExactKeys, inRange, OPCODES } from "../protocol/opcodes.mjs";
 import { BoardError, errorValue, REASON } from "../state/errors.mjs";
 import { commandBlocked, commandPending } from "../state/selectors.mjs";
 import { withTimeout } from "../timers.mjs";
@@ -20,18 +20,31 @@ const PENDING_OPERATION_KEY = "espforge.direct.pending-operation";
  *   commitMask?: number, workflow?: symbol}} CommandOptions
  */
 const isUid = value => typeof value === "string" && /^[A-F0-9]{16}$/i.test(value);
-const hasExactKeys = (value, keys) => value && typeof value === "object" && !Array.isArray(value)
-  && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
-const inRange = (value, min, max) => Number.isInteger(value) && value >= min && value <= max;
 const validLifecycle = (lifecycle, opcode) => hasExactKeys(lifecycle, ["operation", "generation"])
   && lifecycle.operation === opcode && inRange(lifecycle.generation, 1, OPCODES[opcode]?.lifecycle?.generationMax);
 /** @brief Failure code when a completed result does not prove the request; default NOT_CONFIRMED. */
 const UNCONFIRMED = { [OP.SCAN_ENTRY]: REASON.SCAN_MISMATCH };
 
+/**
+ * @typedef {object} CommandSession
+ * @property {import("../state/reducer.mjs").DashboardState} state
+ * @property {{generation: number, reconnectUid: string | null}} connection
+ * @property {{expireReports: () => void, invalidate: (ids?: number[]) => void}} polling
+ * @property {{wirelessOperation: symbol | null}} operations
+ * @property {import("../transport/transport.mjs").Transport} transport
+ * @property {ReturnType<typeof import("../timers.mjs").createTimerScope>} timers
+ * @property {number} timeout
+ * @property {() => number} now
+ * @property {(milliseconds: number, signal?: AbortSignal) => Promise<void>} sleep
+ * @property {object | null} device
+ * @property {AbortSignal} connectionSignal
+ * @property {(type: string, changes: Partial<import("../state/reducer.mjs").DashboardState>) => void} emit
+ */
+
 /** @brief A refused or failed final result; recovery omits the detail byte. */
-export const commandFailed = (result, withDetail = true) => new BoardError(REASON.COMMAND_FAILED, {
+export const createCommandFailure = (result, includeDetail = true) => new BoardError(REASON.COMMAND_FAILED, {
   opcode: result.opcode, status: result.status, error: result.error_reason,
-  ...withDetail ? { detail: result.detail } : {} });
+  ...includeDetail ? { detail: result.detail } : {} });
 
 /**
  * @brief Validate one version-2 journal record exactly; @return the record, or throw.
@@ -80,7 +93,7 @@ export function savePendingOperation(store, record) {
 /** @brief Command queue, journal and result matching for one board session. */
 export class Commands {
   /**
-   * @param {import("./session.mjs").BoardSession} session Facade giving access to the transport, store and peers.
+   * @param {CommandSession} session Only the command queue's state, transport, timing and peer operations.
    * @param pendingStore Journal storage (sessionStorage-like), or null when unavailable.
    */
   constructor(session, pendingStore) {
@@ -92,9 +105,11 @@ export class Commands {
     this.queue = null;
     /** State error value when the journal could not be read; every write stays uncertain until reload. */
     this.recoveryError = null;
-    /** Journal facts restored at construction: `{uid, request, wireless}`. */
-    /** @type {{uid: string | null, request: import("../state/reducer.mjs").PendingRequest | null,
-     *   wireless: import("../state/reducer.mjs").WirelessLifecycle | null}} */
+    /**
+     * Journal facts restored at construction: `{uid, request, wireless}`.
+     * @type {{uid: string | null, request: import("../state/reducer.mjs").PendingRequest | null,
+     *   wireless: import("../state/reducer.mjs").WirelessLifecycle | null}}
+     */
     this.restored = { uid: null, request: null, wireless: null };
     try {
       const record = loadPendingOperation(pendingStore);
@@ -121,9 +136,7 @@ export class Commands {
   retire(request, succeeded) {
     const wireless = succeeded && request.lifecycle ? request.lifecycle : null;
     this.persist(null, wireless);
-    if (succeeded && request.opcode === OP.MSC) this.session.polling.invalidateStorage();
-    if (succeeded && request.opcode === OP.BENCHMARK) this.session.polling.invalidateBenchmark();
-    if (succeeded && request.opcode === OP.LED) this.session.polling.invalidateTelemetry();
+    if (succeeded) this.session.polling.invalidate(OPCODES[request.opcode]?.invalidates);
     this.session.emit("command/retired", { pending_request: null, pending_wireless: wireless });
   }
 
@@ -201,7 +214,7 @@ export class Commands {
       const result = await this.pollResult(device, request, signal);
       if (result.status !== RESULT.COMPLETED) {
         this.retire(request, false);
-        throw commandFailed(result);
+        throw createCommandFailure(result);
       }
       const unconfirmed = this.unconfirmed(request, result);
       if (unconfirmed) throw new BoardError(unconfirmed);

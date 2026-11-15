@@ -1,15 +1,23 @@
 // SPDX-License-Identifier: BSD-3-Clause
 // Copyright (c) 2026 Ji Dong
 
-import { CAP, STAGED_EXPIRED } from "../protocol/constants.mjs";
+/**
+ * @file Dashboard composition: binds DOM intents to the board session, owns dialogs and dashboard-only UI state,
+ * and renders coalesced board and UI snapshots.
+ */
+import { CAP } from "../protocol/constants.mjs";
 import { createDashboardView, renderControls } from "./dashboard-view.mjs";
-import { bindWirelessForm } from "./sections/wireless-form.mjs";
+import { bindWirelessForm } from "./sections/wireless-form/wireless-form.mjs";
 import { canRun } from "../state/selectors.mjs";
 import { createUiStore, UI_INITIAL } from "../state/store.mjs";
-import { parseHexBytes } from "../protocol/codec.mjs";
 import { queryElement } from "./dom.mjs";
 import { deriveDashboardViewModel } from "./sections/status-model.mjs";
 import { describe } from "./messages.mjs";
+import { mountBoardOperationDialogs } from "./dialogs/board-operations.mjs";
+import { mountConnectionDialogs } from "./dialogs/connection.mjs";
+import { bindDialogEscape } from "./dialogs/keyboard.mjs";
+import { mountSettingsDialogs } from "./dialogs/settings.mjs";
+import { bindIdentityDetails } from "./sections/identity-details.mjs";
 
 /**
  * @typedef {{secure: boolean, hid: boolean, ble: boolean, now: () => number,
@@ -38,40 +46,7 @@ export function mountDashboard({ session, selectTransport, timers, environment }
   const renderStatus = createDashboardView(environment.consoleUrl);
   const usbDialog = queryElement("dialog#usb-connection-dialog");
   const bluetoothDialog = queryElement("dialog#bluetooth-connection-dialog");
-  const settingsSave = button("settings-save");
-  const settingsReboot = button("settings-reboot");
-  const settingsClock = queryElement("select#settings-clock");
-  const settingsRadios = [queryElement("select#direct-settings-wifi"), queryElement("select#direct-settings-ble")];
-  const controlKey = queryElement("input#direct-ble-control-key");
-  const identityDetails = ["product-information", "module-memory"].map(id => queryElement(`details#${id}`));
-  for (const details of identityDetails) {
-    const show = () => {
-      for (const other of identityDetails) other.open = other === details;
-    };
-    details.addEventListener("pointerenter", event => {
-      if (event.pointerType === "mouse") show();
-    });
-    details.addEventListener("pointerleave", () => {
-      if (!details.contains(document.activeElement)) details.open = false;
-    });
-    details.addEventListener("focusin", () => {
-      // Pointer focus precedes the native summary toggle; only keyboard focus opens a preview.
-      if (document.activeElement?.matches(":focus-visible")) show();
-    });
-    details.addEventListener("focusout", () => {
-      if (!details.matches(":hover")) details.open = false;
-    });
-    details.addEventListener("keydown", event => {
-      if (event.key === "Escape") details.open = false;
-    });
-  }
-  const selectedRadios = () => client.state.hardware?.capabilities & CAP.WIRELESS
-    ? Number(settingsRadios[0].value) | Number(settingsRadios[1].value) << 1 : 0;
-  const configurationDialog = queryElement("dialog#configuration-dialog");
-  const rebootDialog = queryElement("dialog#reboot-dialog");
-  const mscDialog = queryElement("dialog#msc-dialog");
-  let mscTarget = false;
-  let mscUid = null;
+  bindIdentityDetails(["product-information", "module-memory"].map(id => queryElement(`details#${id}`)));
   let wasConnected = client.state.connected;
   let refreshQueued = false;
   /** Coalesce bursts of client state changes into one render and side-effect pass per microtask. */
@@ -82,8 +57,7 @@ export function mountDashboard({ session, selectTransport, timers, environment }
   };
   const bluetoothLink = () => client.state.link === "ble";
   /** @type {ReturnType<typeof bindWirelessForm>} */
-  let wirelessForm;
-  wirelessForm = bindWirelessForm({
+  const wirelessForm = bindWirelessForm({
     supported: () => Boolean(client.state.hardware?.capabilities & CAP.WIRELESS),
     settingsReady: () => !bluetoothLink() && canRun(client.state, "settings").allowed,
     timerScope: timers,
@@ -105,6 +79,30 @@ export function mountDashboard({ session, selectTransport, timers, environment }
     watched = client.store;
     unwatch = watched.subscribe(scheduleRefresh);
   };
+  const operationDialogs = mountBoardOperationDialogs({
+    getSession: () => client,
+    run: operation => run(operation),
+    reportError: message => setUi({ action_error: message }),
+  });
+  const connectionDialogs = mountConnectionDialogs({
+    getSession: () => client,
+    setSession(session) {
+      client = session;
+      watch();
+      scheduleRefresh();
+    },
+    selectTransport,
+    run: operation => run(operation),
+  });
+  const settingsDialogs = mountSettingsDialogs({
+    getSession: () => client,
+    run: operation => run(operation),
+    setUi,
+    ui,
+    wirelessForm,
+    isDisposed: () => disposed,
+  });
+  const allDialogs = [...connectionDialogs, ...settingsDialogs.dialogs, ...operationDialogs.dialogs];
   watch();
   /** Reset dashboard-only state after a disconnect, then render once. Performs no device I/O. */
   function refresh() {
@@ -114,15 +112,18 @@ export function mountDashboard({ session, selectTransport, timers, environment }
     if (wasConnected && !board.connected) {
       wirelessForm.reset();
       ui.dispatch({ type: "replace", state: { ...UI_INITIAL, action_error: ui.getState().action_error } });
-      for (const dialog of [configurationDialog, rebootDialog, mscDialog]) dialog.close();
+      settingsDialogs.close();
+      operationDialogs.close();
     }
     wasConnected = board.connected;
     render(board, ui.getState());
   }
 
-  /** View update: reads board and UI state, writes only DOM and the form's adopted snapshot. */
-  /** @param {import("../state/reducer.mjs").DashboardState} board
-   * @param {import("../state/reducer.mjs").UiState} view */
+  /**
+   * @brief View update: reads board and UI state, writes only DOM and the form's adopted snapshot.
+   * @param {import("../state/reducer.mjs").DashboardState} board
+   * @param {import("../state/reducer.mjs").UiState} view
+   */
   function render(board, view) {
     // Domain state carries reason codes; this is the one place they become text.
     const state = { ...board, error: describe(board.error) ?? view.action_error,
@@ -133,7 +134,7 @@ export function mountDashboard({ session, selectTransport, timers, environment }
     const wirelessReady = canRun(board, "wireless", viewModel.eligibility).allowed;
     renderStatus({ ...state, ...viewModel }, viewModel);
     renderControls(state, { eligibility: viewModel.eligibility, formBusy: view.wireless_form_busy,
-      settingsMessage: view.settings_message, bleName: client.transport.name, settingsDirty: view.settings_dirty,
+      settingsMessage: view.settings_message, bleName: client.deviceName, settingsDirty: view.settings_dirty,
       wirelessDirty: wirelessForm.dirty(),
       wirelessSaveBlockReason: wirelessForm.saveBlockReason() }, environment);
     wirelessForm.update(board, { wireless: wirelessReady, settings: !bluetoothLink() && settingsReady });
@@ -149,160 +150,7 @@ export function mountDashboard({ session, selectTransport, timers, environment }
     if (!control.disabled) await client.setLedColour(Number(control.value));
   }));
 
-  element("benchmark-start").addEventListener("click", () => run(async () => {
-    if (button("benchmark-start").disabled) return;
-    const size = Number(/** @type {HTMLInputElement} */ (element("benchmark-size")).value);
-    const uid = client.state.hardware?.serial_number;
-    if (!window.confirm(`Write and verify ${size} MiB in EFTEST.BIN, then delete that file? Back up the card first. This causes card wear.`))
-      return;
-    if (uid !== client.state.hardware?.serial_number) throw new Error("Board changed; reopen the benchmark.");
-    await client.benchmark(true, size, true);
-  }));
-  element("benchmark-cancel").addEventListener("click", () => run(async () => {
-    if (!button("benchmark-cancel").disabled) await client.benchmark(false, 0, false);
-  }));
-
-  for (const [id, enabled] of /** @type {[string, boolean][]} */ (
-    [["msc-enable", true], ["msc-return", false]])) {
-    button(id).addEventListener("click", () => {
-      if (button(id).disabled) return;
-      mscTarget = enabled;
-      mscUid = client.state.hardware?.serial_number;
-      element("msc-dialog-title").textContent = enabled ? "Enable USB drive?" : "Return card to firmware?";
-      element("msc-warning").textContent = enabled
-        ? "Firmware will unmount the card and give Linux/Windows exclusive access. USB reconnects briefly; unsaved dashboard edits may be lost."
-        : "Safely eject the USB drive in Linux/Windows first. Confirm only after eject completes; firmware cannot verify the host cache is flushed.";
-      element("confirm-msc").textContent = enabled ? "Enable USB drive" : "I have safely ejected";
-      mscDialog.showModal();
-    });
-  }
-  element("cancel-msc").addEventListener("click", () => mscDialog.close());
-  element("confirm-msc").addEventListener("click", () => run(async () => {
-    if (!mscDialog.open) return;
-    const enabled = mscTarget;
-    mscDialog.close();
-    if (!client.state.connected || bluetoothLink() || client.state.hardware?.serial_number !== mscUid) {
-      setUi({ action_error: "Board changed; reopen the storage dialog." });
-      return;
-    }
-    await client.setMsc(enabled, !enabled);
-  }));
-
-  for (const [id, dialog, bluetooth] of /** @type {[string, HTMLDialogElement, boolean][]} */ (
-    [["usb-open", usbDialog, false], ["bluetooth-open", bluetoothDialog, true]])) {
-    element(id).addEventListener("click", () => {
-      if (button(id).disabled) return;
-      if ((client.state.link === "ble") !== bluetooth) {
-        client = selectTransport(bluetooth ? "ble" : "usb");
-        watch();
-      }
-      scheduleRefresh();
-      dialog.showModal();
-    });
-  }
-  element("usb-connect").addEventListener("click", () => run(async () => {
-    if (button("usb-connect").disabled) return;
-    if (client.state.connected || client.state.reconnecting) await client.disconnect();
-    else {
-      await client.connect();
-      if (client.state.connected) usbDialog.close();
-    }
-  }));
-  element("bluetooth-scan").addEventListener("click", () => run(async () => {
-    if (button("bluetooth-scan").disabled) return;
-    if (client.state.connected || client.state.reconnecting) {
-      await client.disconnect();
-      return;
-    }
-    const key = controlKey.value;
-    controlKey.value = "";
-    await client.connect(parseHexBytes(key, 32, "control-key"));
-    if (client.state.connected) bluetoothDialog.close();
-  }));
-  for (const [name, dialog] of /** @type {[string, HTMLDialogElement][]} */ (
-    [["usb", usbDialog], ["bluetooth", bluetoothDialog]])) {
-    element(`${name}-connection-close`).addEventListener("click", () => {
-      if (!client.state.busy) dialog.close();
-    });
-    dialog.addEventListener("cancel", event => {
-      if (client.state.busy) event.preventDefault();
-    });
-    dialog.addEventListener("close", () => { controlKey.value = ""; });
-  }
-  for (const control of [settingsClock, ...settingsRadios]) {
-    control.addEventListener("change", () => {
-      setUi({ settings_dirty: Number(settingsClock.value) !== client.state.settings?.system_clock_mhz
-        || selectedRadios() !== (client.state.settings?.radios ?? 0) });
-      scheduleRefresh();
-    });
-  }
-  settingsSave.addEventListener("click", () => {
-    if (settingsSave.disabled) return;
-    const bluetooth = bluetoothLink();
-    const wirelessWarning = element("direct-configuration-wireless-warning");
-    wirelessWarning.textContent = "Wi-Fi and Bluetooth credentials are saved with these settings. Keep a copy of "
-      + "the Control key; it cannot be read back. Flash credentials are not encrypted.";
-    wirelessWarning.hidden = bluetooth || !wirelessForm.dirty();
-    const clock = Number(settingsClock.value);
-    element("configuration-dialog-profile").textContent =
-      `System clock: ${clock ? `${clock} MHz` : "Default"}.`
-      + (!bluetooth && client.state.hardware?.capabilities & CAP.WIRELESS
-        ? ` Wi-Fi: ${selectedRadios() & 1 ? "Enabled" : "Disabled"}.`
-          + ` Bluetooth: ${selectedRadios() & 2 ? "Enabled" : "Disabled"}.` : "");
-    configurationDialog.showModal();
-  });
-  element("confirm-configuration").addEventListener("click", () => run(async () => {
-    if (!configurationDialog.open) return;
-    configurationDialog.close();
-    if (settingsSave.disabled) return;
-    const owner = client;
-    const signal = wirelessForm.signal;
-    const generation = owner.connection.generation;
-    const current = () => !disposed && client === owner && !signal.aborted
-      && owner.connection.generation === generation;
-    const bluetooth = bluetoothLink();
-    // ESPForge has one SD-card profile; Bluetooth keeps the saved radio switches.
-    const settings = { system_clock_mhz: Number(settingsClock.value), sdcard_profile: 0,
-      radios: bluetooth ? client.state.settings?.radios ?? 0 : selectedRadios() };
-    try {
-      const wireless = bluetooth ? null : wirelessForm.request();
-      const saved = await client.saveConfiguration({ settings, wireless });
-      if (!current()) return;
-      if (saved) wirelessForm.finish(saved);
-      setUi({ settings_dirty: false, settings_message: "Settings saved. Waiting for the board to reboot." });
-    } catch (error) {
-      if (!current()) return;
-      if (!bluetooth && wirelessForm.dirty()) wirelessForm.finish(null, describe(error));
-      setUi({ settings_message: `Save failed: ${describe(error)}` });
-    }
-  }));
-  settingsReboot.addEventListener("click", () => {
-    if (settingsReboot.disabled) return;
-    element("reboot-consequence").textContent = client.state.wireless?.staged_mask
-      || client.state.wireless?.staged_state & STAGED_EXPIRED
-      ? "Staged wireless credentials and their expiry marker will be discarded."
-      : ui.getState().settings_dirty || wirelessForm.dirty()
-      ? "Unsaved dashboard changes will be lost." : "Saved next-boot settings will be applied.";
-    rebootDialog.showModal();
-  });
-  element("confirm-reboot").addEventListener("click", () => run(async () => {
-    if (!rebootDialog.open) return;
-    rebootDialog.close();
-    if (!settingsReboot.disabled) await client.reboot(true);
-  }));
-  for (const [name, dialog] of /** @type {[string, HTMLDialogElement][]} */ (
-    [["configuration", configurationDialog], ["reboot", rebootDialog]])) {
-    element(`cancel-${name}`).addEventListener("click", () => dialog.close());
-  }
-  // ponytail: handle Escape on keydown instead of relying on the native cancel event, because a repeated Escape may
-  // close a modal without a cancelable cancel event; connection dialogs stay open while a link is being set up.
-  for (const dialog of [usbDialog, bluetoothDialog, configurationDialog, rebootDialog, mscDialog]) {
-    dialog.addEventListener("keydown", event => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      if (!client.state.busy || ![usbDialog, bluetoothDialog].includes(dialog)) dialog.close();
-    });
-  }
+  bindDialogEscape(allDialogs, connectionDialogs, () => client.state.busy);
   refresh();
   return {
     refresh: scheduleRefresh,

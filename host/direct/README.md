@@ -39,7 +39,7 @@ python3 server.py --port 8000
 ```
 
 For either local option, open **<http://127.0.0.1:8000/>**. The local server requires Python, but does not require the
-ESPForge Python host package. Keep the default loopback binding for local use.
+ESPForge Python host package. The server rejects non-loopback bind addresses; do not expose it on a LAN interface.
 Local startup does not require reverse DNS resolution of the bind address.
 
 Local checkout launches serve a temporary, versioned copy without editing the source assets. Like the other hosts,
@@ -97,8 +97,10 @@ see [SD ownership](../../docs/reference/sdcard.md#usb-drive-handoff). Bluetooth 
 ESPForge has no forced save. Local serving also provides a browser link to the native Wi-Fi shell.
 The Device information RGB dropdown sends volatile colour requests over USB or an authenticated BLE session.
 It requires fresh available-driver telemetry; uncertain commands are reconciled without replay.
-When firmware advertises benchmarking, Storage offers confirmed start/cancel and live write/read verification results.
-See [benchmark safety and timing](../../docs/reference/sdcard.md#optional-storage-benchmark); BLE mirrors progress read-only.
+When firmware advertises benchmarking, Storage offers a start-confirmation dialog naming the size and card wear,
+cancellation, and live write/read verification results. Confirming after the board changes sends no command.
+See [benchmark safety and timing](../../docs/reference/sdcard.md#optional-storage-benchmark); BLE mirrors progress
+read-only.
 Without this capability, benchmark controls and BLE benchmark-status polling are omitted.
 
 ### Wi-Fi shell
@@ -194,13 +196,13 @@ not use Web Serial. See the
 
 | Layer | Responsibility |
 |---|---|
-| Static server | Loopback hosting with security headers |
+| Static server | Loopback hosting, security headers, and revalidated static assets |
 | Application | Browser integration and lifecycle ownership |
 | Protocol | Report codecs, constants and opcode policy |
 | Transport | Abort-aware WebHID/Web Bluetooth byte pipes, framing and authentication |
 | Board session | Connection lifecycle, command journal, recovery, polling and use cases |
 | State | Domain/UI stores, allowlisted events, readiness selectors and errors |
-| Presentation | Dashboard composition, view models and DOM updates |
+| Presentation | Dashboard composition, feature dialogs, view models and DOM updates |
 | Timers | Abortable waits and page-owned timer scopes |
 
 ### Ownership rules
@@ -223,7 +225,8 @@ qualification.
 ```sh
 node host/direct/tests/run-tests.mjs
 python3 -m unittest host.direct.tests.test_server -v
-npx --yes --package typescript@5.9.3 tsc --project host/direct/web/js/tsconfig.json
+npx --yes --package typescript@5.9.3 tsc --project host/direct/tests/types/tsconfig.json
+npx --yes --package typescript@5.9.3 tsc --project host/direct/tests/types/tsconfig.protocol-strict.json
 ```
 
 To isolate command-lifecycle failures:
@@ -236,9 +239,10 @@ node --test host/direct/tests/board/commands.test.mjs
 |---|---|
 | `tests/integration/` | Composition root and cross-layer scenarios |
 | `tests/contracts/` | Architecture, self-containment, and test-layout invariants |
+| `tests/ui/` | Presentation, console, and DOM behavior |
 | `tests/web/` | HTML and asset contracts |
 | `tests/browser/` | Chromium interaction checks and their pinned dependency |
-| `tests/types/` | Static-only negative type contracts; never run with Node |
+| `tests/types/` | TypeScript config and static-only negative type contracts; never run with Node |
 | `tests/support/` | Shared Direct-only fixtures, including a fake ESPForge WebHID device |
 | `tests/test_server.py` | Server behavior |
 
@@ -251,10 +255,16 @@ python3 host/direct/tests/browser/run.py
 ```
 
 The runner owns an ephemeral loopback server and fails on incomplete checks, assertion failures, or browser errors.
-Checks cover dialog focus/Escape, narrow viewports, invalid keys, Wi-Fi selection/cancellation/reset, save/reconnect
-ownership, failed-key-save recovery, and telemetry render coalescing. A fake WebHID board drives the production
-entry point through connect, input reports, and Save. A history-navigation check verifies draft disposal and journal
-retention. They do not exercise real hardware.
+It also runs the vendored axe-core 4.10.3 WCAG 2.1 A/AA and best-practice rules against the dashboard and each dialog;
+its MPL-2.0 and bundled third-party notices are in `tests/browser/vendor/`. Checks cover dialog focus/Escape,
+narrow viewports, invalid keys, Wi-Fi selection/cancellation/reset, save/reconnect ownership, failed-key-save
+recovery, and telemetry render coalescing. A fake WebHID board drives the production entry point through connect,
+input reports, and Save. A history-navigation check verifies draft disposal and journal retention. They do not
+exercise real hardware.
+
+The JavaScript runner enforces aggregate coverage of 90% lines, 80% branches, and 85% functions, plus per-file floors
+of 80% lines, 50% branches, and 50% functions. The type check covers the complete runtime module graph; a separate
+`noImplicitAny` check covers protocol modules while the remaining JavaScript strictness is migrated incrementally.
 
 ## Further reading
 

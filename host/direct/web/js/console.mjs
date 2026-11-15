@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: BSD-3-Clause
 // Copyright (c) 2026 Ji Dong
 
-import { mountConsole } from "./ui/console-session.mjs";
-import { checkConsoleTarget } from "./ui/console-target.mjs";
+/** @file Console page entry: opens the relay only for the board and address its owning dashboard confirms. */
+import { mountConsole } from "./ui/console/console-session.mjs";
+import { checkConsoleTarget } from "./ui/console/console-target.mjs";
 
 const query = new URLSearchParams(location.search);
 const source = query.get("source");

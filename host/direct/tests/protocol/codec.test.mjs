@@ -5,7 +5,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   decodeIdentityReport, decodeConfigReport, decodeTelemetryReport, decodeStorageReport, decodeBenchmarkReport,
-  decodeControlResult, buildControlRequest, decodeWireless, displaySsid, matchesEspForge, ssidBytes, decodeMemoryInventory,
+  decodeControlResult, buildControlRequest, decodeWireless, displaySsid, matchesEspForge, ssidBytes,
+  decodeMemoryInventory,
 } from "../../web/js/protocol/codec.mjs";
 import { identity, config, telemetry, storage, result, memoryInventory } from "../support/fixtures.mjs";
 import { status } from "../support/wireless.mjs";
@@ -101,17 +102,20 @@ test("SPI identity selects four pins and matching storage samples", () => {
 test("WebHID matching needs the ESPForge VID:PID and the vendor collection", () => {
   const device = { vendorId: 0xcafe, productId: 0x4021, collections: [{ usagePage: 0xff00, usage: 1 }] };
   assert.ok(matchesEspForge(device));
-  for (const change of [{ productId: 0x4011 }, { vendorId: 0x2e8a }, { collections: [{ usagePage: 0xff00, usage: 2 }] }]) {
+  for (const change of [{ productId: 0x4011 }, { vendorId: 0x2e8a },
+    { collections: [{ usagePage: 0xff00, usage: 2 }] }]) {
     assert.ok(!matchesEspForge({ ...device, ...change }), JSON.stringify(change));
   }
 });
 
-test("configuration validates ESPForge clocks, SD profile 0, SDMMC GPIOs, monitor UART and optional card detect", () => {
+test("configuration validates ESPForge clocks, SD profile 0, SDMMC GPIOs, monitor UART and optional card detect",
+  () => {
   const id = decodeIdentityReport(identity());
   const decoded = decodeConfigReport(config(), id);
   assert.deepEqual([decoded.system_clock_mhz, decoded.sdcard_profile, decoded.radios], [240, 0, 0]);
   assert.deepEqual(decoded.storage_gpios, [12, 11, 13, 14, 15, 10]);
-  assert.deepEqual([decoded.monitor_uart_index, decoded.monitor_uart_tx_gpio, decoded.monitor_uart_rx_gpio], [0, 43, 44]);
+  assert.deepEqual([decoded.monitor_uart_index, decoded.monitor_uart_tx_gpio, decoded.monitor_uart_rx_gpio],
+    [0, 43, 44]);
   assert.equal(decoded.led_gpio, 255);
   assert.equal(decoded.card_detect_gpio, 255);
   for (const clock of [0, 80, 160]) {

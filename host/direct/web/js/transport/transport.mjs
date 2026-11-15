@@ -2,9 +2,9 @@
 // Copyright (c) 2026 Ji Dong
 
 /**
- * Browser-link contract consumed by the board session. A transport is a byte pipe: framing checks only, no protocol
- * policy (link restrictions live in protocol/opcodes.mjs). `device` is an opaque connection identity the session
- * compares for fencing; it is never dereferenced outside the transport. Events are `report` (reportId, data),
+ * @file Browser-link contract consumed by the board session. A transport is a byte pipe: framing checks only, no
+ * protocol policy (link restrictions live in protocol/opcodes.mjs). `device` is an opaque connection identity the
+ * session compares for fencing; it is never dereferenced outside the transport. Events are `report` (reportId, data),
  * `disconnect`, `available` (an authorized reconnect candidate), and `suspend`. Every I/O operation receives the
  * connection signal.
  *

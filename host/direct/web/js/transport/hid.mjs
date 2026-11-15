@@ -6,7 +6,10 @@ import { matchesEspForge, requireValid } from "../protocol/codec.mjs";
 import { BoardError, REASON } from "../state/errors.mjs";
 
 /** @typedef {import("./transport.mjs").Transport} Transport */
-/** @implements {Transport} */
+/**
+ * @brief WebHID byte pipe for one opened ESPForge device: Feature reports by ID and Input report events.
+ * @implements {Transport}
+ */
 export class HidTransport extends EventTarget {
   constructor(hid) {
     super();
@@ -42,6 +45,7 @@ export class HidTransport extends EventTarget {
     hid?.addEventListener("suspend", this.onSuspend);
   }
 
+  /** @brief Prompt for one ESPForge device and open it; @return false when the user selects none. */
   async connect(_options, signal) {
     signal.throwIfAborted();
     if (!this.api) throw new BoardError(this.unavailableReason);
@@ -55,6 +59,7 @@ export class HidTransport extends EventTarget {
     return true;
   }
 
+  /** @brief Open the authorized device last announced by a WebHID connect event; @return false without one. */
   async reconnect(signal) {
     const device = this.candidate;
     this.candidate = null;
@@ -63,6 +68,7 @@ export class HidTransport extends EventTarget {
     return true;
   }
 
+  /** @brief Open `device` unless the connection signal aborts meanwhile, then forward its Input reports. */
   async openDevice(device, signal) {
     signal.throwIfAborted();
     if (!device.opened) await device.open();
@@ -75,6 +81,7 @@ export class HidTransport extends EventTarget {
     device.addEventListener("inputreport", this.onReport);
   }
 
+  /** @brief Read Feature report `id`; fails if the device disconnects or changes meanwhile. */
   async readReport(id, signal) {
     signal.throwIfAborted();
     const device = this.device;
@@ -85,6 +92,7 @@ export class HidTransport extends EventTarget {
     return value;
   }
 
+  /** @brief Write Feature report `id` (payload without the report ID) with the same identity fencing. */
   async writeReport(id, data, signal) {
     signal.throwIfAborted();
     const device = this.device;
@@ -94,6 +102,7 @@ export class HidTransport extends EventTarget {
     if (device !== this.device) throw new BoardError(REASON.USB_CHANGED);
   }
 
+  /** @brief Forget the open device without closing it; @return the detached device, if any. */
   detach() {
     const device = this.device;
     device?.removeEventListener("inputreport", this.onReport);
@@ -102,11 +111,13 @@ export class HidTransport extends EventTarget {
     return device;
   }
 
+  /** @brief Detach and close the open device. */
   async disconnect() {
     const device = this.detach();
     if (device?.opened) await device.close();
   }
 
+  /** @brief Remove WebHID listeners and disconnect; the transport is unusable afterwards. */
   async dispose() {
     this.api?.removeEventListener("disconnect", this.onDisconnect);
     this.api?.removeEventListener("connect", this.onConnect);

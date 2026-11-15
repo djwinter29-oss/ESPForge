@@ -11,6 +11,65 @@ from threading import Thread
 from playwright.sync_api import Browser, expect, sync_playwright
 
 
+def check_accessibility(browser: Browser, origin: str) -> None:
+    """Run pinned axe-core rules on both pages in light and dark modes."""
+    dialogs = (None, "usb-connection-dialog", "bluetooth-connection-dialog", "msc-dialog",
+               "benchmark-start-dialog", "configuration-dialog", "reboot-dialog", "direct-wifi-dialog",
+               "direct-ble-dialog")
+    for scheme in ("light", "dark"):
+        with browser.new_page(color_scheme=scheme) as page:
+            page.goto(f"{origin}/web/index.html")
+            scheme_used = page.evaluate("getComputedStyle(document.documentElement).colorScheme")
+            if scheme_used != scheme:
+                raise AssertionError(f"Expected {scheme} color scheme, got {scheme_used}")
+            page.add_script_tag(url=f"{origin}/tests/browser/vendor/axe.min.js")
+            page.evaluate("() => document.fonts.ready")
+            for dialog_id in dialogs:
+                if dialog_id:
+                    page.evaluate("(id) => document.querySelector(`#${id}`).showModal()", dialog_id)
+                audit = audit_accessibility(page)
+                if audit:
+                    raise AssertionError(f"axe-core violations in {scheme} mode for "
+                                         f"{dialog_id or 'dashboard'}: {audit}")
+                if dialog_id:
+                    page.evaluate("(id) => document.querySelector(`#${id}`).close()", dialog_id)
+            page.goto(f"{origin}/web/console.html")
+            page.add_script_tag(url=f"{origin}/tests/browser/vendor/axe.min.js")
+            audit = audit_accessibility(page)
+            if audit:
+                raise AssertionError(f"axe-core violations in {scheme} mode for console page: {audit}")
+    print("PASS axe-core WCAG 2.1 A/AA and best-practice checks for both pages and all dialogs in light/dark modes")
+
+
+def audit_accessibility(page):
+    """Run the pinned WCAG 2.1 A/AA and best-practice axe rules."""
+    return page.evaluate("""async () => {
+        const result = await axe.run(document, {runOnly: {
+            type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice']
+        }});
+        return result.violations.map(({ id, impact, description, nodes }) => ({
+            id, impact, description, targets: nodes.map(node => node.target)
+        }));
+    }""")
+
+
+def check_forced_colors(browser: Browser, origin: str) -> None:
+    """Ensure forced-colors mode retains visible keyboard focus."""
+    with browser.new_page() as page:
+        page.goto(f"{origin}/web/index.html")
+        page.emulate_media(forced_colors="active")
+        if not page.evaluate("matchMedia('(forced-colors: active)').matches"):
+            raise AssertionError("Chromium did not enable forced-colors mode")
+        page.locator("#usb-open").focus()
+        focus = page.locator("#usb-open").evaluate("""node => {
+            const style = getComputedStyle(node);
+            return {outlineStyle: style.outlineStyle, outlineWidth: parseFloat(style.outlineWidth)};
+        }""")
+        if focus["outlineStyle"] != "solid" or focus["outlineWidth"] < 2:
+            raise AssertionError(f"Forced-colors focus indicator is not visible: {focus}")
+    print("PASS forced-colors mode retains a visible keyboard focus outline")
+
+
 def check_history(browser: Browser, origin: str) -> None:
     """Navigate a real cached page; require reload without resuming drafts or the board connection."""
     with browser.new_context() as context:
@@ -141,7 +200,7 @@ def check_wifi_layout(browser: Browser, origin: str) -> None:
     with browser.new_context() as context:
         page = context.new_page()
         page.route("**/js/app.mjs", lambda route: route.fulfill(content_type="text/javascript", body="""
-            import { bindWirelessForm } from "./ui/sections/wireless-form.mjs";
+            import { bindWirelessForm } from "./ui/sections/wireless-form/wireless-form.mjs";
             import { renderWirelessStatus } from "./ui/sections/wireless.mjs";
             const wireless = {ssid: "Home", ssid_hex: "486f6d65", wifi_enabled: true,
                 wifi_state: "connected", ipv4: "192.168.1.9", ble_enabled: false};
@@ -238,6 +297,8 @@ def main() -> None:
                     check_version_label(browser, origin)
                     check_identity_details(browser, origin)
                     check_wifi_layout(browser, origin)
+                    check_accessibility(browser, origin)
+                    check_forced_colors(browser, origin)
                 finally:
                     browser.close()
         finally:
