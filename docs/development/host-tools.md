@@ -42,7 +42,7 @@ Run `espforge`, `python -m espforge`, or the checkout launch script.
 |---|---|
 | Package identity | Version from the installed distribution, with a development fallback |
 | CLI | `status`, `web` and `reboot` commands with `--serial` / `--device-path` selection |
-| Reports | Pure decoders and encoders for Reports 1, 2, 3, 10, 12 and 20 with ESPForge-specific validation |
+| Reports | Pure USB HID report codecs and ESPForge-specific validation; see the [USB HID contract](../reference/usb-hid.md) |
 | HID transport | Device discovery, Feature/Input reads and Control writes |
 | Dashboard services | Loopback Flask app, board discovery, one serialized monitor per board and the HTTP API |
 | Tests | Report codecs, HID device, monitor, boards, wireless, web API, CLI, version and packaging contracts |
@@ -107,7 +107,8 @@ Direct owns its static page, styles, layered browser modules and loopback static
 
 - Direct must not import, link or copy at runtime from `host/web/`; `host/web/` must not reference Direct.
 - Browser integration belongs at the application boundary; lower layers receive dependencies by injection.
-- Lower-layer JavaScript is type-checked.
+- All browser modules are type-checked; core utilities and protocol codecs use full TypeScript strict mode.
+  Board lifecycle, recovery, transport and reducer modules also reject implicit `any`.
 - Unit and architectural contract tests enforce the layer boundaries.
 
 ```sh

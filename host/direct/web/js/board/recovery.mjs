@@ -37,7 +37,7 @@ export class Recovery {
 
   /**
    * @brief Recover every pending fact after the board identified itself; failures leave the outcome uncertain.
-   * @param device Device the connection was opened on.
+   * @param {object | null} device Device the connection was opened on.
    * @param {AbortSignal} signal Connection signal.
    * @param {() => boolean} current Whether that connection is still the active one.
    */
@@ -50,6 +50,11 @@ export class Recovery {
   }
 
   /** @brief Step 1: read the journalled control result and retire it, or keep it uncertain. */
+  /**
+   * @param {object | null} device
+   * @param {import("../state/reducer.mjs").PendingRequest} request
+   * @param {AbortSignal} signal
+   */
   async recoverRequest(device, request, signal) {
     const s = this.session;
     const commands = s.commands;
@@ -72,6 +77,10 @@ export class Recovery {
   }
 
   /** @brief Step 2: observe the accepted scan/test lifecycle to its outcome and clear its journal record. */
+  /**
+   * @param {import("../state/reducer.mjs").WirelessLifecycle} pending
+   * @param {() => boolean} current
+   */
   async recoverLifecycle(pending, current) {
     const s = this.session;
     try {

@@ -108,7 +108,7 @@ export function decodeConfigReport(report, identity) {
     radios: (flags & CONFIG_FLAGS.RADIO_MASK) >> 3 };
   requireValid(validSettings(settings) && !(flags & ~CONFIG_FLAGS.VALID_MASK)
     && Boolean(flags & CONFIG_FLAGS.MONITOR_UART)
-    && (identity.capabilities & CAP.WIRELESS || !(flags & CONFIG_FLAGS.RADIO_MASK))
+    && (Boolean(identity.capabilities & CAP.WIRELESS) || !(flags & CONFIG_FLAGS.RADIO_MASK))
     && [0, 1].includes(uart) && tx !== 255 && rx !== 255
     && Boolean(flags & CONFIG_FLAGS.LED) === (led !== 255)
     && (led === 255 || Boolean(identity.capabilities & CAP.LED))

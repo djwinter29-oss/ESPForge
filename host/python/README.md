@@ -5,8 +5,9 @@ The host talks to the board's native USB HID interface (VID:PID `0xCAFE:0x4021`)
 [USB HID contract](../../docs/reference/usb-hid.md).
 Basic monitoring needs no SD card. Wireless controls depend on the connected firmware's capabilities.
 
-Python and .NET share their own frontend in `host/web/src`. The Direct dashboard is independent: **no code is shared
-with Direct**. See the [Direct independence policy](../../docs/development/host-tools.md#direct-dashboard-independence).
+Python and .NET share the frontend in `host/web/src`. Direct owns its separate frontend and standalone server; its
+release reuses the standard-library console relay without depending on the Python package. See the
+[Direct independence policy](../../docs/development/host-tools.md#direct-dashboard-independence).
 This Python host connects over USB HID, not the USB-UART bridge or Bluetooth LE.
 Wireless status uses Report 12 and all writes use the unified Report 20 channel. The dashboard preserves the saved
 Wi-Fi and BLE switches from Report 2 and supports staged credentials, connection tests, and scans.

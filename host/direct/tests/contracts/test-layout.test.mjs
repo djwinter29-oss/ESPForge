@@ -27,16 +27,30 @@ test("the Direct type check includes the complete runtime module graph", () => {
   assert.equal(config.compilerOptions.checkJs, true);
 });
 
-test("protocol sources have an incremental noImplicitAny check", () => {
+test("protocol sources have a full strict TypeScript check", () => {
   const config = JSON.parse(readFileSync(new URL("../types/tsconfig.protocol-strict.json", import.meta.url), "utf8"));
   assert.deepEqual(config.include, ["../../web/js/protocol/*.mjs"]);
-  assert.equal(config.compilerOptions.noImplicitAny, true);
+  assert.equal(config.compilerOptions.strict, true);
 });
 
-test("timers, domain errors and UI messages have a separate noImplicitAny check", () => {
+test("timers, domain errors and UI messages have a full strict TypeScript check", () => {
   const config = JSON.parse(readFileSync(new URL("../types/tsconfig.core-strict.json", import.meta.url), "utf8"));
   assert.deepEqual(config.include, ["../../web/js/timers.mjs", "../../web/js/state/errors.mjs",
     "../../web/js/ui/messages.mjs"]);
+  assert.equal(config.compilerOptions.strict, true);
+});
+
+test("board lifecycle and transport modules reject implicit any", () => {
+  const config = JSON.parse(readFileSync(new URL("../types/tsconfig.no-implicit-any.json", import.meta.url), "utf8"));
+  assert.deepEqual(config.include, [
+    "../../web/js/board/commands.mjs",
+    "../../web/js/board/connection.mjs",
+    "../../web/js/board/polling.mjs",
+    "../../web/js/board/recovery.mjs",
+    "../../web/js/state/reducer.mjs",
+    "../../web/js/transport/ble.mjs",
+    "../../web/js/transport/hid.mjs",
+  ]);
   assert.equal(config.compilerOptions.noImplicitAny, true);
 });
 

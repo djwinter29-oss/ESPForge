@@ -47,6 +47,8 @@ export const DOMAIN_EVENTS = Object.freeze({
   "wireless/locked": ["wireless_busy"],
   "session/failed": ["error", "outcome_uncertain"],
 });
+/** @param {string} type @returns {type is keyof typeof DOMAIN_EVENTS} */
+const isDomainEvent = type => Object.hasOwn(DOMAIN_EVENTS, type);
 
 /**
  * @brief Dashboard-only presentation facts written only by the UI layer. `action_error` is the last failed user
@@ -112,6 +114,7 @@ export const UI_KEYS = Object.freeze([
  */
 /** @typedef {StateAction<DashboardState>} DashboardAction */
 
+/** @param {object} object @param {readonly string[]} keys @param {string} label */
 const checkKeys = (object, keys, label) => {
   const unknown = Object.keys(object).filter(key => !keys.includes(key));
   if (unknown.length) throw new Error(`Unknown ${label} keys: ${unknown.join(", ")}`);
@@ -123,7 +126,7 @@ const checkKeys = (object, keys, label) => {
  */
 export function dashboardReducer(state, action) {
   if (action.type === "replace") { checkKeys(action.state, DOMAIN_KEYS, "state"); return action.state; }
-  const keys = Object.hasOwn(DOMAIN_EVENTS, action.type) ? DOMAIN_EVENTS[action.type] : null;
+  const keys = isDomainEvent(action.type) ? DOMAIN_EVENTS[action.type] : null;
   if (!keys || !("changes" in action)) throw new Error(`Unknown domain event ${action.type}`);
   checkKeys(action.changes, keys, action.type);
   return { ...state, ...action.changes };

@@ -147,6 +147,13 @@ test("every opcode has one complete descriptor and every reason code has dashboa
   assert.match(describe(new DOMException(REASON.IO_TIMEOUT, "TimeoutError")), /timeout; command outcome uncertain/);
   assert.equal(describe(new BoardError(REASON.INVALID_REPORT, "storage-status")), "Invalid HID storage status");
   assert.equal(describe(new BoardError(REASON.INVALID_INPUT, "control-key")), "Invalid Control key (64 hex digits)");
+  assert.equal(describe(new BoardError(REASON.COMMAND_FAILED,
+    { opcode: 2, status: 3, error: 4, detail: 5 })), "Command 2: status 3, error 4, detail 5");
+  assert.equal(describe(new BoardError(REASON.COMMAND_FAILED, null)), "Command failed");
+  assert.equal(describe(new BoardError(REASON.CLOSE_FAILED,
+    { cause: new Error("USB closed"), close: "handle release failed" })),
+  "Unexpected error: USB closed; closing the transport failed: handle release failed");
+  assert.equal(describe(new BoardError(REASON.CLOSE_FAILED, null)), "Closing the transport failed");
   assert.equal(describe(Object.assign(new Error("x"), { name: "NotFoundError" })), "No board was selected.");
 });
 

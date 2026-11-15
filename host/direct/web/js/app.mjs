@@ -14,8 +14,12 @@ import { createConsoleBootstrap } from "./ui/console/console-bootstrap.mjs";
 
 const timers = createTimerScope();
 const store = createDashboardStore({});
-/** @return {Navigator & {hid?: unknown, bluetooth?: unknown}} */
-const deviceNavigator = () => /** @type {Navigator & {hid?: unknown, bluetooth?: unknown}} */ (navigator);
+/** @return {Navigator & {hid?: import("./transport/hid.mjs").HidApi,
+ * bluetooth?: import("./transport/ble.mjs").BleApi}} */
+const deviceNavigator = () => /** @type {Navigator & {
+  hid?: import("./transport/hid.mjs").HidApi,
+  bluetooth?: import("./transport/ble.mjs").BleApi
+}} */ (navigator);
 let disposed = false;
 const consoleBootstrap = createConsoleBootstrap({
   localServer: ["localhost", "127.0.0.1"].includes(location.hostname),

@@ -7,10 +7,33 @@ import { BoardError, REASON } from "../state/errors.mjs";
 
 /** @typedef {import("./transport.mjs").Transport} Transport */
 /**
+ * @typedef {EventTarget & {
+ *   vendorId: number,
+ *   productId: number,
+ *   collections: Array<{usagePage: number, usage: number}>,
+ *   opened: boolean,
+ *   productName?: string | null,
+ *   open: () => Promise<void>,
+ *   close: () => Promise<void>,
+ *   receiveFeatureReport: (id: number) => Promise<DataView>,
+ *   sendFeatureReport: (id: number, data: Uint8Array) => Promise<void>,
+ * }} HidDevice
+ */
+/**
+ * @typedef {EventTarget & {
+ *   requestDevice: (options: {filters: Array<{vendorId: number, productId: number,
+ *     usagePage: number, usage: number}>}) => Promise<HidDevice[]>,
+ *   getDevices: () => Promise<HidDevice[]>,
+ * }} HidApi
+ */
+/** @typedef {Event & {device: HidDevice}} HidDeviceEvent */
+/** @typedef {HidDeviceEvent & {reportId: number, data: DataView}} HidInputReportEvent */
+/**
  * @brief WebHID byte pipe for one opened ESPForge device: Feature reports by ID and Input report events.
  * @implements {Transport}
  */
 export class HidTransport extends EventTarget {
+  /** @param {HidApi | undefined} hid */
   constructor(hid) {
     super();
     /** @type {"usb"} */
@@ -23,20 +46,24 @@ export class HidTransport extends EventTarget {
     this.device = null;
     this.candidate = null;
     this.name = null;
+    /** @param {HidInputReportEvent} event */
     this.onReport = event => {
       if (event.device === this.device) this.dispatchEvent(Object.assign(new Event("report"),
         { reportId: event.reportId, data: event.data }));
     };
+    /** @param {HidDeviceEvent} event */
     this.onDisconnect = event => {
       if (event.device !== this.device) return;
       this.detach();
       this.dispatchEvent(new Event("disconnect"));
     };
+    /** @param {HidDeviceEvent} event */
     this.onConnect = event => {
       if (this.device || !matchesEspForge(event.device)) return;
       this.candidate = event.device;
       this.dispatchEvent(new Event("available"));
     };
+    /** @param {HidDeviceEvent} event */
     this.onSuspend = event => {
       if (event.device === this.device) this.dispatchEvent(new Event("suspend"));
     };
@@ -46,6 +73,7 @@ export class HidTransport extends EventTarget {
   }
 
   /** @brief Prompt for one ESPForge device and open it; @return false when the user selects none. */
+  /** @param {Uint8Array | undefined} _options @param {AbortSignal} signal */
   async connect(_options, signal) {
     signal.throwIfAborted();
     if (!this.api) throw new BoardError(this.unavailableReason);
@@ -60,6 +88,7 @@ export class HidTransport extends EventTarget {
   }
 
   /** @brief Open the authorized device last announced by a WebHID connect event; @return false without one. */
+  /** @param {AbortSignal} signal */
   async reconnect(signal) {
     const device = this.candidate;
     this.candidate = null;
@@ -69,6 +98,7 @@ export class HidTransport extends EventTarget {
   }
 
   /** @brief Open `device` unless the connection signal aborts meanwhile, then forward its Input reports. */
+  /** @param {HidDevice} device @param {AbortSignal} signal */
   async openDevice(device, signal) {
     signal.throwIfAborted();
     if (!device.opened) await device.open();
@@ -82,6 +112,7 @@ export class HidTransport extends EventTarget {
   }
 
   /** @brief Read Feature report `id`; fails if the device disconnects or changes meanwhile. */
+  /** @param {number} id @param {AbortSignal} signal */
   async readReport(id, signal) {
     signal.throwIfAborted();
     const device = this.device;
@@ -93,6 +124,7 @@ export class HidTransport extends EventTarget {
   }
 
   /** @brief Write Feature report `id` (payload without the report ID) with the same identity fencing. */
+  /** @param {number} id @param {Uint8Array} data @param {AbortSignal} signal */
   async writeReport(id, data, signal) {
     signal.throwIfAborted();
     const device = this.device;

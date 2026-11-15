@@ -18,11 +18,15 @@ const PENDING_OPERATION_KEY = "espforge.direct.pending-operation";
  * @typedef {{flags?: number, args?: ArrayLike<number>, signal?: AbortSignal,
  *   lifecycle?: import("../state/reducer.mjs").WirelessLifecycle,
  *   commitMask?: number, workflow?: symbol}} CommandOptions
+ * @typedef {Pick<Storage, "getItem" | "setItem" | "removeItem">} PendingStore
  */
+/** @param {unknown} value */
 const isUid = value => typeof value === "string" && /^[A-F0-9]{16}$/i.test(value);
+/** @param {import("../state/reducer.mjs").WirelessLifecycle} lifecycle @param {number} opcode */
 const validLifecycle = (lifecycle, opcode) => hasExactKeys(lifecycle, ["operation", "generation"])
   && lifecycle.operation === opcode && inRange(lifecycle.generation, 1, OPCODES[opcode]?.lifecycle?.generationMax);
 /** @brief Failure code when a completed result does not prove the request; default NOT_CONFIRMED. */
+/** @type {Record<number, string>} */
 const UNCONFIRMED = { [OP.SCAN_ENTRY]: REASON.SCAN_MISMATCH };
 
 /**
@@ -42,6 +46,7 @@ const UNCONFIRMED = { [OP.SCAN_ENTRY]: REASON.SCAN_MISMATCH };
  */
 
 /** @brief A refused or failed final result; recovery omits the detail byte. */
+/** @param {ReturnType<typeof decodeControlResult>} result @param {boolean} [includeDetail] */
 export const createCommandFailure = (result, includeDetail = true) => new BoardError(REASON.COMMAND_FAILED, {
   opcode: result.opcode, status: result.status, error: result.error_reason,
   ...includeDetail ? { detail: result.detail } : {} });
@@ -72,18 +77,26 @@ export function validatePendingOperation(record) {
 }
 
 /** @brief Default journal store: this tab's sessionStorage, or null when the browser denies it. */
+/** @return {PendingStore | null} */
 export function defaultPendingStore() {
   try { return globalThis.sessionStorage ?? null; } catch { return null; }
 }
 
-/** @brief Read the saved record; @return null when none is saved; throw on unavailable or invalid data. */
+/**
+ * @brief Read the saved record; @return null when none is saved; throw on unavailable or invalid data.
+ * @param {PendingStore | null} store
+ */
 export function loadPendingOperation(store) {
   if (!store) throw new BoardError(REASON.SESSION_STORAGE);
   const raw = store.getItem(PENDING_OPERATION_KEY);
   return raw ? validatePendingOperation(JSON.parse(raw)) : null;
 }
 
-/** @brief Save a validated record, or clear the slot when record is null. Throws when storage is unavailable. */
+/**
+ * @brief Save a validated record, or clear the slot when record is null. Throws when storage is unavailable.
+ * @param {PendingStore | null} store
+ * @param {import("../state/reducer.mjs").PendingOperation | null} record
+ */
 export function savePendingOperation(store, record) {
   if (!store) throw new BoardError(REASON.STORAGE_UNAVAILABLE);
   if (record) store.setItem(PENDING_OPERATION_KEY, JSON.stringify(validatePendingOperation(record)));
@@ -94,7 +107,7 @@ export function savePendingOperation(store, record) {
 export class Commands {
   /**
    * @param {CommandSession} session Only the command queue's state, transport, timing and peer operations.
-   * @param pendingStore Journal storage (sessionStorage-like), or null when unavailable.
+   * @param {PendingStore | null} pendingStore Journal storage, or null when unavailable.
    */
   constructor(session, pendingStore) {
     this.session = session;
@@ -125,6 +138,8 @@ export class Commands {
   }
 
   /** @brief Persist the journal record for the given pending facts before they enter state. */
+  /** @param {import("../state/reducer.mjs").PendingRequest | null} request
+   * @param {import("../state/reducer.mjs").WirelessLifecycle | null} wireless */
   persist(request, wireless) {
     const s = this.session;
     const uid = s.state.hardware?.serial_number ?? s.connection.reconnectUid;
@@ -133,6 +148,7 @@ export class Commands {
   }
 
   /** @brief Retire the outstanding transaction. A successful lifecycle request becomes the pending wireless command. */
+  /** @param {import("../state/reducer.mjs").PendingRequest} request @param {boolean} succeeded */
   retire(request, succeeded) {
     const wireless = succeeded && request.lifecycle ? request.lifecycle : null;
     this.persist(null, wireless);
@@ -147,6 +163,8 @@ export class Commands {
   }
 
   /** @brief Failure code when a completed result does not prove the request's effect, else null. */
+  /** @param {import("../state/reducer.mjs").PendingRequest} request
+   * @param {ReturnType<typeof decodeControlResult>} result */
   unconfirmed(request, result) {
     const confirms = OPCODES[request.opcode]?.confirms;
     return !confirms || confirms(result, request) ? null : UNCONFIRMED[request.opcode] ?? REASON.NOT_CONFIRMED;
@@ -175,6 +193,7 @@ export class Commands {
     }
   }
 
+  /** @param {number} opcode @param {CommandOptions & {signal: AbortSignal}} options */
   async execute(opcode, options) {
     const s = this.session;
     s.polling.expireReports();
@@ -223,7 +242,8 @@ export class Commands {
       return result;
     } catch (error) {
       // SET rejection is authoritative: do not poll or accept a prior result.
-      if (!sent && !["TimeoutError", "AbortError"].includes(error.name) && current()) {
+      if (!sent && !(error instanceof BoardError && error.uncertain)
+        && !["TimeoutError", "AbortError"].includes(error.name) && current()) {
         try { this.retire(request, false); }
         catch (storageError) {
           s.emit("session/failed", { error: { code: REASON.RECOVERY_CLEAR_FAILED, detail: errorValue(storageError) } });
@@ -240,6 +260,8 @@ export class Commands {
   }
 
   /** @brief Poll Feature 20 until the request's final result; any connection change leaves the outcome uncertain. */
+  /** @param {object | null} device @param {import("../state/reducer.mjs").PendingRequest} request
+   * @param {AbortSignal} [signal] */
   async pollResult(device, request, signal = this.session.connectionSignal) {
     const s = this.session;
     const deadline = s.now() + s.timeout;

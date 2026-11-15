@@ -22,6 +22,9 @@ export const PHASE = Object.freeze({
   READY: "ready", /**< Board identified, recovery done, polling running. */
 });
 /** @typedef {typeof PHASE[keyof typeof PHASE]} Phase */
+/** @param {Phase} from @param {Phase} to */
+export const canTransition = (from, to) => from === to || to === PHASE.DISCONNECTED || to === PHASE.RECONNECTING
+  || Boolean(TRANSITIONS[from]?.includes(to));
 
 /**
  * @brief Forward edges of the lifecycle. Any phase may also stay where it is or close to DISCONNECTED or
@@ -35,10 +38,6 @@ export const TRANSITIONS = Object.freeze({
   [PHASE.RECOVERING]: [PHASE.READY],
   [PHASE.READY]: [],
 });
-
-/** @brief Whether the lifecycle allows moving from one phase to another. */
-export const canTransition = (from, to) => from === to || to === PHASE.DISCONNECTED || to === PHASE.RECONNECTING
-  || Boolean(TRANSITIONS[from]?.includes(to));
 
 /**
  * @brief Per-connection facts (state/reducer.mjs CONNECTION_FACTS) reset on connect and disconnect.
@@ -80,6 +79,7 @@ export class Connection {
     /** Serial number of the board that owns the journalled operation, or of the current board. */
     this.reconnectUid = null;
     const transport = session.transport;
+    /** @type {Record<string, EventListener>} */
     this.handlers = {
       report: event => session.polling.onInputReport(event),
       disconnect: () => this.clear(transport.autoReconnect && this.reconnectUid ? PHASE.RECONNECTING
@@ -97,6 +97,11 @@ export class Connection {
   get signal() { return this.controller.signal; }
 
   /** @brief Move to a phase, writing it and its projections in one event; throws on an illegal edge. */
+  /**
+   * @param {Phase} to
+   * @param {Partial<import("../state/reducer.mjs").DashboardState>} [changes]
+   * @param {string} [type]
+   */
   transition(to, changes = {}, type = "connection/changed") {
     if (!canTransition(this.phase, to)) throw new Error(`Illegal connection transition ${this.phase} -> ${to}`);
     this.session.emit(type, { ...changes, phase: to, connected: to === PHASE.RECOVERING || to === PHASE.READY,
@@ -104,12 +109,13 @@ export class Connection {
   }
 
   /** @brief Change connection flags (busy, error) without changing phase. */
+  /** @param {Partial<import("../state/reducer.mjs").DashboardState>} changes */
   change(changes) { this.session.emit("connection/changed", changes); }
 
   /**
    * @brief Fence the old connection, stop polling and reset per-connection facts. Performs no device I/O.
-   * @param {string} [phase] PHASE.DISCONNECTED or PHASE.RECONNECTING.
-   * @param {object} [changes] Extra `connection/closed` facts, e.g. the error.
+   * @param {Phase} [phase] PHASE.DISCONNECTED or PHASE.RECONNECTING.
+   * @param {Partial<import("../state/reducer.mjs").DashboardState>} [changes] Extra `connection/closed` facts.
    */
   clear(phase = PHASE.DISCONNECTED, changes = {}) {
     const s = this.session;
@@ -123,6 +129,7 @@ export class Connection {
   }
 
   /** @brief Open a user-selected board. */
+  /** @param {Uint8Array | undefined} options */
   async connect(options) {
     const s = this.session;
     if (s.state.busy || s.device || s.state.reconnecting) return;
@@ -145,6 +152,7 @@ export class Connection {
   }
 
   /** @brief End a connect attempt that never reached initialization. */
+  /** @param {Partial<import("../state/reducer.mjs").DashboardState>} changes */
   settle(changes) {
     if (this.phase === PHASE.CONNECTING) this.transition(PHASE.DISCONNECTED, changes);
     else this.change(changes);
@@ -157,6 +165,7 @@ export class Connection {
     const generation = this.generation;
     const signal = this.signal;
     const current = () => generation === this.generation && device === s.device;
+    /** @param {number} id */
     const read = async id => withTimeout(s.transport.readReport(id, signal), s.timeout, signal, s.timers);
     this.transition(PHASE.INITIALIZING, { busy: true });
     try {

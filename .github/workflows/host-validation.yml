@@ -76,6 +76,7 @@ jobs:
           npx --yes --package typescript@5.9.3 tsc --project host/direct/tests/types/tsconfig.json
           npx --yes --package typescript@5.9.3 tsc --project host/direct/tests/types/tsconfig.core-strict.json
           npx --yes --package typescript@5.9.3 tsc --project host/direct/tests/types/tsconfig.protocol-strict.json
+          npx --yes --package typescript@5.9.3 tsc --project host/direct/tests/types/tsconfig.no-implicit-any.json
 
       - name: Setup .NET
         if: matrix.python == '3.12'

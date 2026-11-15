@@ -97,7 +97,7 @@ export function createTimerScope(parent = null) {
 export function wait(milliseconds, signal, timers = globalThis) {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
-      reject(signal.reason ?? new DOMException(REASON.OPERATION_CANCELLED, "AbortError"));
+      reject(signal?.reason ?? new DOMException(REASON.OPERATION_CANCELLED, "AbortError"));
       return;
     }
     const timer = timers.setTimeout(finish, milliseconds);
@@ -108,7 +108,7 @@ export function wait(milliseconds, signal, timers = globalThis) {
     function abort() {
       timers.clearTimeout(timer);
       signal?.removeEventListener("abort", abort);
-      reject(signal.reason ?? new DOMException(REASON.OPERATION_CANCELLED, "AbortError"));
+      reject(signal?.reason ?? new DOMException(REASON.OPERATION_CANCELLED, "AbortError"));
     }
     signal?.addEventListener("abort", abort, { once: true });
   });
@@ -145,7 +145,7 @@ export function withTimeout(operation, milliseconds, signal, timers = globalThis
       cleanup();
       reject(error);
     };
-    const abort = () => finishReject(signal.reason ?? new DOMException(REASON.OPERATION_CANCELLED, "AbortError"));
+    const abort = () => finishReject(signal?.reason ?? new DOMException(REASON.OPERATION_CANCELLED, "AbortError"));
     const timer = timers.setTimeout(() => finishReject(new DOMException(REASON.IO_TIMEOUT, "TimeoutError")),
       milliseconds);
     if (signal?.aborted) abort();

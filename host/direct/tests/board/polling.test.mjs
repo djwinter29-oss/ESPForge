@@ -137,7 +137,7 @@ test("slow BLE polling keeps valid snapshots visible but still expires missing a
   } finally { unsubscribe(); client.dispose(); }
 });
 
-test("delayed BLE status reads preserve command matching and never replay a rejected GATT write", async () => {
+test("delayed BLE status reads preserve command matching and uncertainty after a rejected GATT write", async () => {
   const setup = await connected();
   const transport = new BleTransport({});
   const client = new BoardSession(transport, { pendingStore: setup.pendingStore, wirelessPolling: false,
@@ -193,25 +193,22 @@ test("delayed BLE status reads preserve command matching and never replay a reje
     assert.equal(writes.length, 1, "an overlapping status read cannot consume a command result");
     assert.deepEqual(proofs, [writes[0]], "every Bluetooth command is proved");
     rejectWrite = true;
-    await assert.rejects(client.command(OP.REBOOT, { flags: 1 }), { code: REASON.BLE_PROOF_REJECTED });
-    assert.equal(client.state.pending_request, null, "a native SET rejection is authoritative");
-    assert.equal(client.state.outcome_uncertain, false);
+    await assert.rejects(client.command(OP.REBOOT, { flags: 1 }), { code: REASON.OUTCOME_UNCERTAIN });
+    assert.ok(client.state.pending_request, "a rejected GATT response does not prove the command was not delivered");
+    assert.equal(client.state.outcome_uncertain, true);
     assert.equal(client.state.freshness[3], "fresh");
     assert.equal(writes.length, 1, "the rejected write is not retried when the status read finishes");
-    rejectWrite = false;
-    await reboot();
-    assert.equal(writes.length, 2, "only an explicit later action sends another write");
-    client.polling.enabled = true;
-    client.pollWireless();
-    client.pollWireless();
+    await assert.rejects(client.command(OP.REBOOT, { flags: 1 }), says(/uncertain/));
+    assert.equal(writes.length, 1, "later actions stay blocked until recovery resolves the result");
+    const wirelessRead = client.readWireless();
     await new Promise(resolve => setImmediate(resolve));
-    assert.equal(wirelessReads, 1, "Feature 12 has one in-flight background reader");
+    assert.equal(wirelessReads, 1, "Feature 12 read is in flight");
     client.connection.clear();
     wirelessPending = false;
     releaseWireless();
-    await new Promise(resolve => setImmediate(resolve));
+    await assert.rejects(wirelessRead, { name: "AbortError" });
     assert.equal(client.state.wireless, null, "late BLE status cannot restore a disconnected snapshot");
-    assert.equal(writes.length, 2);
+    assert.equal(writes.length, 1);
   } finally { client.dispose(); }
 });
 

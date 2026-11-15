@@ -29,6 +29,9 @@ const WIFI_DETAILS = Object.freeze([
 /** @param {string} kind @param {unknown} value */
 export const unknown = (kind, value) => `Unknown ${kind} (${String(value)})`;
 
+/** @param {unknown} field */
+const fieldName = field => typeof field === "string" ? FIELDS[field] ?? field : String(field);
+
 /** @param {unknown} detail */
 const detailIndex = detail => typeof detail === "number" || typeof detail === "string" && detail.trim() !== ""
   ? Number(detail) : Number.NaN;
@@ -85,9 +88,16 @@ export const MESSAGES = Object.freeze({
   [REASON.WIRELESS_STORAGE]: "Wireless configuration requires USB and fresh storage status.",
   [REASON.REBOOT_CONFIRMATION]: "Reboot requires explicit confirmation",
   [REASON.QUEUE_BUSY]: "Command unavailable while another command owns the queue",
-  /** @param {{opcode: number, status: number, error: number, detail?: number}} result */
-  [REASON.COMMAND_FAILED]: ({ opcode, status, error, detail }) =>
-    `Command ${opcode}: status ${status}, error ${error}${detail === undefined ? "" : `, detail ${detail}`}`,
+  /** @param {unknown} result */
+  [REASON.COMMAND_FAILED]: result => {
+    const detail = result && typeof result === "object" && "detail" in result ? result.detail : undefined;
+    if (!result || typeof result !== "object" || !("opcode" in result) || !("status" in result)
+      || !("error" in result) || typeof result.opcode !== "number" || typeof result.status !== "number"
+      || typeof result.error !== "number" || ("detail" in result && result.detail !== undefined
+        && typeof result.detail !== "number")) return "Command failed";
+    return `Command ${result.opcode}: status ${result.status}, error ${result.error}`
+      + (typeof detail !== "number" ? "" : `, detail ${detail}`);
+  },
   [REASON.OUTCOME_UNCERTAIN]: "Command outcome uncertain after disconnect",
   [REASON.DISCONNECTED_UNCERTAIN]: "Command outcome uncertain after disconnect; no request will be replayed.",
   [REASON.RESULT_TIMEOUT]: "Command outcome uncertain: result timeout; disconnect/reconnect to read it, never replay",
@@ -102,8 +112,14 @@ export const MESSAGES = Object.freeze({
     `Command was not sent, but recovery state could not be cleared: ${describe(detail)}`,
   [REASON.CONNECTION_CHANGED]: "Board connection changed",
   [REASON.CONNECTION_CANCELLED]: "Connection cancelled",
-  /** @param {{cause: unknown, close: string}} failure */
-  [REASON.CLOSE_FAILED]: ({ cause, close }) => `${describe(cause)}; closing the transport failed: ${close}`,
+  /** @param {unknown} failure */
+  [REASON.CLOSE_FAILED]: failure => {
+    if (!failure || typeof failure !== "object" || !("cause" in failure) || !("close" in failure)
+      || typeof failure.close !== "string") {
+      return "Closing the transport failed";
+    }
+    return `${describe(failure.cause)}; closing the transport failed: ${failure.close}`;
+  },
   [REASON.WRONG_BOARD]: "Select the original board to resolve its pending operation.",
   /** @param {unknown} detail */
   [REASON.STATUS_READ_FAILED]: detail => `Board status read failed: ${describe(detail)}`,
@@ -130,15 +146,15 @@ export const MESSAGES = Object.freeze({
   [REASON.NETWORK_REQUIRED]: "Wi-Fi requires a network",
   [REASON.WIRELESS_CONFIG_INVALID]: "Invalid wireless configuration",
   [REASON.TESTED_PAIR_CHANGED]: "Tested Wi-Fi pair no longer matches; test again",
-  /** @param {string} field */
-  [REASON.INVALID_REPORT]: field => `Invalid HID ${FIELDS[field] ?? field}`,
-  /** @param {string} field */
-  [REASON.INVALID_INPUT]: field => `Invalid ${FIELDS[field] ?? field}`,
-  /** @param {number} size */
+  /** @param {unknown} field */
+  [REASON.INVALID_REPORT]: field => `Invalid HID ${fieldName(field)}`,
+  /** @param {unknown} field */
+  [REASON.INVALID_INPUT]: field => `Invalid ${fieldName(field)}`,
+  /** @param {unknown} size */
   [REASON.REPORT_LENGTH]: size => `Expected exactly ${size} HID payload bytes`,
-  /** @param {number} version */
+  /** @param {unknown} version */
   [REASON.LAYOUT_VERSION]: version => `Unsupported HID layout version ${version}`,
-  /** @param {number} product */
+  /** @param {unknown} product */
   [REASON.UNKNOWN_PRODUCT]: product => `Unknown product (0x${Number(product).toString(16).padStart(4, "0")})`,
   [REASON.SSID_HEX_LENGTH]: "SSID hex must encode at most 32 bytes",
   [REASON.SSID_MISSING]: "SSID is required",
@@ -165,9 +181,15 @@ export const MESSAGES = Object.freeze({
   [REASON.DEVICE_DISCONNECTED]: "Device disconnected",
   [REASON.WIRELESS_CONNECTING]: "Connecting",
   // The browser chooser's cancel needs no diagnostic; everything else keeps the raw message for support.
-  /** @param {{name?: string, message?: string}} error */
-  [REASON.UNEXPECTED]: ({ name = "Error", message = "" }) => name === "NotFoundError" ? "No board was selected."
-    : `${BROWSER[name] ?? "Unexpected error"}: ${message}`,
+  /** @param {unknown} error */
+  [REASON.UNEXPECTED]: error => {
+    const name = error && typeof error === "object" && "name" in error && typeof error.name === "string"
+      ? error.name : "Error";
+    const message = error && typeof error === "object" && "message" in error && typeof error.message === "string"
+      ? error.message : "";
+    return name === "NotFoundError" ? "No board was selected."
+      : `${BROWSER[name] ?? "Unexpected error"}: ${message}`;
+  },
 });
 
 /**

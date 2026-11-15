@@ -7,7 +7,7 @@ import { createHmac, webcrypto } from "node:crypto";
 import { describe } from "../../web/js/ui/messages.mjs";
 import { BleTransport, BLE_SERVICE } from "../../web/js/transport/ble.mjs";
 import { BoardSession } from "../../web/js/board/session.mjs";
-import { CAP } from "../../web/js/protocol/constants.mjs";
+import { CAP, OP } from "../../web/js/protocol/constants.mjs";
 import { buildControlRequest } from "../../web/js/protocol/codec.mjs";
 import { REASON } from "../../web/js/state/errors.mjs";
 import {
@@ -203,6 +203,28 @@ test("BLE serializes reads and proved writes, skips aborted queued I/O and conti
     await settled;
     await transport.disconnect();
   }
+});
+
+test("BLE distinguishes proof rejection from ambiguous command-write failure", async () => {
+  const transport = new BleTransport({});
+  transport.uid = "0102030405060708";
+  transport.device = { gatt: { connected: true } };
+  let writes = 0;
+  transport.characteristics.set(20, { async writeValueWithResponse() {
+    writes++;
+    throw new DOMException("Response was lost after dispatch", "NetworkError");
+  } });
+  const signal = new AbortController().signal;
+  const report = buildControlRequest(1, OP.REBOOT, { flags: 1 });
+  transport.prove = async () => { throw new DOMException("Proof rejected", "NetworkError"); };
+  await assert.rejects(transport.writeReport(20, report, signal),
+    error => error.code === REASON.BLE_PROOF_REJECTED && !error.uncertain);
+  assert.equal(writes, 0, "a rejected proof prevents the command write");
+
+  transport.prove = async () => {};
+  await assert.rejects(transport.writeReport(20, report, signal),
+    error => error.code === REASON.OUTCOME_UNCERTAIN && error.uncertain);
+  assert.equal(writes, 1, "the ambiguous failure occurs after command dispatch");
 });
 
 test("BLE disconnect fences queued writes without blocking a new connection", async () => {

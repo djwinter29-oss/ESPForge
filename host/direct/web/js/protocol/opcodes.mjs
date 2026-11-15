@@ -45,7 +45,7 @@ export const inRange = (value, min, max) => Number.isInteger(value) && value >= 
 const settingsKeys = ["system_clock_mhz", "sdcard_profile", "radios"];
 /** @brief Whether `value` is a plain object whose own keys are exactly `keys`. */
 /** @param {unknown} value @param {string[]} keys */
-export const hasExactKeys = (value, keys) => Boolean(value) && typeof value === "object" && !Array.isArray(value)
+export const hasExactKeys = (value, keys) => value !== null && typeof value === "object" && !Array.isArray(value)
   && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
 
 /**
@@ -103,7 +103,8 @@ export const OPCODES = Object.freeze({
       read: r => ({ benchmark_start: r[4] === 1,
         benchmark_size_mib: new DataView(r.buffer, r.byteOffset, r.byteLength).getUint32(5, true) }),
       valid: facts => typeof facts.benchmark_start === "boolean" && (facts.benchmark_start
-        ? inRange(facts.benchmark_size_mib, 1, 1024) : facts.benchmark_size_mib === 0) } },
+        ? facts.benchmark_size_mib !== undefined && inRange(facts.benchmark_size_mib, 1, 1024)
+        : facts.benchmark_size_mib === 0) } },
   [OP.SAVE_SETTINGS]: { capability: CAP.SETTINGS, ble: { proof: true, flags: false }, reboots: true,
     details: { 1: 5, 2: 5, 19: 3, 20: 3, 21: 3, 25: 5, 26: 5, 27: 3, 28: 5 }, returnsSettings: true,
     request: (r, unused) => (r[3] & ~SAVE_SETTINGS_COMMIT) === 0 && CLOCKS_MHZ.includes(r[4] | r[5] << 8)
@@ -114,7 +115,7 @@ export const OPCODES = Object.freeze({
       read: (r, options) => ({ settings: decodeSettings(r.subarray(4, 8)), commit_mask: options.commitMask ?? 0 }),
       // Exact keys require a stored radios value, so validSettings alone cannot accept an omitted one.
       valid: facts => hasExactKeys(facts.settings, settingsKeys) && validSettings(facts.settings)
-        && inRange(facts.commit_mask, 0, 7) },
+        && facts.commit_mask !== undefined && inRange(facts.commit_mask, 0, 7) },
     confirms: (result, request) => sameSettings(result.settings, request.settings)
       && result.commit_mask === request.commit_mask },
   [OP.STAGE_SSID]: { ...STAGED, capability: CAP.WIRELESS, ble: null, details: { 16: 3, 25: 5 },
@@ -146,5 +147,5 @@ export const OPCODES = Object.freeze({
 /** @param {"usb" | "ble"} link @param {number} opcode @param {number} [flags] */
 export function allowedOnLink(link, opcode, flags = 0) {
   const ble = OPCODES[opcode]?.ble;
-  return link !== "ble" || Boolean(ble) && (ble.flags || flags === 0);
+  return link !== "ble" || ble !== null && ble !== undefined && (ble.flags || flags === 0);
 }

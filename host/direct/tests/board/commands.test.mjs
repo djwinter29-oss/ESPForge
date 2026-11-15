@@ -8,6 +8,7 @@ import { OP } from "../../web/js/protocol/constants.mjs";
 import { describe } from "../../web/js/ui/messages.mjs";
 import { BoardSession } from "../../web/js/board/session.mjs";
 import { HidTransport } from "../../web/js/transport/hid.mjs";
+import { BoardError, REASON } from "../../web/js/state/errors.mjs";
 import { telemetry, storage, result, fakeConnection, emit, says } from "../support/fixtures.mjs";
 import { BOARD, connected, radio } from "../support/wireless.mjs";
 
@@ -80,6 +81,23 @@ test("SET failure never polls; terminal rejection permits a new transaction; tim
   await assert.rejects(timeout.client.command(OP.SCAN), says(/uncertain/));
   assert.equal(timeout.sent.length, 1);
   await timeout.client.disconnect();
+  await client.disconnect();
+});
+
+test("ambiguous transport write failures retain the recovery journal and block retries", async () => {
+  const { client, device, pendingStore } = fakeConnection();
+  await client.connect(); emit(device, 3, telemetry());
+  let writes = 0;
+  client.transport.writeReport = async () => {
+    writes++;
+    throw new BoardError(REASON.OUTCOME_UNCERTAIN);
+  };
+  await assert.rejects(scan(client), says(/uncertain/));
+  assert.equal(client.state.outcome_uncertain, true);
+  assert.ok(client.state.pending_request);
+  assert.ok(pendingStore.getItem("espforge.direct.pending-operation"));
+  await assert.rejects(scan(client), says(/uncertain/));
+  assert.equal(writes, 1, "a retry is blocked while the original outcome is unknown");
   await client.disconnect();
 });
 

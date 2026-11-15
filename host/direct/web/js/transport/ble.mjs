@@ -9,6 +9,7 @@ import { BoardError, REASON } from "../state/errors.mjs";
 
 /** @brief ESPForge's primary Bluetooth LE service UUID. */
 export const BLE_SERVICE = "ef5c0000-7c91-4d70-8b32-6e856443f502";
+/** @param {number} id */
 const characteristic = id => `ef5c${id.toString(16).padStart(4, "0")}-7c91-4d70-8b32-6e856443f502`;
 const GATT_SERVICE = 0x1801;
 const SERVICE_CHANGED = 0x2a05;
@@ -18,12 +19,35 @@ const encoder = new TextEncoder();
 const PROOF_DOMAIN = encoder.encode("PFBLECTL1");
 const SESSION_REQUEST = encoder.encode("SESSION01");
 
+/**
+ * @typedef {object} BleCharacteristic
+ * @property {() => Promise<DataView>} readValue
+ * @property {(value: Uint8Array) => Promise<void>} writeValueWithResponse
+ * @property {() => Promise<unknown>} startNotifications
+ */
+/** @typedef {{getCharacteristic: (uuid: string | number) => Promise<BleCharacteristic>}} BleService */
+/** @typedef {{getPrimaryService: (uuid: string | number) => Promise<BleService>}} BleServer */
+/**
+ * @typedef {EventTarget & {
+ *   name?: string | null,
+ *   gatt: {connected: boolean, connect: () => Promise<BleServer>, disconnect: () => void},
+ * }} BleDevice
+ */
+/**
+ * @typedef {object} BleApi
+ * @property {(options: {filters: Array<{services: string[]} | {namePrefix: string}>,
+ *   optionalServices: Array<string | number>}) => Promise<BleDevice>} requestDevice
+ */
 /** @typedef {import("./transport.mjs").Transport} Transport */
 /**
  * @brief Web Bluetooth byte pipe over the ESPForge GATT report mirrors, with session and per-request HMAC proofs.
  * @implements {Transport}
  */
 export class BleTransport extends EventTarget {
+  /**
+   * @param {BleApi | undefined} bluetooth
+   * @param {{sleep?: typeof wait}} [options]
+   */
   constructor(bluetooth, { sleep = wait } = {}) {
     super();
     /** @type {"ble"} */
@@ -34,6 +58,7 @@ export class BleTransport extends EventTarget {
     this.autoReconnect = false;
     this.pollInterval = 250;
     this.device = null;
+    /** @type {Map<number, BleCharacteristic>} */
     this.characteristics = new Map();
     this.gattQueue = Promise.resolve();
     this.bleKey = null;
@@ -62,6 +87,7 @@ export class BleTransport extends EventTarget {
   }
 
   /** @brief Answer a fresh nonce with the truncated HMAC of nonce, board UID, proof domain and `request`. */
+  /** @param {Uint8Array} uid @param {Uint8Array} request @param {AbortSignal} signal */
   async prove(uid, request, signal) {
     signal.throwIfAborted();
     const value = await this.characteristics.get(256).readValue();
@@ -78,6 +104,7 @@ export class BleTransport extends EventTarget {
   }
 
   /** @brief Read identity and prove the session with the Control key; @return the decoded identity. */
+  /** @param {AbortSignal} signal */
   async unlock(signal) {
     const value = await this.readReport(1, signal);
     const hardware = decodeIdentityReport(value);
@@ -92,6 +119,8 @@ export class BleTransport extends EventTarget {
 
   /**
    * @brief Import `key`, prompt for a board, discover its mirrors and unlock the session.
+   * @param {Uint8Array<ArrayBuffer>} key
+   * @param {AbortSignal} signal
    * @return {Promise<boolean>} true once unlocked; failures disconnect and rethrow.
    */
   async connect(key, signal) {
@@ -169,6 +198,7 @@ export class BleTransport extends EventTarget {
   }
 
   /** @brief Read a mirror; a 9-byte control result is zero-extended to the 68-byte Feature 20 layout. */
+  /** @param {number} id @param {AbortSignal} signal */
   async readReport(id, signal) {
     return this.runGatt(async () => {
       const value = await this.characteristics.get(id).readValue();
@@ -182,6 +212,7 @@ export class BleTransport extends EventTarget {
   }
 
   /** @brief Write a control request as its 9-byte prefix, after a proof unless the opcode is exempt. */
+  /** @param {number} id @param {Uint8Array} report @param {AbortSignal} signal */
   async writeReport(id, report, signal) {
     signal.throwIfAborted();
     // Framing only: the BLE request is the 9-byte prefix; link policy is enforced by the session before writing.
@@ -190,14 +221,20 @@ export class BleTransport extends EventTarget {
     }
     const request = report.slice(0, 9);
     return this.runGatt(async () => {
+      if (OPCODES[request[2]]?.ble?.proof !== false) {
+        try {
+          await this.prove(hexToBytes(this.uid), request, signal);
+        } catch (error) {
+          if (signal.aborted || error.final || !this.device?.gatt.connected) throw error;
+          throw new BoardError(REASON.BLE_PROOF_REJECTED);
+        }
+      }
+      signal.throwIfAborted();
       try {
-        if (OPCODES[request[2]]?.ble?.proof !== false) await this.prove(hexToBytes(this.uid), request, signal);
-        signal.throwIfAborted();
         await this.characteristics.get(20).writeValueWithResponse(request);
         signal.throwIfAborted();
-      } catch (error) {
-        if (signal.aborted || error.final || !this.device?.gatt.connected) throw error;
-        throw new BoardError(REASON.BLE_PROOF_REJECTED);
+      } catch {
+        throw new BoardError(REASON.OUTCOME_UNCERTAIN);
       }
     }, signal);
   }
