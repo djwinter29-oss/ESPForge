@@ -108,7 +108,7 @@ Direct owns its static page, styles, layered browser modules and loopback static
 - Direct must not import, link or copy at runtime from `host/web/`; `host/web/` must not reference Direct.
 - Browser integration belongs at the application boundary; lower layers receive dependencies by injection.
 - All browser modules are type-checked; core utilities and protocol codecs use full TypeScript strict mode.
-  Board lifecycle, recovery, transport and reducer modules also reject implicit `any`.
+  Board lifecycle, recovery, polling, transport and reducer modules also use full strict mode.
 - Unit and architectural contract tests enforce the layer boundaries.
 
 ```sh

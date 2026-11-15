@@ -144,6 +144,8 @@ test("every opcode has one complete descriptor and every reason code has dashboa
   }
   assert.equal(describe(new DOMException("Timed out", "TimeoutError")), "Unexpected error: Timed out",
     "DOMException numeric codes are not reasons; uncoded errors keep their message only as diagnostic detail");
+  assert.equal(describe(new BoardError(REASON.OUTCOME_UNCERTAIN)),
+    "Command outcome uncertain; disconnect and reconnect to inspect it. It will not be replayed.");
   assert.match(describe(new DOMException(REASON.IO_TIMEOUT, "TimeoutError")), /timeout; command outcome uncertain/);
   assert.equal(describe(new BoardError(REASON.INVALID_REPORT, "storage-status")), "Invalid HID storage status");
   assert.equal(describe(new BoardError(REASON.INVALID_INPUT, "control-key")), "Invalid Control key (64 hex digits)");
@@ -153,6 +155,11 @@ test("every opcode has one complete descriptor and every reason code has dashboa
   assert.equal(describe(new BoardError(REASON.CLOSE_FAILED,
     { cause: new Error("USB closed"), close: "handle release failed" })),
   "Unexpected error: USB closed; closing the transport failed: handle release failed");
+  assert.equal(describe(new BoardError(REASON.CLOSE_FAILED, {
+    cause: { code: REASON.UNEXPECTED, detail: { name: "Error", message: "Configuration read failed" } },
+    close: { code: REASON.UNEXPECTED, detail: { name: "Error", message: "USB handle cleanup failed" } },
+  })), "Unexpected error: Configuration read failed; closing the transport failed: "
+    + "Unexpected error: USB handle cleanup failed");
   assert.equal(describe(new BoardError(REASON.CLOSE_FAILED, null)), "Closing the transport failed");
   assert.equal(describe(Object.assign(new Error("x"), { name: "NotFoundError" })), "No board was selected.");
 });

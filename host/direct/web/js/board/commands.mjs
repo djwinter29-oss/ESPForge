@@ -20,18 +20,21 @@ const PENDING_OPERATION_KEY = "espforge.direct.pending-operation";
  *   commitMask?: number, workflow?: symbol}} CommandOptions
  * @typedef {Pick<Storage, "getItem" | "setItem" | "removeItem">} PendingStore
  */
-/** @param {unknown} value */
+/** @param {unknown} value @returns {value is string} */
 const isUid = value => typeof value === "string" && /^[A-F0-9]{16}$/i.test(value);
 /** @param {import("../state/reducer.mjs").WirelessLifecycle} lifecycle @param {number} opcode */
-const validLifecycle = (lifecycle, opcode) => hasExactKeys(lifecycle, ["operation", "generation"])
-  && lifecycle.operation === opcode && inRange(lifecycle.generation, 1, OPCODES[opcode]?.lifecycle?.generationMax);
+const validLifecycle = (lifecycle, opcode) => {
+  const generationMax = OPCODES[opcode]?.lifecycle?.generationMax;
+  return hasExactKeys(lifecycle, ["operation", "generation"]) && lifecycle.operation === opcode
+    && generationMax !== undefined && inRange(lifecycle.generation, 1, generationMax);
+};
 /** @brief Failure code when a completed result does not prove the request; default NOT_CONFIRMED. */
 /** @type {Record<number, string>} */
 const UNCONFIRMED = { [OP.SCAN_ENTRY]: REASON.SCAN_MISMATCH };
 
 /**
  * @typedef {object} CommandSession
- * @property {import("../state/reducer.mjs").DashboardState} state
+ * @property {import("../state/reducer.mjs").DashboardState & {link: "usb" | "ble"}} state
  * @property {{generation: number, reconnectUid: string | null}} connection
  * @property {{expireReports: () => void, invalidate: (ids?: number[]) => void}} polling
  * @property {{wirelessOperation: symbol | null}} operations
@@ -143,8 +146,13 @@ export class Commands {
   persist(request, wireless) {
     const s = this.session;
     const uid = s.state.hardware?.serial_number ?? s.connection.reconnectUid;
-    savePendingOperation(this.pendingStore, request ? { version: 2, kind: "control", uid, request }
-      : wireless ? { version: 2, kind: "wireless-lifecycle", uid, ...wireless } : null);
+    if (request) {
+      if (!isUid(uid)) throw new BoardError(REASON.JOURNAL_IDENTITY);
+      savePendingOperation(this.pendingStore, { version: 2, kind: "control", uid, request });
+    } else if (wireless) {
+      if (!isUid(uid)) throw new BoardError(REASON.JOURNAL_IDENTITY);
+      savePendingOperation(this.pendingStore, { version: 2, kind: "wireless-lifecycle", uid, ...wireless });
+    } else savePendingOperation(this.pendingStore, null);
   }
 
   /** @brief Retire the outstanding transaction. A successful lifecycle request becomes the pending wireless command. */
@@ -203,9 +211,11 @@ export class Commands {
       || s.state.wireless_busy && options.workflow !== s.operations.wirelessOperation) {
       throw new BoardError(REASON.COMMAND_BLOCKED);
     }
+    const hardware = s.state.hardware;
+    if (!hardware) throw new BoardError(REASON.COMMAND_BLOCKED);
     const descriptor = OPCODES[opcode];
     const bit = descriptor?.capability ?? 0;
-    if (bit && !(s.state.hardware.capabilities & bit)) throw new BoardError(REASON.CAPABILITY_UNAVAILABLE);
+    if (bit && !(hardware.capabilities & bit)) throw new BoardError(REASON.CAPABILITY_UNAVAILABLE);
     const transaction = this.transaction % 255 + 1;
     const report = buildControlRequest(transaction, opcode, options);
     this.transaction = transaction;
@@ -242,8 +252,9 @@ export class Commands {
       return result;
     } catch (error) {
       // SET rejection is authoritative: do not poll or accept a prior result.
+      const errorName = error instanceof Error ? error.name : "";
       if (!sent && !(error instanceof BoardError && error.uncertain)
-        && !["TimeoutError", "AbortError"].includes(error.name) && current()) {
+        && !["TimeoutError", "AbortError"].includes(errorName) && current()) {
         try { this.retire(request, false); }
         catch (storageError) {
           s.emit("session/failed", { error: { code: REASON.RECOVERY_CLEAR_FAILED, detail: errorValue(storageError) } });

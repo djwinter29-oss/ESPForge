@@ -229,12 +229,12 @@ python3 -m unittest host.direct.tests.test_server -v
 npx --yes --package typescript@5.9.3 tsc --project host/direct/tests/types/tsconfig.json
 npx --yes --package typescript@5.9.3 tsc --project host/direct/tests/types/tsconfig.core-strict.json
 npx --yes --package typescript@5.9.3 tsc --project host/direct/tests/types/tsconfig.protocol-strict.json
-npx --yes --package typescript@5.9.3 tsc --project host/direct/tests/types/tsconfig.no-implicit-any.json
+npx --yes --package typescript@5.9.3 tsc --project host/direct/tests/types/tsconfig.board-runtime-strict.json
 ```
 
-The full runtime check covers all browser modules; full strict mode is enforced for the shared core utilities and
-protocol codecs. Board lifecycle, recovery, transport and reducer modules also reject implicit `any`; the remaining
-runtime modules are moving to strict checking incrementally.
+The full runtime check covers all browser modules; full strict mode is enforced for the shared core utilities,
+protocol codecs, board lifecycle, recovery, polling, transports and reducer. The remaining runtime modules are
+moving to strict checking incrementally.
 
 To isolate command-lifecycle failures:
 
@@ -274,9 +274,9 @@ The JavaScript runner enforces aggregate coverage of 90% lines, 80% branches, an
 of 80% lines, 55% branches, and 50% functions. LCOV output provides per-file metrics independently of Node's
 human-readable coverage table. Repeated source records combine hits by line, branch and function identity rather
 than averaging execution totals; merging records without complete per-item details is an error.
-The type checks cover the complete runtime module graph, full strict checks for protocol modules and shared core
-utilities, and no-implicit-`any` checks for board lifecycle, recovery, transport and reducer modules. Other runtime
-modules are moving to strict checking incrementally.
+The type checks cover the complete runtime module graph and full strict checks for protocol modules, shared core
+utilities, board lifecycle, recovery, polling, transports and reducer. Other runtime modules are moving to strict
+checking incrementally.
 
 ## Further reading
 

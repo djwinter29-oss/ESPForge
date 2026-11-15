@@ -3,7 +3,7 @@
 
 import { DEVICE_FILTER, PRODUCT_IDS } from "../protocol/constants.mjs";
 import { matchesEspForge, requireValid } from "../protocol/codec.mjs";
-import { BoardError, REASON } from "../state/errors.mjs";
+import { BoardError, errorValue, REASON } from "../state/errors.mjs";
 
 /** @typedef {import("./transport.mjs").Transport} Transport */
 /**
@@ -28,6 +28,22 @@ import { BoardError, REASON } from "../state/errors.mjs";
  */
 /** @typedef {Event & {device: HidDevice}} HidDeviceEvent */
 /** @typedef {HidDeviceEvent & {reportId: number, data: DataView}} HidInputReportEvent */
+/** @param {unknown} value @returns {value is HidDevice} */
+const isHidDevice = value => value !== null && typeof value === "object"
+  && value instanceof EventTarget && "vendorId" in value && typeof value.vendorId === "number"
+  && "productId" in value && typeof value.productId === "number"
+  && "collections" in value && Array.isArray(value.collections)
+  && "opened" in value && typeof value.opened === "boolean"
+  && "open" in value && typeof value.open === "function"
+  && "close" in value && typeof value.close === "function"
+  && "receiveFeatureReport" in value && typeof value.receiveFeatureReport === "function"
+  && "sendFeatureReport" in value && typeof value.sendFeatureReport === "function";
+/** @param {Event} event @returns {event is HidDeviceEvent} */
+const isHidDeviceEvent = event => "device" in event && isHidDevice(event.device);
+/** @param {Event} event @returns {event is HidInputReportEvent} */
+const isHidInputReportEvent = event => isHidDeviceEvent(event)
+  && "reportId" in event && typeof event.reportId === "number"
+  && "data" in event && event.data instanceof DataView;
 /**
  * @brief WebHID byte pipe for one opened ESPForge device: Feature reports by ID and Input report events.
  * @implements {Transport}
@@ -42,29 +58,33 @@ export class HidTransport extends EventTarget {
     this.available = Boolean(hid);
     this.unavailableReason = REASON.WEBHID_UNAVAILABLE;
     this.autoReconnect = true;
+    /** @type {number | null} */
     this.pollInterval = null;
     this.device = null;
     this.candidate = null;
     this.name = null;
-    /** @param {HidInputReportEvent} event */
+    /** @param {Event} event */
     this.onReport = event => {
+      if (!isHidInputReportEvent(event)) return;
       if (event.device === this.device) this.dispatchEvent(Object.assign(new Event("report"),
         { reportId: event.reportId, data: event.data }));
     };
-    /** @param {HidDeviceEvent} event */
+    /** @param {Event} event */
     this.onDisconnect = event => {
+      if (!isHidDeviceEvent(event)) return;
       if (event.device !== this.device) return;
       this.detach();
       this.dispatchEvent(new Event("disconnect"));
     };
-    /** @param {HidDeviceEvent} event */
+    /** @param {Event} event */
     this.onConnect = event => {
-      if (this.device || !matchesEspForge(event.device)) return;
+      if (this.device || !isHidDeviceEvent(event) || !matchesEspForge(event.device)) return;
       this.candidate = event.device;
       this.dispatchEvent(new Event("available"));
     };
-    /** @param {HidDeviceEvent} event */
+    /** @param {Event} event */
     this.onSuspend = event => {
+      if (!isHidDeviceEvent(event)) return;
       if (event.device === this.device) this.dispatchEvent(new Event("suspend"));
     };
     hid?.addEventListener("disconnect", this.onDisconnect);
@@ -129,9 +149,14 @@ export class HidTransport extends EventTarget {
     signal.throwIfAborted();
     const device = this.device;
     if (!device) throw new BoardError(REASON.USB_DISCONNECTED);
-    await device.sendFeatureReport(id, data);
-    signal.throwIfAborted();
-    if (device !== this.device) throw new BoardError(REASON.USB_CHANGED);
+    try {
+      await device.sendFeatureReport(id, data);
+      signal.throwIfAborted();
+      if (device !== this.device) throw new BoardError(REASON.USB_CHANGED);
+    } catch (error) {
+      if (error instanceof BoardError && error.uncertain) throw error;
+      throw new BoardError(REASON.OUTCOME_UNCERTAIN, errorValue(error));
+    }
   }
 
   /** @brief Forget the open device without closing it; @return the detached device, if any. */

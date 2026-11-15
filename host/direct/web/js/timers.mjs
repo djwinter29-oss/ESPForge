@@ -10,10 +10,20 @@ import { REASON } from "./state/errors.mjs";
 /** @typedef {ReturnType<typeof globalThis.setTimeout> & {unref?: () => void}} TimerHandle */
 /** @typedef {(...args: unknown[]) => void} TimerCallback */
 /**
+ * @typedef {object} TimeoutTimers
+ * @property {(callback: () => void, delay: number) => TimerHandle} setTimeout
+ * @property {(handle: TimerHandle | null) => void} clearTimeout
+ */
+/** @type {TimeoutTimers} */
+const DEFAULT_TIMEOUT_TIMERS = {
+  setTimeout: (callback, delay) => globalThis.setTimeout(callback, delay),
+  clearTimeout: handle => { if (handle !== null) globalThis.clearTimeout(handle); },
+};
+/**
  * @typedef {object} TimerScope
  * @property {(callback: TimerCallback, delay: number, ...args: unknown[]) => TimerHandle} setTimeout
  * @property {(callback: TimerCallback, delay: number, ...args: unknown[]) => TimerHandle} setInterval
- * @property {(handle: TimerHandle) => void} clearTimeout
+ * @property {(handle: TimerHandle | null) => void} clearTimeout
  * @property {(handle: TimerHandle) => void} clearInterval
  * @property {() => TimerScope} createChild
  * @property {() => void} dispose
@@ -52,8 +62,9 @@ export function createTimerScope(parent = null) {
       intervals.add(handle);
       return handle;
     },
-    /** @param {TimerHandle} handle */
+    /** @param {TimerHandle | null} handle */
     clearTimeout(handle) {
+      if (handle === null) return;
       globalThis.clearTimeout(handle);
       timeouts.delete(handle);
     },
@@ -91,10 +102,10 @@ export function createTimerScope(parent = null) {
  * @brief Resolve after `milliseconds`, or reject with the abort reason when `signal` aborts first.
  * @param {number} milliseconds
  * @param {AbortSignal} [signal]
- * @param {Pick<typeof globalThis, "setTimeout" | "clearTimeout">} [timers]
+ * @param {TimeoutTimers} [timers]
  * @return {Promise<void>}
  */
-export function wait(milliseconds, signal, timers = globalThis) {
+export function wait(milliseconds, signal, timers = DEFAULT_TIMEOUT_TIMERS) {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
       reject(signal?.reason ?? new DOMException(REASON.OPERATION_CANCELLED, "AbortError"));
@@ -121,10 +132,10 @@ export function wait(milliseconds, signal, timers = globalThis) {
  * @param {Value | PromiseLike<Value>} operation
  * @param {number} milliseconds
  * @param {AbortSignal} [signal]
- * @param {Pick<typeof globalThis, "setTimeout" | "clearTimeout">} [timers]
+ * @param {TimeoutTimers} [timers]
  * @return {Promise<Value>}
  */
-export function withTimeout(operation, milliseconds, signal, timers = globalThis) {
+export function withTimeout(operation, milliseconds, signal, timers = DEFAULT_TIMEOUT_TIMERS) {
   return new Promise((resolve, reject) => {
     let settled = false;
     const cleanup = () => {

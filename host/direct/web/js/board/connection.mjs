@@ -30,6 +30,7 @@ export const canTransition = (from, to) => from === to || to === PHASE.DISCONNEC
  * @brief Forward edges of the lifecycle. Any phase may also stay where it is or close to DISCONNECTED or
  * RECONNECTING (link loss, failure or user disconnect).
  */
+/** @type {Readonly<Record<Phase, Phase[]>>} */
 export const TRANSITIONS = Object.freeze({
   [PHASE.DISCONNECTED]: [PHASE.CONNECTING, PHASE.INITIALIZING],
   [PHASE.RECONNECTING]: [PHASE.INITIALIZING],
@@ -53,7 +54,7 @@ export const EMPTY = Object.freeze({
 
 /**
  * @typedef {object} ConnectionSession
- * @property {import("../state/reducer.mjs").DashboardState} state
+ * @property {import("../state/reducer.mjs").DashboardState & {phase: Phase}} state
  * @property {import("../transport/transport.mjs").Transport} transport
  * @property {object | null} device
  * @property {{recoveryError: import("../state/reducer.mjs").ReasonValue | null}} commands
@@ -93,6 +94,7 @@ export class Connection {
     for (const [type, handler] of Object.entries(this.handlers)) transport.addEventListener(type, handler);
   }
 
+  /** @returns {Phase} */
   get phase() { return this.session.state.phase; }
   get signal() { return this.controller.signal; }
 
@@ -119,11 +121,12 @@ export class Connection {
    */
   clear(phase = PHASE.DISCONNECTED, changes = {}) {
     const s = this.session;
+    const targetPhase = phase ?? PHASE.DISCONNECTED;
     this.generation++;
     this.controller.abort(new DOMException(REASON.DEVICE_DISCONNECTED, "AbortError"));
     this.controller = new AbortController();
     s.polling.reset();
-    this.transition(phase, { ...EMPTY, busy: false,
+    this.transition(targetPhase, { ...EMPTY, busy: false,
       outcome_uncertain: Boolean(s.commands.recoveryError || commandPending(s.state)), ...changes },
     "connection/closed");
   }
@@ -200,7 +203,7 @@ export class Connection {
       let failure = errorValue(error);
       try { await s.transport.disconnect(); }
       catch (closeError) {
-        failure = { code: REASON.CLOSE_FAILED, detail: { cause: failure, close: closeError.message } };
+        failure = { code: REASON.CLOSE_FAILED, detail: { cause: failure, close: errorValue(closeError) } };
       }
       if (generation === this.generation) this.clear(PHASE.DISCONNECTED, { error: failure });
     }

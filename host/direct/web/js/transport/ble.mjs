@@ -5,7 +5,7 @@ import { OPCODES } from "../protocol/opcodes.mjs";
 import { decodeIdentityReport, hexToBytes } from "../protocol/codec.mjs";
 import { CAP } from "../protocol/constants.mjs";
 import { wait } from "../timers.mjs";
-import { BoardError, REASON } from "../state/errors.mjs";
+import { BoardError, errorValue, REASON } from "../state/errors.mjs";
 
 /** @brief ESPForge's primary Bluetooth LE service UUID. */
 export const BLE_SERVICE = "ef5c0000-7c91-4d70-8b32-6e856443f502";
@@ -18,6 +18,11 @@ const CHARACTERISTICS = [1, 2, 3, 10, 12, 20, 256, 257];
 const encoder = new TextEncoder();
 const PROOF_DOMAIN = encoder.encode("PFBLECTL1");
 const SESSION_REQUEST = encoder.encode("SESSION01");
+/** @param {unknown} error */
+const errorName = error => error instanceof Error ? error.name : "";
+/** @param {unknown} error */
+const isFinalError = error => error !== null && typeof error === "object"
+  && "final" in error && error.final === true;
 
 /**
  * @typedef {object} BleCharacteristic
@@ -61,7 +66,9 @@ export class BleTransport extends EventTarget {
     /** @type {Map<number, BleCharacteristic>} */
     this.characteristics = new Map();
     this.gattQueue = Promise.resolve();
+    /** @type {CryptoKey | null} */
     this.bleKey = null;
+    /** @type {string | null} */
     this.uid = null;
     this.connecting = false;
     this.sleep = sleep;
@@ -77,29 +84,43 @@ export class BleTransport extends EventTarget {
 
   /**
    * @brief Import the 32-byte Control key as a non-extractable HMAC key, then wipe the caller's bytes.
-   * @param {Uint8Array<ArrayBuffer>} bytes Key bytes; zeroed on return.
+   * @param {Uint8Array | undefined} bytes Key bytes; zeroed on return.
    */
   async setControlKey(bytes) {
+    let raw = null;
     try {
       if (!(bytes instanceof Uint8Array) || bytes.length !== 32) throw new BoardError(REASON.BLE_KEY_LENGTH);
-      this.bleKey = await crypto.subtle.importKey("raw", bytes, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-    } finally { if (bytes instanceof Uint8Array) bytes.fill(0); }
+      raw = new Uint8Array(bytes);
+      this.bleKey = await crypto.subtle.importKey("raw", raw, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+    } finally {
+      raw?.fill(0);
+      bytes?.fill(0);
+    }
+  }
+
+  /** @param {number} id */
+  getCharacteristic(id) {
+    const value = this.characteristics.get(id);
+    if (!value) throw new BoardError(REASON.CONNECTION_CHANGED);
+    return value;
   }
 
   /** @brief Answer a fresh nonce with the truncated HMAC of nonce, board UID, proof domain and `request`. */
   /** @param {Uint8Array} uid @param {Uint8Array} request @param {AbortSignal} signal */
   async prove(uid, request, signal) {
     signal.throwIfAborted();
-    const value = await this.characteristics.get(256).readValue();
+    const key = this.bleKey;
+    if (!key) throw new BoardError(REASON.BLE_UNLOCK_REJECTED);
+    const value = await this.getCharacteristic(256).readValue();
     signal.throwIfAborted();
     const nonce = new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
     if (nonce.length !== 16) {
       throw Object.assign(new BoardError(REASON.BLE_CHALLENGE), { final: true });
     }
     const message = new Uint8Array([...nonce, ...uid, ...PROOF_DOMAIN, ...request]);
-    const mac = new Uint8Array(await crypto.subtle.sign("HMAC", this.bleKey, message));
+    const mac = new Uint8Array(await crypto.subtle.sign("HMAC", key, message));
     signal.throwIfAborted();
-    await this.characteristics.get(257).writeValueWithResponse(mac.slice(0, 16));
+    await this.getCharacteristic(257).writeValueWithResponse(mac.slice(0, 16));
     signal.throwIfAborted();
   }
 
@@ -111,7 +132,7 @@ export class BleTransport extends EventTarget {
     this.uid = hardware.serial_number;
     try { await this.prove(hexToBytes(this.uid), SESSION_REQUEST, signal); }
     catch (error) {
-      if (signal.aborted || error.final || !this.device?.gatt.connected) throw error;
+      if (signal.aborted || isFinalError(error) || !this.device?.gatt.connected) throw error;
       throw Object.assign(new BoardError(REASON.BLE_UNLOCK_REJECTED), { final: true });
     }
     return hardware;
@@ -119,18 +140,19 @@ export class BleTransport extends EventTarget {
 
   /**
    * @brief Import `key`, prompt for a board, discover its mirrors and unlock the session.
-   * @param {Uint8Array<ArrayBuffer>} key
+   * @param {Uint8Array | undefined} key
    * @param {AbortSignal} signal
    * @return {Promise<boolean>} true once unlocked; failures disconnect and rethrow.
    */
   async connect(key, signal) {
-    if (!this.api) throw new BoardError(this.unavailableReason);
+    const api = this.api;
+    if (!api) throw new BoardError(this.unavailableReason);
     signal.throwIfAborted();
     this.connecting = true;
     try {
       await this.setControlKey(key);
       signal.throwIfAborted();
-      const device = await this.api.requestDevice({
+      const device = await api.requestDevice({
         filters: [{ services: [BLE_SERVICE] }, { namePrefix: "ESPForge-" }],
         optionalServices: [BLE_SERVICE, GATT_SERVICE],
       });
@@ -147,7 +169,7 @@ export class BleTransport extends EventTarget {
             const gatt = await server.getPrimaryService(GATT_SERVICE);
             await (await gatt.getCharacteristic(SERVICE_CHANGED)).startNotifications();
           } catch (error) {
-            if (!["NotAllowedError", "NotFoundError", "NotSupportedError", "SecurityError"].includes(error?.name)) {
+            if (!["NotAllowedError", "NotFoundError", "NotSupportedError", "SecurityError"].includes(errorName(error))) {
               throw error;
             }
             console.warn("Service Changed is unavailable; continuing with platform GATT cache behavior.", error);
@@ -167,7 +189,7 @@ export class BleTransport extends EventTarget {
         } catch (error) {
           device.gatt.disconnect();
           this.characteristics.clear();
-          if (signal.aborted || attempt === 3 || error.final) throw error;
+          if (signal.aborted || attempt === 3 || isFinalError(error)) throw error;
           await this.sleep(500, signal);
         }
       }
@@ -201,7 +223,7 @@ export class BleTransport extends EventTarget {
   /** @param {number} id @param {AbortSignal} signal */
   async readReport(id, signal) {
     return this.runGatt(async () => {
-      const value = await this.characteristics.get(id).readValue();
+      const value = await this.getCharacteristic(id).readValue();
       signal.throwIfAborted();
       if (id !== 20) return value;
       if (value.byteLength !== 9) throw new BoardError(REASON.BLE_RESULT_LENGTH);
@@ -222,19 +244,20 @@ export class BleTransport extends EventTarget {
     const request = report.slice(0, 9);
     return this.runGatt(async () => {
       if (OPCODES[request[2]]?.ble?.proof !== false) {
+        if (!this.uid) throw new BoardError(REASON.BLE_UNLOCK_REJECTED);
         try {
           await this.prove(hexToBytes(this.uid), request, signal);
         } catch (error) {
-          if (signal.aborted || error.final || !this.device?.gatt.connected) throw error;
+          if (signal.aborted || isFinalError(error) || !this.device?.gatt.connected) throw error;
           throw new BoardError(REASON.BLE_PROOF_REJECTED);
         }
       }
       signal.throwIfAborted();
       try {
-        await this.characteristics.get(20).writeValueWithResponse(request);
+        await this.getCharacteristic(20).writeValueWithResponse(request);
         signal.throwIfAborted();
-      } catch {
-        throw new BoardError(REASON.OUTCOME_UNCERTAIN);
+      } catch (error) {
+        throw new BoardError(REASON.OUTCOME_UNCERTAIN, errorValue(error));
       }
     }, signal);
   }

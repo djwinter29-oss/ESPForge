@@ -125,9 +125,13 @@ const checkKeys = (object, keys, label) => {
  * @type {(state: DashboardState, action: DashboardAction) => DashboardState}
  */
 export function dashboardReducer(state, action) {
-  if (action.type === "replace") { checkKeys(action.state, DOMAIN_KEYS, "state"); return action.state; }
+  if (action.type === "replace") {
+    if (!action.state) throw new Error("Unknown domain event replace");
+    checkKeys(action.state, DOMAIN_KEYS, "state");
+    return action.state;
+  }
   const keys = isDomainEvent(action.type) ? DOMAIN_EVENTS[action.type] : null;
-  if (!keys || !("changes" in action)) throw new Error(`Unknown domain event ${action.type}`);
+  if (!keys || !("changes" in action) || !action.changes) throw new Error(`Unknown domain event ${action.type}`);
   checkKeys(action.changes, keys, action.type);
   return { ...state, ...action.changes };
 }
@@ -138,7 +142,14 @@ export function dashboardReducer(state, action) {
  * @type {(state: UiState, action: StateAction<UiState>) => UiState}
  */
 export function uiReducer(state, action) {
-  if (action.type === "replace") { checkKeys(action.state, UI_KEYS, "state"); return action.state; }
-  if (action.type === "patch") { checkKeys(action.changes, UI_KEYS, "state"); return { ...state, ...action.changes }; }
+  if (action.type === "replace") {
+    if (!action.state) throw new Error("Unknown state action");
+    checkKeys(action.state, UI_KEYS, "state");
+    return action.state;
+  }
+  if (action.type === "patch" && action.changes) {
+    checkKeys(action.changes, UI_KEYS, "state");
+    return { ...state, ...action.changes };
+  }
   throw new Error("Unknown state action");
 }

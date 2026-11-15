@@ -40,8 +40,9 @@ test("timers, domain errors and UI messages have a full strict TypeScript check"
   assert.equal(config.compilerOptions.strict, true);
 });
 
-test("board lifecycle and transport modules reject implicit any", () => {
-  const config = JSON.parse(readFileSync(new URL("../types/tsconfig.no-implicit-any.json", import.meta.url), "utf8"));
+test("board lifecycle and transport modules use full TypeScript strict mode", () => {
+  const config = JSON.parse(readFileSync(new URL("../types/tsconfig.board-runtime-strict.json", import.meta.url),
+    "utf8"));
   assert.deepEqual(config.include, [
     "../../web/js/board/commands.mjs",
     "../../web/js/board/connection.mjs",
@@ -51,7 +52,7 @@ test("board lifecycle and transport modules reject implicit any", () => {
     "../../web/js/transport/ble.mjs",
     "../../web/js/transport/hid.mjs",
   ]);
-  assert.equal(config.compilerOptions.noImplicitAny, true);
+  assert.equal(config.compilerOptions.strict, true);
 });
 
 test("dashboard composition stays below its function-size budget", () => {

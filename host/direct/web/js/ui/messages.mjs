@@ -98,7 +98,7 @@ export const MESSAGES = Object.freeze({
     return `Command ${result.opcode}: status ${result.status}, error ${result.error}`
       + (typeof detail !== "number" ? "" : `, detail ${detail}`);
   },
-  [REASON.OUTCOME_UNCERTAIN]: "Command outcome uncertain after disconnect",
+  [REASON.OUTCOME_UNCERTAIN]: "Command outcome uncertain; disconnect and reconnect to inspect it. It will not be replayed.",
   [REASON.DISCONNECTED_UNCERTAIN]: "Command outcome uncertain after disconnect; no request will be replayed.",
   [REASON.RESULT_TIMEOUT]: "Command outcome uncertain: result timeout; disconnect/reconnect to read it, never replay",
   [REASON.NOT_CONFIRMED]: "Firmware did not confirm the selected values",
@@ -114,11 +114,11 @@ export const MESSAGES = Object.freeze({
   [REASON.CONNECTION_CANCELLED]: "Connection cancelled",
   /** @param {unknown} failure */
   [REASON.CLOSE_FAILED]: failure => {
-    if (!failure || typeof failure !== "object" || !("cause" in failure) || !("close" in failure)
-      || typeof failure.close !== "string") {
+    if (!failure || typeof failure !== "object" || !("cause" in failure) || !("close" in failure)) {
       return "Closing the transport failed";
     }
-    return `${describe(failure.cause)}; closing the transport failed: ${failure.close}`;
+    return `${describe(failure.cause) ?? "Unknown failure"}; closing the transport failed: `
+      + `${describe(failure.close) ?? "Unknown failure"}`;
   },
   [REASON.WRONG_BOARD]: "Select the original board to resolve its pending operation.",
   /** @param {unknown} detail */

@@ -8,7 +8,6 @@ import { OP } from "../../web/js/protocol/constants.mjs";
 import { describe } from "../../web/js/ui/messages.mjs";
 import { BoardSession } from "../../web/js/board/session.mjs";
 import { HidTransport } from "../../web/js/transport/hid.mjs";
-import { BoardError, REASON } from "../../web/js/state/errors.mjs";
 import { telemetry, storage, result, fakeConnection, emit, says } from "../support/fixtures.mjs";
 import { BOARD, connected, radio } from "../support/wireless.mjs";
 
@@ -60,20 +59,17 @@ test("transactions serialize, match ID and opcode, poll Pending, wrap IDs, and d
   await client.disconnect();
 });
 
-test("SET failure never polls; terminal rejection permits a new transaction; timeout blocks replay", async () => {
-  const { client, device, reads } = fakeConnection();
+test("terminal rejection permits a new transaction; timeout blocks replay", async () => {
+  const { client, device, sent } = fakeConnection();
   await client.connect(); emit(device, 3, telemetry());
-  device.sendFeatureReport = async () => { throw new Error("SET rejected"); };
-  await assert.rejects(scan(client), says(/SET rejected/));
-  assert.deepEqual(reads, [1, 2]);
-  assert.equal(client.state.outcome_uncertain, false);
   let request;
-  device.sendFeatureReport = async (id, payload) => { request = payload; };
+  device.sendFeatureReport = async (id, payload) => { sent.push([id, ...payload]); request = payload; };
   device.receiveFeatureReport = async () => result(request[1], request[2], 6, 6);
   await assert.rejects(scan(client), says(/status 6, error 6/));
   assert.equal(client.state.outcome_uncertain, false);
   device.receiveFeatureReport = async () => result(request[1], request[2]);
   await assert.doesNotReject(scan(client));
+  assert.equal(sent.length, 2);
   const timeout = fakeConnection({ sleep: async () => {}, timeout: 10000 });
   await timeout.client.connect(); emit(timeout.device, 3, telemetry());
   timeout.device.receiveFeatureReport = async () => result(0, 0, 0);
@@ -84,13 +80,14 @@ test("SET failure never polls; terminal rejection permits a new transaction; tim
   await client.disconnect();
 });
 
-test("ambiguous transport write failures retain the recovery journal and block retries", async () => {
-  const { client, device, pendingStore } = fakeConnection();
+test("ambiguous HID write failures retain the recovery journal and block retries", async () => {
+  const { client, device, sent, pendingStore } = fakeConnection();
   await client.connect(); emit(device, 3, telemetry());
   let writes = 0;
-  client.transport.writeReport = async () => {
+  device.sendFeatureReport = async (id, report) => {
     writes++;
-    throw new BoardError(REASON.OUTCOME_UNCERTAIN);
+    sent.push([id, ...report]);
+    throw new Error("Transfer failed after dispatch");
   };
   await assert.rejects(scan(client), says(/uncertain/));
   assert.equal(client.state.outcome_uncertain, true);
@@ -98,6 +95,7 @@ test("ambiguous transport write failures retain the recovery journal and block r
   assert.ok(pendingStore.getItem("espforge.direct.pending-operation"));
   await assert.rejects(scan(client), says(/uncertain/));
   assert.equal(writes, 1, "a retry is blocked while the original outcome is unknown");
+  assert.equal(sent.length, 1);
   await client.disconnect();
 });
 
