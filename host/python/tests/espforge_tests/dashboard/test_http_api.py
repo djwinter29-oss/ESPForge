@@ -3,11 +3,11 @@
 
 import json
 import unittest
-from pathlib import Path
 from unittest.mock import patch
 from unittest.mock import Mock
 
 from espforge.dashboard.server import create_app
+from espforge_tests.support.paths import WEB_ROOT
 from espforge.dashboard.monitor import BoardConflict, CommandOutcomeUncertain
 from espforge.cli import parse_args
 from espforge.reports import ProtocolError
@@ -363,7 +363,7 @@ class WebTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.json["connected"])
         self.assertTrue(response.json["telemetry_stale"])
-        contract = json.loads((Path(__file__).parents[2] / "web/tests/status-contract.json").read_text())
+        contract = json.loads((WEB_ROOT / "tests/status-contract.json").read_text())
         self.assertLessEqual(set(contract["required"]), set(response.json), "shared status contract with .NET")
         self.assertFalse(set(contract["absent"]) & set(response.json))
         for method, path in contract["removed_routes"]:

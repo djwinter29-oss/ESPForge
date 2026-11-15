@@ -6,7 +6,7 @@ import time
 import unittest
 from unittest.mock import Mock, patch
 
-from helpers import make_monitor
+from espforge_tests.support.helpers import make_monitor
 from espforge.dashboard.monitor import BoardConflict, CommandOutcomeUncertain, DeviceMonitor, empty_snapshot
 from espforge.reports import ProtocolError
 

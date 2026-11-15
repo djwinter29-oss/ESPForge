@@ -8,7 +8,7 @@ import time
 import unittest
 from unittest.mock import Mock, patch
 
-from helpers import make_monitor
+from espforge_tests.support.helpers import make_monitor
 from espforge.dashboard.boards import DashboardBoards
 from espforge.dashboard.monitor import BoardConflict, CommandOutcomeUncertain
 

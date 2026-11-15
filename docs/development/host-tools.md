@@ -45,7 +45,7 @@ Run `espforge`, `python -m espforge`, or the checkout launch script.
 | Reports | Pure USB HID report codecs and ESPForge-specific validation; see the [USB HID contract](../reference/usb-hid.md) |
 | HID transport | Device discovery, Feature/Input reads and Control writes |
 | Dashboard services | Loopback Flask app, board discovery, one serialized monitor per board and the HTTP API |
-| Tests | Report codecs, HID device, monitor, boards, wireless, web API, CLI, version and packaging contracts |
+| Tests | Domain-grouped suites and shared fixtures live under `tests/espforge_tests/` |
 
 Package builds require an explicit copy of the shared dashboard assets; there is no custom build hook.
 The staged copy is ignored by Git and included in both wheels and source distributions.

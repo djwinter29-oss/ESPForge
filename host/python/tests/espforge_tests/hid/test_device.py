@@ -12,32 +12,17 @@ from espforge.reports import (
     InvalidRequest,
     ProtocolError,
     build_control_command_report,
-    parse_identity_report,
     parse_status_report,
 )
-
-
-def identity():
-    report = bytes([1, 1]) + struct.pack("<H", 3) + bytes.fromhex("0123456789abcdef")
-    report += bytes([1, 2, 3, 3, 1, 0, 0x96]) + struct.pack("<II", 524288, 100000)
-    return parse_identity_report(report)
-
-
-def telemetry():
-    return bytes([3]) + struct.pack("<BBhQHHIBB", 1, 0, 0, 42, 0xFFFF, 0xFFFF,
-                                    240_000_000, 7, 0x01)
-
-
-def control_result(opcode=2, status=2, error=0, transaction=1):
-    data = struct.pack("<HBBB", 240, 0, 0, 0) if opcode == 5 and status == 2 else b""
-    return bytes([20, 1, transaction, opcode, status, error]) + data.ljust(63, b"\0")
-
-
-def configuration(clock=240):
-    payload = bytes([1]) + struct.pack("<H", clock) + bytes([
-        0, 0, 43, 44, 12, 11, 13, 14, 15, 10, 0x04, 1, 255, 255,
-    ])
-    return bytes([2]) + payload
+from espforge_tests.support.hid_fixtures import (
+    configuration,
+    control_result,
+    identity,
+    make_hid_client,
+    telemetry,
+)
+from espforge_tests.support.report_fixtures import identity_report
+from espforge_tests.support.wireless_fixtures import status
 
 
 class HidEnumerationTests(unittest.TestCase):
@@ -62,8 +47,6 @@ class HidEnumerationTests(unittest.TestCase):
 
 class HidDeviceTests(unittest.TestCase):
     def test_identity_reads_only_advertised_memory_inventory_and_rejects_bad_reports(self):
-        from test_protocol import identity_report
-
         client = self.connection()
         client._expected_serial_number = None
         report = bytearray(identity_report()); report[17] = 1
@@ -100,9 +83,6 @@ class HidDeviceTests(unittest.TestCase):
     def test_close_waits_for_native_io_and_later_operations_reject_the_closed_handle(self):
         for operation in ("control", "input", "configuration", "identity", "wireless"):
             with self.subTest(operation=operation):
-                from test_protocol import identity_report
-                from test_wireless import status
-
                 client = self.connection([telemetry()])
                 client.configuration = None
                 client._expected_serial_number = None
@@ -329,40 +309,7 @@ class HidDeviceTests(unittest.TestCase):
         self.assertEqual(client._device.sent[1], bytes([20, 1, 2, 3, 1]) + bytes(64))
 
     def connection(self, reports=None):
-        class FakeTransport:
-            def __init__(self):
-                self.reports = list(reports or [])
-                self.sent = []
-                self.feature_reports = {}
-
-            def read(self, size, timeout):
-                report = self.reports.pop(0) if self.reports else []
-                return report[:size]
-
-            def send_feature_report(self, payload):
-                self.sent.append(bytes(payload))
-                return len(payload)
-
-            def get_feature_report(self, report_id, size):
-                self.last_get = (report_id, size)
-                response = self.feature_reports[report_id].pop(0)
-                return response
-
-        client = ESPForgeHid.__new__(ESPForgeHid)
-        client._device = FakeTransport()
-        client.closed = False
-        client._close_error = None
-        client.identity = identity()
-        client._transaction_id = 0
-        client.last_command_result = None
-        client._command_uncertain = False
-        client._uncertain_command = None
-        client._uncertain_wireless_operation = None
-        client._control_lock = threading.RLock()
-        client._wireless_active = False
-        client._tested_generation = None
-        client._tested_at = None
-        return client
+        return make_hid_client(reports)
 
     def test_input_reports_dispatch_under_new_ids(self):
         client = self.connection([telemetry()])

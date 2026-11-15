@@ -13,7 +13,9 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-PACKAGE = Path(__file__).resolve().parents[1] / "src" / "espforge" / "__init__.py"
+from espforge_tests.support.paths import PYTHON_PROJECT, REPO_ROOT
+
+PACKAGE = PYTHON_PROJECT / "src" / "espforge" / "__init__.py"
 
 
 class VersionTests(unittest.TestCase):
@@ -54,7 +56,7 @@ class LauncherVersionTests(unittest.TestCase):
         tools = root / "tools/host"
         tools.mkdir(parents=True)
         self.script = tools / "run-python.sh"
-        shutil.copyfile(Path(__file__).resolve().parents[3] / "tools/host/run-python.sh", self.script)
+        shutil.copyfile(REPO_ROOT / "tools/host/run-python.sh", self.script)
         (tools / "hid-permissions-check.sh").write_text("#!/bin/sh\nexit 0\n")
         venv = root / "existing venv"
         (venv / "bin").mkdir(parents=True)

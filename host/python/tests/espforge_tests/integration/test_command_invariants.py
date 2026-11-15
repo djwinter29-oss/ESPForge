@@ -8,10 +8,19 @@ import unittest
 from contextlib import contextmanager
 from unittest.mock import Mock, patch
 
-from helpers import make_monitor
-import test_device
-import test_wireless
-from test_protocol import configuration_report, identity_report, storage_report, telemetry_report
+from espforge_tests.support.hid_fixtures import control_result as hid_control_result, make_hid_client
+from espforge_tests.support.report_fixtures import (
+    configuration_report,
+    identity_report,
+    storage_report,
+    telemetry_report,
+)
+from espforge_tests.support.helpers import make_monitor
+from espforge_tests.support.wireless_fixtures import (
+    make_wireless_client,
+    result as wireless_result,
+    status as wireless_status,
+)
 from espforge.dashboard.boards import DashboardBoards
 from espforge.dashboard.monitor import BoardConflict, CommandOutcomeUncertain, DeviceMonitor
 from espforge.dashboard.server import create_app
@@ -19,12 +28,12 @@ from espforge.reports import ControlOpcode, ProtocolError
 
 
 def cancel_result(transaction=1, **kwargs):
-    return test_device.control_result(opcode=ControlOpcode.WIFI_CANCEL, transaction=transaction, **kwargs)
+    return hid_control_result(opcode=ControlOpcode.WIFI_CANCEL, transaction=transaction, **kwargs)
 
 
 class CommandInvariantTests(unittest.TestCase):
     def ready(self, *, cleanup=True):
-        client = test_device.HidDeviceTests().connection()
+        client = make_hid_client()
         client._expected_serial_number = None
         client._device.feature_reports[2] = [configuration_report()]
         configuration = client.read_configuration()
@@ -81,8 +90,8 @@ class CommandInvariantTests(unittest.TestCase):
         client._device.close = Mock()
         client._device.feature_reports[1] = [identity_report()]
         client._device.feature_reports[2] = [configuration_report()]
-        client._device.feature_reports[12] = [test_wireless.status() for _ in range(8)]
-        client._device.feature_reports[20] = [test_device.control_result(opcode=ControlOpcode.REBOOT)]
+        client._device.feature_reports[12] = [wireless_status() for _ in range(8)]
+        client._device.feature_reports[20] = [hid_control_result(opcode=ControlOpcode.REBOOT)]
         monitor._active_client = None
         monitor._reset_snapshot()
         entered, release = threading.Event(), threading.Event()
@@ -131,7 +140,7 @@ class CommandInvariantTests(unittest.TestCase):
         client._device.close = Mock()
         client._device.feature_reports[1] = [identity_report()]
         client._device.feature_reports[2] = [configuration_report()]
-        client._device.feature_reports[12] = [test_wireless.status() for _ in range(8)]
+        client._device.feature_reports[12] = [wireless_status() for _ in range(8)]
         client.read_input_report = Mock(side_effect=OSError("detached"))
         entered, release = threading.Event(), threading.Event()
         reset = monitor._reset_snapshot
@@ -173,9 +182,9 @@ class CommandInvariantTests(unittest.TestCase):
                 client, monitor = self.ready()
                 board = {"system_clock_mhz": 160, "sdcard_profile": 0, "radios": 0, "tcp_cli_enabled": False}
                 if wireless:
-                    client._device.feature_reports[12] = [test_wireless.status(), test_wireless.status()]
+                    client._device.feature_reports[12] = [wireless_status(), wireless_status()]
                 saved_clock = 240 if mismatch == "settings" else 160
-                result = bytearray(test_device.control_result(opcode=ControlOpcode.SAVE_SETTINGS))
+                result = bytearray(hid_control_result(opcode=ControlOpcode.SAVE_SETTINGS))
                 result[6:8] = saved_clock.to_bytes(2, "little")
                 result[8] = 0
                 result[10] = 1 if mismatch == "commit" else 0
@@ -207,7 +216,7 @@ class CommandInvariantTests(unittest.TestCase):
                         client._device.get_feature_report = Mock(side_effect=OSError("lost result"))
                         expected = CommandOutcomeUncertain
                     else:
-                        client._device.feature_reports[20] = [test_device.control_result(
+                        client._device.feature_reports[20] = [hid_control_result(
                             opcode=opcode, status=3 if outcome == "refused" else 6,
                             error=1 if outcome == "refused" else 6)]
                         expected = BoardConflict
@@ -225,7 +234,7 @@ class CommandInvariantTests(unittest.TestCase):
         for opcode in (ControlOpcode.SAVE_SETTINGS, ControlOpcode.REBOOT):
             with self.subTest(opcode=opcode):
                 client, monitor = self.ready()
-                client._device.feature_reports[20] = [test_device.control_result(opcode=opcode)]
+                client._device.feature_reports[20] = [hid_control_result(opcode=opcode)]
                 if opcode == ControlOpcode.SAVE_SETTINGS:
                     monitor.set_settings(settings)
                 else:
@@ -260,7 +269,7 @@ class CommandInvariantTests(unittest.TestCase):
                 client, monitor = self.ready()
                 monitor._command_outcome_uncertain = True
                 monitor._uncertain_command = (1, opcode)
-                client._device.feature_reports[20] = [test_device.control_result(
+                client._device.feature_reports[20] = [hid_control_result(
                     opcode=opcode, status=status, error=1 if status == 3 else 0)]
                 self.assertFalse(monitor.resync_command()["uncertain"])
                 self.assertEqual(monitor.snapshot()["reboot_pending"], pending)
@@ -271,12 +280,12 @@ class CommandInvariantTests(unittest.TestCase):
 
     def test_real_reconnection_resets_pending_and_restores_writes(self):
         client, monitor = self.ready()
-        client._device.feature_reports[20] = [test_device.control_result(opcode=ControlOpcode.REBOOT)]
+        client._device.feature_reports[20] = [hid_control_result(opcode=ControlOpcode.REBOOT)]
         monitor.reboot()
         self.assertTrue(monitor.snapshot()["reboot_pending"])
         client._device.feature_reports[1] = [identity_report()]
         client._device.feature_reports[2] = [configuration_report()]
-        client._device.feature_reports[12] = [test_wireless.status() for _ in range(8)]
+        client._device.feature_reports[12] = [wireless_status() for _ in range(8)]
         client._device.feature_reports[20] = [cancel_result(2)]
         client._device.close = Mock()
         client._device.reports = [telemetry_report(), storage_report()]
@@ -428,10 +437,10 @@ class CommandInvariantTests(unittest.TestCase):
 
 class WirelessCleanupInvariantTests(unittest.TestCase):
     def ready(self, cancel_result, *, late=True):
-        client = test_wireless.WirelessTests().client([
-            test_wireless.status(), test_wireless.result(6, 1), test_wireless.result(7, 2),
-            test_wireless.result(9, 3),
-            test_wireless.status(wifi=5, flags=0xB3, test=1, staged=3), cancel_result,
+        client = make_wireless_client([
+            wireless_status(), wireless_result(6, 1), wireless_result(7, 2),
+            wireless_result(9, 3),
+            wireless_status(wifi=5, flags=0xB3, test=1, staged=3), cancel_result,
         ])
         client._device.read.return_value = []
         monitor = make_monitor(client, {
@@ -456,7 +465,7 @@ class WirelessCleanupInvariantTests(unittest.TestCase):
         return client, monitor, app.test_client()
 
     def test_known_late_cancel_failure_requires_explicit_cleanup_not_unresolvable_resync(self):
-        client, monitor, http = self.ready(test_wireless.result(10, 4, state=6, error=6))
+        client, monitor, http = self.ready(wireless_result(10, 4, state=6, error=6))
         response = http.post("/api/wireless/test?board=a", json={"ssid": "ESP32", "password": "password"})
         self.assertEqual(response.status_code, 409)
         snapshot = monitor.snapshot()
@@ -470,7 +479,7 @@ class WirelessCleanupInvariantTests(unittest.TestCase):
         self.assertEqual([call.args[0][3] for call in client._device.send_feature_report.call_args_list], [6, 7, 9, 10])
 
         client._device.get_feature_report.side_effect = [
-            test_wireless.result(10, 5, state=6, error=6), test_wireless.result(10, 6), test_wireless.result(2, 7),
+            wireless_result(10, 5, state=6, error=6), wireless_result(10, 6), wireless_result(2, 7),
         ]
         self.assertEqual(http.post("/api/wireless/cancel?board=a").status_code, 409)
         self.assertTrue(monitor.snapshot()["wireless_cleanup_required"])
@@ -487,7 +496,7 @@ class WirelessCleanupInvariantTests(unittest.TestCase):
         self.assertTrue(response.json["uncertain"])
         self.assertTrue(monitor.snapshot()["wireless_cleanup_required"])
         self.assertEqual(monitor._uncertain_command, (4, ControlOpcode.WIFI_CANCEL))
-        client._device.get_feature_report.side_effect = [test_wireless.result(10, 4)]
+        client._device.get_feature_report.side_effect = [wireless_result(10, 4)]
         self.assertEqual(http.post("/api/wireless/cancel?board=a").status_code, 409)
         self.assertEqual(http.post("/api/control/resync?board=a", json={"confirm": True}).status_code, 200)
         self.assertFalse(monitor.snapshot()["wireless_cleanup_required"])
@@ -495,12 +504,12 @@ class WirelessCleanupInvariantTests(unittest.TestCase):
         self.assertEqual(client._device.send_feature_report.call_count, 4)
 
     def test_running_test_known_cancel_failure_is_not_automatically_retried(self):
-        client, monitor, http = self.ready(test_wireless.result(10, 4, state=6, error=6), late=False)
+        client, monitor, http = self.ready(wireless_result(10, 4, state=6, error=6), late=False)
         # A running cancellation is sent instead of reading the final joined state.
         client._device.get_feature_report.side_effect = [
-            test_wireless.status(), test_wireless.result(6, 1), test_wireless.result(7, 2),
-            test_wireless.result(9, 3), test_wireless.status(wifi=4, test=1),
-            test_wireless.result(10, 4, state=6, error=6),
+            wireless_status(), wireless_result(6, 1), wireless_result(7, 2),
+            wireless_result(9, 3), wireless_status(wifi=4, test=1),
+            wireless_result(10, 4, state=6, error=6),
         ]
         response = http.post("/api/wireless/test?board=a", json={"ssid": "ESP32", "password": "password"})
         self.assertEqual(response.status_code, 409)
@@ -513,7 +522,7 @@ class WirelessCleanupInvariantTests(unittest.TestCase):
         self.assertEqual(http.post("/api/wireless/test?board=a",
                                    json={"ssid": "ESP32", "password": "password"}).status_code, 503)
         client._device.get_feature_report.side_effect = [
-            test_wireless.result(10, 4, state=6, error=6), test_wireless.result(10, 5),
+            wireless_result(10, 4, state=6, error=6), wireless_result(10, 5),
         ]
         self.assertEqual(http.post("/api/control/resync?board=a", json={"confirm": True}).status_code, 200)
         self.assertFalse(monitor.snapshot()["command_outcome_uncertain"])

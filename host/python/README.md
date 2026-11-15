@@ -132,5 +132,9 @@ For host tests, type checks and frontend ownership, see [Host development](../..
 
 Each public package can be imported independently without opening a device.
 
+Python tests are grouped under `tests/espforge_tests/` by CLI, dashboard, HID, reports, packaging, and integration
+responsibility. Shared fixtures and repository-path helpers live under `tests/espforge_tests/support/`; test
+dependencies and compile-only type contracts remain directly under `tests/`.
+
 The package uses the **BSD-3-Clause** license. Its [LICENSE](LICENSE) mirrors the
 [repository license](../../LICENSE) and is included in built wheels; keep both copies identical.

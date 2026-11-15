@@ -4,14 +4,15 @@
 import unittest
 import subprocess
 import sys
-from pathlib import Path
 
 try:
     import tomllib
 except ModuleNotFoundError:  # Python 3.10
     tomllib = None
 
-PROJECT = Path(__file__).resolve().parents[1]
+from espforge_tests.support.paths import PYTHON_PROJECT, REPO_ROOT
+
+PROJECT = PYTHON_PROJECT
 
 
 class PackagingTests(unittest.TestCase):
@@ -55,7 +56,7 @@ class PackagingTests(unittest.TestCase):
         project = tomllib.loads((PROJECT / "pyproject.toml").read_text())["project"]
         self.assertEqual(project["license"], "BSD-3-Clause")
         self.assertEqual(project["license-files"], ["LICENSE"])
-        self.assertEqual((PROJECT / "LICENSE").read_bytes(), (PROJECT.parents[1] / "LICENSE").read_bytes())
+        self.assertEqual((PROJECT / "LICENSE").read_bytes(), (REPO_ROOT / "LICENSE").read_bytes())
         self.assertEqual(project["scripts"], {"espforge": "espforge.cli:main"})
         self.assertEqual(project["requires-python"], ">=3.10")
         self.assertIn("Documentation", project["urls"])
