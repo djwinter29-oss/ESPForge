@@ -15,7 +15,7 @@ from .common import (
     CAP_REBOOT, CAP_SELF_TEST, CAP_WIRELESS, CLOCK_PROFILES_MHZ,
     CONTROL_ERROR_NAMES, CONTROL_PAYLOAD_SIZE, CONTROL_REPORT_ID, CONTROL_STATUS_NAMES, REPORT_VERSION,
     ControlDetail, ControlError, ControlOpcode, ControlStatus, InvalidRequest, ProtocolError,
-    _ALLOWED_STATUS_ERRORS, _OPCODE_STATUSES, _bytes, _feature_payload, _validate_settings,
+    ALLOWED_STATUS_ERRORS, OPCODE_STATUSES, report_bytes, feature_payload, validate_settings,
 )
 
 _UNSUPPORTED_OPCODES = (ControlOpcode.TCP_PROOF,)
@@ -25,7 +25,7 @@ def build_settings_command_report(
     settings: dict[str, object], transaction_id: int = 1, *, commit: bool = False,
 ) -> bytes:
     """Build opcode 5; ESPForge has no forced save and no TCP CLI switch, so both stay clear."""
-    clock, profile, radios = _validate_settings(settings)
+    clock, profile, radios = validate_settings(settings)
     if type(commit) is not bool:
         raise ValueError("Save confirmations must be boolean")
     return build_control_command_report(
@@ -52,7 +52,7 @@ def build_control_command_report(
         raise ValueError("control opcode is not available on ESPForge")
     if type(flags) is not int or not 0 <= flags <= 255:
         raise ValueError("flags must be a byte")
-    args = _bytes(arguments)
+    args = report_bytes(arguments)
     if len(args) > 64:
         raise ValueError("control command arguments exceed 64 bytes")
     args = args.ljust(64, b"\0")
@@ -94,7 +94,7 @@ def build_control_command_report(
 
 def _validate_detail(opcode: int, status: int, error: int, detail: int) -> None:
     """Validate the global detail namespace and its opcode/status applicability."""
-    allowed = {ControlDetail.NONE}
+    allowed: set[ControlDetail] = {ControlDetail.NONE}
     if status == ControlStatus.INVALID and error == ControlError.ARGUMENT:
         if opcode == ControlOpcode.SELF_TEST:
             allowed = {ControlDetail.INVALID_BENCHMARK_SIZE}
@@ -145,7 +145,7 @@ def parse_control_result_report(
     report: bytes | bytearray | list[int], identity: SupportedHardwareIdentity | None = None,
 ) -> ControlResult:
     """Decode and validate the latest USB result without consuming it."""
-    payload = _feature_payload(report, CONTROL_REPORT_ID, CONTROL_PAYLOAD_SIZE)
+    payload = feature_payload(report, CONTROL_REPORT_ID, CONTROL_PAYLOAD_SIZE)
     version, transaction, opcode, status_value, error_value = payload[:5]
     data = payload[5:]
     if version != REPORT_VERSION:
@@ -159,7 +159,7 @@ def parse_control_result_report(
         opcode_enum = ControlOpcode(opcode)
     except ValueError:
         opcode_enum = None
-    if status not in _ALLOWED_STATUS_ERRORS or error not in _ALLOWED_STATUS_ERRORS[status]:
+    if status not in ALLOWED_STATUS_ERRORS or error not in ALLOWED_STATUS_ERRORS[status]:
         raise ValueError("invalid HID control status/error combination")
     if status == ControlStatus.IDLE:
         if transaction or opcode or any(data):
@@ -167,7 +167,7 @@ def parse_control_result_report(
     elif not transaction:
         raise ValueError("HID control result has a zero transaction ID")
     if opcode_enum is not None:
-        if status not in _OPCODE_STATUSES[opcode_enum]:
+        if status not in OPCODE_STATUSES[opcode_enum]:
             raise ValueError("HID control status is invalid for its opcode")
         if status == ControlStatus.INVALID and error not in (
                 {ControlError.MALFORMED, ControlError.CONFIRMATION}
@@ -189,8 +189,8 @@ def parse_control_result_report(
             CAP_SELF_TEST if opcode_enum == ControlOpcode.SELF_TEST else None)
         if opcode_enum is not None and ControlOpcode.STAGE_SSID <= opcode_enum <= ControlOpcode.WIFI_ENTRY:
             required = CAP_WIRELESS
-        capabilities = identity.get("capabilities")
-        if required is not None and capabilities is not None and capabilities & required:
+        capabilities = identity["capabilities"]
+        if required is not None and capabilities & required:
             raise ValueError("HID control result contradicts advertised capabilities")
     if (opcode_enum == ControlOpcode.SELF_TEST and status not in (ControlStatus.IDLE, ControlStatus.UNSUPPORTED)
             and identity is not None and not identity["capabilities"] & CAP_SELF_TEST):
@@ -209,7 +209,7 @@ def parse_control_result_report(
         saved = {"system_clock_mhz": clock, "sdcard_profile": profile, "radios": switches & 3,
                  "tcp_cli_enabled": bool(switches & 4)}
         try:
-            _validate_settings(saved)
+            validate_settings(saved)
         except InvalidRequest as error:
             raise ValueError(f"invalid HID settings result: {error}") from None
         if switches & ~7 or commit_mask & ~7 or any(data[5:]):

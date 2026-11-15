@@ -175,12 +175,14 @@ test("Direct stays self-contained: browser management and local console, no host
       `${path}: Direct has no Web Serial or host/web dependency`);
   }
   assert.ok(!paths.some(path => /serial|demo/.test(path)), "no Web Serial or demo modules");
-  const html = readFileSync(new URL("index.html", web), "utf8");
-  for (const [, url] of html.matchAll(/\b(?:href|src)="([^"]+)"/g)) {
-    if (url === "./") continue;
-    assert.doesNotMatch(url, /^(?:[a-z]+:|\/|\.\.\/)/i, `${url} must stay inside host/direct/web`);
-    assert.ok(existsSync(new URL(url, web)), `${url} exists`);
+  for (const page of ["index.html", "console.html"]) {
+    const html = readFileSync(new URL(page, web), "utf8");
+    for (const [, url] of html.matchAll(/\b(?:href|src)="([^"]+)"/g)) {
+      if (url === "./") continue;
+      assert.doesNotMatch(url, /^(?:[a-z]+:|\/|\.\.\/)/i, `${page}: ${url} must stay inside host/direct/web`);
+      assert.ok(existsSync(new URL(url, web)), `${page}: ${url} exists`);
+    }
+    assert.match(html, /<link rel="icon" type="image\/svg\+xml" href="favicon.svg">/);
   }
-  assert.match(html, /<link rel="icon" type="image\/svg\+xml" href="favicon.svg">/);
   assert.match(readFileSync(new URL("favicon.svg", web), "utf8"), /<title>ESPForge<\/title>/, "the ESPForge favicon");
 });

@@ -19,7 +19,7 @@ from .common import (
     TELEMETRY_REPORT_ID,
     TELEMETRY_TEMPERATURE_VALID,
     TELEMETRY_USB_MOUNTED,
-    _input_payload,
+    input_payload,
 )
 
 
@@ -27,7 +27,7 @@ def parse_status_report(
     report: bytes | bytearray | list[int], identity: SupportedHardwareIdentity | None = None
 ) -> RuntimeStatus:
     """Decode and validate Input report 3 telemetry."""
-    payload = _input_payload(report, TELEMETRY_REPORT_ID, TELEMETRY_PAYLOAD_SIZE)
+    payload = input_payload(report, TELEMETRY_REPORT_ID, TELEMETRY_PAYLOAD_SIZE)
     version, led_flags = payload[:2]
     temperature = struct.unpack_from("<h", payload, 2)[0]
     uptime_ms = int.from_bytes(payload[4:12], "little")

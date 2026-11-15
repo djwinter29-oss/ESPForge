@@ -35,12 +35,12 @@ from .common import (
     PRODUCT_NAMES,
     REPORT_VERSION,
 )
-from .common import _feature_payload, _unknown_name
+from .common import feature_payload, unknown_name
 
 
 def parse_identity_report(report: bytes | bytearray | list[int]) -> HardwareIdentity:
     """Decode and validate Feature report 1."""
-    payload = _feature_payload(report, IDENTITY_REPORT_ID, IDENTITY_PAYLOAD_SIZE)
+    payload = feature_payload(report, IDENTITY_REPORT_ID, IDENTITY_PAYLOAD_SIZE)
     version = payload[0]
     product_id = int.from_bytes(payload[1:3], "little")
     if version != REPORT_VERSION:
@@ -83,9 +83,9 @@ def parse_identity_report(report: bytes | bytearray | list[int]) -> HardwareIden
         "firmware_patch": firmware[2],
         "firmware_version": ".".join(map(str, firmware)),
         "mcu_id": mcu_id,
-        "mcu": _unknown_name(mcu_id, MCU_NAMES),
+        "mcu": unknown_name(mcu_id, MCU_NAMES),
         "board_model_id": board_model,
-        "board_model": _unknown_name(board_model, BOARD_NAMES),
+        "board_model": unknown_name(board_model, BOARD_NAMES),
         "capabilities": capabilities,
         "led_available": bool(capabilities & CAP_LED),
         "reboot_available": bool(capabilities & CAP_REBOOT),
@@ -103,7 +103,7 @@ def parse_identity_report(report: bytes | bytearray | list[int]) -> HardwareIden
 
 def parse_memory_inventory_report(report: bytes | bytearray | list[int]) -> MemoryInventory:
     """Decode the advertised read-only Feature 13; unavailable components become None."""
-    payload = _feature_payload(report, MEMORY_REPORT_ID, MEMORY_PAYLOAD_SIZE)
+    payload = feature_payload(report, MEMORY_REPORT_ID, MEMORY_PAYLOAD_SIZE)
     flags = payload[1]
     psram_total, psram_reserved, flash_total = struct.unpack_from("<III", payload, 4)
     if (payload[0] != REPORT_VERSION or flags & ~3 or any(payload[2:4])
@@ -120,7 +120,7 @@ def parse_configuration_report(
     report: bytes | bytearray | list[int], identity: SupportedHardwareIdentity
 ) -> BoardConfiguration:
     """Decode Feature report 2 and validate transport- and board-dependent fields."""
-    payload = _feature_payload(report, CONFIGURATION_REPORT_ID, CONFIGURATION_PAYLOAD_SIZE)
+    payload = feature_payload(report, CONFIGURATION_REPORT_ID, CONFIGURATION_PAYLOAD_SIZE)
     version = payload[0]
     clock_profile = int.from_bytes(payload[1:3], "little")
     sd_profile = payload[3]

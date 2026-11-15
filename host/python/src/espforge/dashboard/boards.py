@@ -109,8 +109,7 @@ class DashboardBoards:
                 monitor = self._monitors.pop(board_id, None)
                 if monitor is not None:
                     self._retiring[board_id] = monitor
-                    # ponytail: at most 16 retirement threads, no retry; failed cleanup refuses reconnect until
-                    # restart. Add supervised retirement only if recurring failures need in-process recovery.
+                    # Failed cleanup retains handle ownership and refuses reconnect until the process restarts.
                     worker = threading.Thread(target=self._retire_monitor, args=(board_id, monitor),
                                               name="espforge-monitor-retirement", daemon=True)
                     self._retirement_threads[board_id] = worker

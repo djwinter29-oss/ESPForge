@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 from enum import IntEnum, IntFlag
+from typing import TypeGuard, cast
 
 
 class ControlOpcode(IntEnum):
@@ -245,7 +246,7 @@ CONTROL_ERROR_NAMES = {
     ControlError.OPERATION: "operation failed", ControlError.OPCODE: "unsupported opcode",
 }
 
-_ALLOWED_STATUS_ERRORS = {
+ALLOWED_STATUS_ERRORS = {
     CONTROL_IDLE: {ControlError.NONE},
     CONTROL_PENDING: {ControlError.NONE},
     CONTROL_COMPLETED: {ControlError.NONE},
@@ -255,7 +256,7 @@ _ALLOWED_STATUS_ERRORS = {
     CONTROL_FAILED: {ControlError.OPERATION},
 }
 
-_OPCODE_STATUSES = {
+OPCODE_STATUSES = {
     ControlOpcode.LED: {
         CONTROL_PENDING, CONTROL_COMPLETED, CONTROL_INVALID, CONTROL_UNSUPPORTED, CONTROL_BUSY, CONTROL_FAILED,
     },
@@ -274,13 +275,13 @@ _OPCODE_STATUSES = {
     },
 }
 for _opcode in tuple(ControlOpcode)[5:]:
-    _OPCODE_STATUSES[_opcode] = {CONTROL_COMPLETED, CONTROL_INVALID, CONTROL_UNSUPPORTED, CONTROL_FAILED}
+    OPCODE_STATUSES[_opcode] = {CONTROL_COMPLETED, CONTROL_INVALID, CONTROL_UNSUPPORTED, CONTROL_FAILED}
     if _opcode not in (ControlOpcode.WIFI_CANCEL, ControlOpcode.TCP_PROOF):
-        _OPCODE_STATUSES[_opcode].add(CONTROL_BUSY)
+        OPCODE_STATUSES[_opcode].add(CONTROL_BUSY)
     if _opcode in (ControlOpcode.WIFI_TEST, ControlOpcode.WIFI_SCAN):
-        _OPCODE_STATUSES[_opcode].add(CONTROL_PENDING)
+        OPCODE_STATUSES[_opcode].add(CONTROL_PENDING)
 
-def _bytes(report: bytes | bytearray | list[int]) -> bytes:
+def report_bytes(report: bytes | bytearray | list[int]) -> bytes:
     if not isinstance(report, (bytes, bytearray, list)):
         raise ValueError("HID report must be bytes or a list of byte values")
     if isinstance(report, list) and any(
@@ -292,20 +293,20 @@ def _bytes(report: bytes | bytearray | list[int]) -> bytes:
     except (TypeError, ValueError) as error:
         raise ValueError("HID report must contain byte values") from error
 
-def _feature_payload(report: bytes | bytearray | list[int], report_id: int, size: int) -> bytes:
+def feature_payload(report: bytes | bytearray | list[int], report_id: int, size: int) -> bytes:
     """Validate HIDAPI's report-ID-prefixed buffer without guessing framing bytes."""
-    data = _bytes(report)
+    data = report_bytes(report)
     if len(data) != size + 1 or data[0] != report_id:
         raise ValueError(f"unexpected HID Feature report {report_id} length or ID")
     return data[1:]
 
-def _input_payload(report: bytes | bytearray | list[int], report_id: int, size: int) -> bytes:
-    data = _bytes(report)
+def input_payload(report: bytes | bytearray | list[int], report_id: int, size: int) -> bytes:
+    data = report_bytes(report)
     if len(data) != size + 1 or data[0] != report_id:
         raise ValueError(f"HID Input report {report_id} must have exactly {size} payload bytes and the correct ID")
     return data[1:]
 
-def _unknown_name(value: int, names: dict[int, str]) -> str:
+def unknown_name(value: int, names: dict[int, str]) -> str:
     return names.get(value, f"unknown ({value})")
 
 class BoardConflict(RuntimeError):
@@ -316,9 +317,14 @@ class InvalidRequest(ValueError):
     """User-supplied command input was rejected before any HID write."""
 
 
-def _validate_settings(settings: object) -> tuple[int, int, int]:
+def is_object_dict(value: object) -> TypeGuard[dict[str, object]]:
+    """Recognize an object with string field names without assuming its values have been validated."""
+    return isinstance(value, dict) and all(isinstance(key, str) for key in cast(dict[object, object], value))
+
+
+def validate_settings(settings: object) -> tuple[int, int, int]:
     """Return clock, SD profile and radio enables (bit 0 Wi-Fi, bit 1 BLE) for the ESPForge profile."""
-    if not isinstance(settings, dict):
+    if not is_object_dict(settings):
         raise InvalidRequest("boot settings must be an object")
     clock = settings.get("system_clock_mhz")
     profile = settings.get("sdcard_profile")

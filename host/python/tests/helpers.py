@@ -6,7 +6,7 @@
 import math
 from unittest.mock import Mock
 
-from espforge.dashboard.monitor import DeviceMonitor, _empty_snapshot
+from espforge.dashboard.monitor import DeviceMonitor, empty_snapshot
 
 
 def make_monitor(client=None, snapshot=None, *, fresh=True):
@@ -20,7 +20,7 @@ def make_monitor(client=None, snapshot=None, *, fresh=True):
     monitor = DeviceMonitor(client_factory=lambda: client, autostart=False)
     monitor._active_client = client
     if snapshot is not None:
-        monitor._snapshot = {**_empty_snapshot(), **snapshot}
+        monitor._snapshot = {**empty_snapshot(), **snapshot}
     if fresh:
         monitor._input_received_at = dict.fromkeys(("runtime", "memory"), math.inf)
         monitor._wireless_received_at = math.inf

@@ -8,21 +8,21 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .models import MemoryStatus, SupportedHardwareIdentity
+    from .models import MemoryStatus, SdCardIdentity, SupportedHardwareIdentity
 
 from .common import (
     REPORT_VERSION,
     STORAGE_PAYLOAD_SIZE,
     STORAGE_REPORT_ID,
 )
-from .common import _input_payload
+from .common import input_payload
 from .common import SELF_TEST_PAYLOAD_SIZE, SELF_TEST_REPORT_ID
 from .models import BenchmarkStatus
 
 
 def parse_benchmark_report(report: bytes | bytearray | list[int]) -> BenchmarkStatus:
     """Decode bounded counters and trustworthy lifecycle facts from Input report 11."""
-    payload = _input_payload(report, SELF_TEST_REPORT_ID, SELF_TEST_PAYLOAD_SIZE)
+    payload = input_payload(report, SELF_TEST_REPORT_ID, SELF_TEST_PAYLOAD_SIZE)
     version, sequence, state, flags = payload[:4]
     values = [int.from_bytes(payload[offset:offset + 4], "little") for offset in range(4, 28, 4)]
     target, written, read, write_ms, read_ms, mismatches = values
@@ -52,7 +52,7 @@ def parse_memory_report(
     identity: SupportedHardwareIdentity | None = None,
 ) -> MemoryStatus:
     """Decode and validate Input report 10 storage and MSC state."""
-    payload = _input_payload(report, STORAGE_REPORT_ID, STORAGE_PAYLOAD_SIZE)
+    payload = input_payload(report, STORAGE_REPORT_ID, STORAGE_PAYLOAD_SIZE)
     version, sequence, flags, component_type, bus_mode = payload[:5]
     clock_hz = int.from_bytes(payload[5:9], "little")
     speed_mode = payload[9]
@@ -109,7 +109,7 @@ def parse_memory_report(
     if initialized and not clock_hz:
         raise ValueError("initialized SD sample must report a nonzero bus clock")
 
-    manufacturer = None
+    manufacturer: SdCardIdentity | None = None
     if cid_valid:
         date = ((cid[13] & 0x0F) << 8) | cid[14]
         manufacturer = {

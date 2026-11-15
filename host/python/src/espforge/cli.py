@@ -12,7 +12,7 @@ from math import ceil
 from time import monotonic
 
 from .hid.device import ESPForgeHid
-from .reports.models import MemoryStatus, RuntimeStatus
+from .reports.models import BenchmarkStatus, MemoryStatus, RuntimeStatus
 
 _STATUS_REPORT_TIMEOUT_SECONDS = 5.0
 
@@ -33,9 +33,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def _read_status_reports(device: ESPForgeHid) -> tuple[RuntimeStatus | None, MemoryStatus | None]:
+def _read_status_reports(
+    device: ESPForgeHid, *, self_test_supported: bool = False,
+) -> tuple[RuntimeStatus | None, MemoryStatus | None, BenchmarkStatus | None]:
     runtime = None
     memory = None
+    self_test = None
     deadline = monotonic() + _STATUS_REPORT_TIMEOUT_SECONDS
     while True:
         remaining = deadline - monotonic()
@@ -48,9 +51,11 @@ def _read_status_reports(device: ESPForgeHid) -> tuple[RuntimeStatus | None, Mem
             runtime = item["data"]
         elif item["kind"] == "memory":
             memory = item["data"]
-        if runtime is not None and memory is not None:
+        elif item["kind"] == "self_test" and self_test_supported:
+            self_test = item["data"]
+        if runtime is not None and memory is not None and (not self_test_supported or self_test is not None):
             break
-    return runtime, memory
+    return runtime, memory, self_test
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -88,7 +93,7 @@ def main(argv: list[str] | None = None) -> int:
                 key: configuration[key]
                 for key in ("system_clock_mhz", "sdcard_profile", "radios", "tcp_cli_enabled")
             }
-            runtime, memory = _read_status_reports(device)
+            runtime, memory, self_test = _read_status_reports(device, self_test_supported=info["self_test_supported"])
             print(json.dumps({
                 "connected": True,
                 "hardware": info,
@@ -97,7 +102,7 @@ def main(argv: list[str] | None = None) -> int:
                 "runtime": runtime,
                 "memory": memory,
                 "msc": memory["msc"] if memory is not None else None,
-                "self_test": None,
+                "self_test": self_test,
             }, sort_keys=True))
         return 0
     except (OSError, RuntimeError, ValueError) as error:

@@ -50,7 +50,8 @@ Run `espforge`, `python -m espforge`, or the checkout launch script.
 Package builds require an explicit copy of the shared dashboard assets; there is no custom build hook.
 The staged copy is ignored by Git and included in both wheels and source distributions.
 Source-checkout launches and editable installs need no staging and use the shared dashboard directly.
-Python type-checking runs in strict mode. Runtime dependency pins live in `pyproject.toml`; pip handles installation
+Python type-checking runs in strict mode across the complete runtime package and compile-only API contracts.
+Runtime dependency pins live in `pyproject.toml`; pip handles installation
 without a checked-in lockfile. Hatchling builds the package, and hatch-vcs derives its version from Git tags.
 Editable installs use the same distribution metadata as wheels; reinstall after a commit or tag change to refresh it.
 To stage the current assets and check a wheel locally on Linux/macOS, from the repository root:

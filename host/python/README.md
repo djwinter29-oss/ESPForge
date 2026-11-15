@@ -68,7 +68,8 @@ python -m espforge --help
 ```
 
 `status` prints JSON diagnostics from the reports received within a five-second collection window; unavailable
-fields remain `null`. `reboot` requires explicit confirmation and uses the board's saved settings.
+fields remain `null`. It includes self-test status when the board advertises that capability, without extending
+the collection window. `reboot` requires explicit confirmation and uses the board's saved settings.
 All three commands accept either `--serial SERIAL` or `--device-path PATH` to select a board.
 The server always binds to `127.0.0.1`. Python and .NET default to ports 8001 and 8002.
 
@@ -97,9 +98,14 @@ in editable mode on first use, checks HID permissions and runs `espforge` (defau
 
 - **USB drive:** explicitly export an initialized SD card, then safely eject in the OS before confirming return
   to firmware. See [SD ownership](../../docs/reference/sdcard.md#usb-drive-handoff).
+- **Wi-Fi diagnostic shell:** click fresh connected Wi-Fi status to open the existing browser terminal. It is
+  unauthenticated plaintext; use only a trusted, isolated network and never enter secrets. See
+  [diagnostic shells](../../docs/guides/console.md).
 
-ESPForge has no board LED, SD benchmark, forced save, CDC console or TCP CLI console, so the
-dashboard does not offer them and their routes are absent; see [Dashboard HTTP API](#dashboard-http-api).
+Controls follow the connected firmware's advertised capabilities; the
+[shared HTTP API](../web/README.md#http-api) owns supported and unsupported operations.
+Forced save, a CDC serial console, and the application TCP CLI remain unavailable. The native diagnostic shell
+is separate from the unsupported saved TCP CLI switch and proof commands; the BLE Control key does not protect it.
 
 Commands can be rejected or remain uncertain after a timeout/disconnect; delivery is not completion.
 Do not replay uncertain writes. Feature availability and safety gates follow the connected firmware.

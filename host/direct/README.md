@@ -256,7 +256,8 @@ python3 -m playwright install chromium
 python3 host/direct/tests/browser/run.py
 ```
 
-The runner owns an ephemeral loopback server and fails on incomplete checks, assertion failures, or browser errors.
+The runner owns an ephemeral loopback server and fails on incomplete checks, assertion failures, browser errors,
+or failed runtime asset loads.
 It also runs the vendored axe-core 4.10.3 WCAG 2.1 A/AA and best-practice rules against the dashboard and each dialog;
 its MPL-2.0 and bundled third-party notices are in `tests/browser/vendor/`. Checks cover dialog focus/Escape,
 narrow viewports, invalid keys, Wi-Fi selection/cancellation/reset, save/reconnect ownership, failed-key-save
@@ -266,7 +267,9 @@ disposal and journal retention. They do not exercise real hardware.
 
 The JavaScript runner enforces aggregate coverage of 90% lines, 80% branches, and 85% functions, plus per-file floors
 of 80% lines, 55% branches, and 50% functions. LCOV output provides per-file metrics independently of Node's
-human-readable coverage table. The type check covers the complete runtime module graph; separate `noImplicitAny`
+human-readable coverage table. Repeated source records combine hits by line, branch and function identity rather
+than averaging execution totals; merging records without complete per-item details is an error.
+The type check covers the complete runtime module graph; separate `noImplicitAny`
 checks cover protocol modules, timers, domain errors and UI messages while the remaining JavaScript strictness is
 migrated incrementally.
 

@@ -10,13 +10,26 @@ from pathlib import Path
 from statistics import median
 from threading import Thread
 
-from playwright.sync_api import Browser, BrowserContext, expect, sync_playwright
+from playwright.sync_api import Browser, BrowserContext, Request, Response, expect, sync_playwright
+
+_ASSET_TYPES = frozenset({"script", "stylesheet", "font", "image"})
 
 
 def monitored_context(browser: Browser, errors: list[str], **options) -> BrowserContext:
-    """Collect uncaught page errors from every page created in a test context."""
+    """Collect uncaught page errors and failed runtime assets from every page in a test context."""
     context = browser.new_context(**options)
     context.on("page", lambda page: page.on("pageerror", lambda error: errors.append(str(error))))
+
+    def failed_response(response: Response) -> None:
+        if response.request.resource_type in _ASSET_TYPES and response.status >= 400:
+            errors.append(f"Browser asset failed ({response.status}): {response.url}")
+
+    def failed_request(request: Request) -> None:
+        if request.resource_type in _ASSET_TYPES:
+            errors.append(f"Browser asset request failed ({request.failure}): {request.url}")
+
+    context.on("response", failed_response)
+    context.on("requestfailed", failed_request)
     return context
 
 

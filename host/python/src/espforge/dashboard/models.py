@@ -20,7 +20,7 @@ from ..reports.models import (
 
 
 class DashboardSnapshot(TypedDict):
-    """Complete status published by `GET /api/status`; `_empty_snapshot()` fills every key."""
+    """Complete status published by `GET /api/status`, including explicit unavailable values."""
 
     connected: bool
     reconnecting: bool

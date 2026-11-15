@@ -16,6 +16,7 @@ import socket
 import threading
 import time
 from collections.abc import Callable
+from typing import cast
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -197,7 +198,8 @@ class ConsoleBridge:
 
 def console_input(payload: object) -> bytes:
     """Decode one strictly bounded input packet before touching a socket."""
-    if not isinstance(payload, dict) or set(payload) != {"data"} or not isinstance(payload["data"], str):
+    if (not isinstance(payload, dict) or set(cast(dict[object, object], payload)) != {"data"}
+            or not isinstance(payload["data"], str)):
         raise ValueError("Expected exactly one base64 data field")
     encoded = payload["data"]
     if len(encoded) > 1368:

@@ -5,13 +5,13 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from .models import WirelessNetwork, WirelessReportStatus
 from .common import (
     REPORT_VERSION, WIRELESS_REPORT_ID, BleState, ControlOpcode, InvalidRequest,
-    WifiState, WirelessFlags, WirelessStagedFlags, _feature_payload, _validate_settings,
+    WifiState, WirelessFlags, WirelessStagedFlags, feature_payload, is_object_dict, validate_settings,
 )
 from .control import build_control_command_report
 
@@ -29,8 +29,13 @@ def ssid_bytes(ssid: object) -> bytes:
             raw = ssid.encode("utf-8")
         elif isinstance(ssid, (bytes, bytearray)):
             raw = bytes(ssid)
-        elif isinstance(ssid, list) and all(type(value) is int and 0 <= value <= 255 for value in ssid):
-            raw = bytes(ssid)
+        elif isinstance(ssid, list):
+            values = bytearray()
+            for value in cast(list[object], ssid):
+                if type(value) is not int or not 0 <= value <= 255:
+                    raise InvalidRequest("SSID must be text or raw bytes")
+                values.append(value)
+            raw = bytes(values)
         else:
             raise InvalidRequest("SSID must be text or raw bytes")
     except UnicodeError:
@@ -42,7 +47,7 @@ def ssid_bytes(ssid: object) -> bytes:
 
 def display_ssid(raw: bytes) -> str:
     """Escape invalid UTF-8 and nonprintable characters without losing wire bytes."""
-    result = []
+    result: list[str] = []
     for char in raw.decode("utf-8", errors="surrogateescape"):
         if char.isprintable():
             result.append(char)
@@ -64,7 +69,7 @@ def request_ssid(settings: dict[str, object]) -> bytes:
     return bytes.fromhex(encoded)
 
 
-def _password_bytes(value: object) -> bytes:
+def password_bytes(value: object) -> bytes:
     if not isinstance(value, str) or (value and not 8 <= len(value) <= 63) or any(
             not 32 <= ord(char) <= 126 for char in value):
         raise InvalidRequest("Password must be empty or contain 8..63 printable ASCII characters")
@@ -97,7 +102,7 @@ def build_wireless_command_report(transaction_id: int, operation: int, *, value:
         if operation == ControlOpcode.STAGE_SSID:
             raw = ssid_bytes(value)
         elif operation == ControlOpcode.STAGE_PASSWORD:
-            raw = _password_bytes(value)
+            raw = password_bytes(value)
         else:
             raw = _control_key_bytes(value)
         args = bytes((len(raw),)) + raw
@@ -114,7 +119,7 @@ def build_wireless_command_report(transaction_id: int, operation: int, *, value:
 
 def validate_wireless_configuration(settings: object) -> None:
     """Validate all user input before the first staging write; omitted fields stay untouched."""
-    if not isinstance(settings, dict):
+    if not is_object_dict(settings):
         raise InvalidRequest("Expected wireless configuration JSON")
     if set(settings) - {"wifi_enabled", "ble_enabled", "ssid", "ssid_hex", "password", "ble_key", "confirm_reboot",
                         "board", "use_tested_wifi", "tcp_cli_enabled", "test_id", "test_generation"}:
@@ -139,16 +144,19 @@ def validate_wireless_configuration(settings: object) -> None:
         raise InvalidRequest("TCP CLI is not available on ESPForge")
     if "ble_key" in settings and not isinstance(settings["ble_key"], str):
         raise InvalidRequest("Control key must be hexadecimal text or empty")
-    _, _, radios = _validate_settings(settings.get("board"))
+    board = settings.get("board")
+    if not is_object_dict(board):
+        raise InvalidRequest("boot settings must be an object")
+    _, _, radios = validate_settings(board)
     if settings["wifi_enabled"] != bool(radios & 1) or settings["ble_enabled"] != bool(radios & 2):
         raise InvalidRequest("Wireless enable flags must match the board radio switches")
-    if ("tcp_cli_enabled" in settings and "tcp_cli_enabled" in settings["board"]
-            and settings["tcp_cli_enabled"] != settings["board"]["tcp_cli_enabled"]):
+    if ("tcp_cli_enabled" in settings and "tcp_cli_enabled" in board
+            and settings["tcp_cli_enabled"] != board["tcp_cli_enabled"]):
         raise InvalidRequest("TCP CLI switch must match the board settings")
     if "ssid" in settings or "ssid_hex" in settings:
         request_ssid(settings)
     if "password" in settings:
-        _password_bytes(settings["password"])
+        password_bytes(settings["password"])
     if "ble_key" in settings:
         _control_key_bytes(settings["ble_key"])
     if settings.get("use_tested_wifi") and "password" in settings:
@@ -172,7 +180,7 @@ def parse_scan_entry(data: bytes) -> WirelessNetwork:
 
 def parse_wireless_status_report(report: bytes | bytearray | list[int]) -> WirelessReportStatus:
     """Decode only runtime fields actually carried by Feature 12."""
-    p = _feature_payload(report, WIRELESS_REPORT_ID, WIRELESS_STATUS_SIZE)
+    p = feature_payload(report, WIRELESS_REPORT_ID, WIRELESS_STATUS_SIZE)
     flags, length, staged = p[4], p[9], p[47]
     scan, generation, count, test = p[42], int.from_bytes(p[43:45], "little"), p[45], p[46]
     if (p[0] != REPORT_VERSION or p[1] not in WifiState._value2member_map_

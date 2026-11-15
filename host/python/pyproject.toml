@@ -53,8 +53,7 @@ packages = ["src/espforge"]
 include = ["/src"]
 
 [tool.pyright]
-include = ["src/espforge/dashboard/boards.py", "src/espforge/dashboard/models.py",
-           "src/espforge/dashboard/monitor.py", "tests/types/command_types.py"]
+include = ["src/espforge", "tests/types/command_types.py"]
 pythonVersion = "3.10"
 typeCheckingMode = "strict"
 reportUnnecessaryIsInstance = false

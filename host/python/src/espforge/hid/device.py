@@ -10,7 +10,7 @@ from functools import wraps
 from threading import Event, RLock
 from time import monotonic, sleep
 from uuid import uuid4
-from typing import Any, Callable, Concatenate, ParamSpec, TypeVar
+from typing import Any, Callable, Concatenate, Literal, ParamSpec, TypeVar
 
 from ..reports.models import (
     BoardConfiguration,
@@ -58,7 +58,7 @@ from ..reports import (
 )
 from ..reports.common import MEMORY_PAYLOAD_SIZE, MEMORY_REPORT_ID
 from ..reports.identity import parse_memory_inventory_report
-from ..reports.common import SELF_TEST_REPORT_ID, BoardConflict, _validate_settings
+from ..reports.common import SELF_TEST_REPORT_ID, BoardConflict, is_object_dict, validate_settings
 from ..reports.common import CAP_SELF_TEST
 from ..reports.storage import parse_benchmark_report
 from ..reports.wireless import display_ssid, request_ssid
@@ -75,14 +75,14 @@ try:
     import hid
 except ImportError as error:  # Import only when a hardware connection is requested.
     hid = None
-    HID_IMPORT_ERROR = error
+    _hid_import_error = error
 else:
-    HID_IMPORT_ERROR = None
+    _hid_import_error = None
 
 
 def _require_hid() -> Any:
     if hid is None:
-        raise RuntimeError("HIDAPI is missing; install host/python with 'pip install -e host/python'") from HID_IMPORT_ERROR
+        raise RuntimeError("HIDAPI is missing; install host/python with 'pip install -e host/python'") from _hid_import_error
     return hid
 
 
@@ -149,19 +149,19 @@ class WirelessTestCancelled(RuntimeError):
     """A connection test stopped after this client sent the Wi-Fi cancel command."""
 
 
-def _serialized(
-    method: Callable[Concatenate[ESPForgeHid, _P], _T],
-) -> Callable[Concatenate[ESPForgeHid, _P], _T]:
-    """Keep native I/O, disposal and multi-command lifecycles owned by one caller."""
-    @wraps(method)
-    def call(self: ESPForgeHid, *args: _P.args, **kwargs: _P.kwargs) -> _T:
-        with self._control_lock:
-            return method(self, *args, **kwargs)
-    return call
-
-
 class ESPForgeHid:
     """Own one ESPForge HID connection and expose decoded reports."""
+
+    @staticmethod
+    def _serialized(
+        method: Callable[Concatenate[ESPForgeHid, _P], _T],
+    ) -> Callable[Concatenate[ESPForgeHid, _P], _T]:
+        """Keep native I/O, disposal and multi-command lifecycles owned by one caller."""
+        @wraps(method)
+        def call(self: ESPForgeHid, *args: _P.args, **kwargs: _P.kwargs) -> _T:
+            with self._control_lock:
+                return method(self, *args, **kwargs)
+        return call
 
     def __init__(self, serial_number: str | None = None, device_path: str | None = None) -> None:
         info = _select_device(serial_number, device_path)
@@ -215,10 +215,12 @@ class ESPForgeHid:
         self._require_open()
         report = self._device.get_feature_report(IDENTITY_REPORT_ID, IDENTITY_FEATURE_SIZE)
         identity = _parse_report(parse_identity_report, report)
-        if identity["supported"] and identity["memory_report_supported"]:
+        if identity["supported"] is True and identity["memory_report_supported"]:
             memory_report = self._device.get_feature_report(MEMORY_REPORT_ID, MEMORY_PAYLOAD_SIZE + 1)
             inventory = _parse_report(parse_memory_inventory_report, memory_report)
-            identity.update(inventory)
+            identity["psram_total_bytes"] = inventory["psram_total_bytes"]
+            identity["psram_reserved_bytes"] = inventory["psram_reserved_bytes"]
+            identity["flash_total_bytes"] = inventory["flash_total_bytes"]
         self.identity = identity
         if self._expected_serial_number and identity.get("supported"):
             serial_number = identity.get("serial_number")
@@ -284,7 +286,7 @@ class ESPForgeHid:
 
     def _complete_settings(self, settings: dict[str, object]) -> dict[str, object]:
         """ESPForge has no TCP CLI, so its saved switch is always clear."""
-        _validate_settings(settings)
+        validate_settings(settings)
         return {**settings, "tcp_cli_enabled": False}
 
     @_serialized
@@ -369,13 +371,9 @@ class ESPForgeHid:
         validate_wireless_configuration(settings)
         previous = self.read_wireless()
         board_settings = settings["board"]
-        if not isinstance(board_settings, dict):
+        if not is_object_dict(board_settings):
             raise ProtocolError("Validated wireless settings are missing board configuration")
-        board: dict[str, object] = {}
-        for key, value in board_settings.items():
-            if not isinstance(key, str):
-                raise ProtocolError("Validated board setting names must be strings")
-            board[key] = value
+        board = dict(board_settings)
         if "tcp_cli_enabled" in settings:
             board["tcp_cli_enabled"] = settings["tcp_cli_enabled"]
         board = self._complete_settings(board)
@@ -443,7 +441,7 @@ class ESPForgeHid:
             "scan", previous["scan_generation"], 15.0, on_poll=on_poll,
             command_reference=(command["transaction_id"], command["opcode"]),
         )
-        networks = []
+        networks: list[WirelessNetwork] = []
         for index in range(scan["scan_count"]):
             result = self._wireless_command(ControlOpcode.WIFI_ENTRY, index=index, generation=scan["scan_generation"])
             entry = result["scan_entry"]
@@ -515,7 +513,7 @@ class ESPForgeHid:
     _require_completed = require_completed
 
     def _poll_wireless(
-        self, kind: str, previous_generation: int, timeout: float, *,
+        self, kind: Literal["scan", "test"], previous_generation: int, timeout: float, *,
         on_poll: Callable[[], None] | None = None, on_progress: Callable[[str], None] | None = None,
         cancel: Event | None = None,
         command_reference: tuple[int, int] | None = None,
@@ -542,7 +540,7 @@ class ESPForgeHid:
             if on_poll is not None:
                 on_poll()
             status = self.read_wireless()
-            generation = status[f"{kind}_generation"]
+            generation = status["scan_generation"] if kind == "scan" else status["test_generation"]
             if generation not in (previous_generation, expected_generation):
                 raise ProtocolError("Wireless operation generation changed unexpectedly; outcome is uncertain")
             if generation == expected_generation:

@@ -11,7 +11,7 @@ from espforge.dashboard.server import create_app
 from espforge.dashboard.monitor import BoardConflict, CommandOutcomeUncertain
 from espforge.cli import parse_args
 from espforge.reports import ProtocolError
-from espforge.reports.common import _validate_settings
+from espforge.reports.common import validate_settings
 
 
 class FakeMonitor:
@@ -75,7 +75,7 @@ class FakeMonitor:
         return self.snapshot()
 
     def set_settings(self, settings):
-        _validate_settings(settings)
+        validate_settings(settings)
         self.last_settings = settings
         return {"settings": settings, "control_result": None}
 

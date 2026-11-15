@@ -14,15 +14,15 @@ from werkzeug.exceptions import RequestEntityTooLarge
 
 from .boards import DashboardBoards
 from .console import ConsoleBridge, ConsoleConflict, console_address, console_input
-from .monitor import BoardConflict, CommandOutcomeUncertain, DeviceMonitor, _empty_snapshot
+from .monitor import BoardConflict, CommandOutcomeUncertain, DeviceMonitor, empty_snapshot
 from .. import __version__
 from ..hid.device import WirelessTestCancelled
 from ..reports.models import WirelessStatus
 from ..reports import (
-    ControlOpcode, InvalidRequest, ProtocolError, build_wireless_command_report,
+    InvalidRequest, ProtocolError,
 )
-from ..reports.common import _validate_settings
-from ..reports.wireless import request_ssid, validate_wireless_configuration
+from ..reports.common import is_object_dict, validate_settings
+from ..reports.wireless import password_bytes, request_ssid, ssid_bytes, validate_wireless_configuration
 
 _INTERNAL_WIRELESS_FIELDS = frozenset({"wifi_state_id", "tcp_cli_auth_required", "age_ms", "error"})
 
@@ -44,11 +44,9 @@ def create_app(dashboard: DashboardBoards | None = None, web_root: Path | None =
     root = web_root or (installed if installed.is_dir() else Path(__file__).resolve().parents[4] / "web/src")
     boards = dashboard if dashboard is not None else DashboardBoards()
     app = Flask(__name__, template_folder=str(root), static_folder=None)
-    app.config.update(
-        SECRET_KEY=secrets.token_bytes(32),
-        TRUSTED_HOSTS=["localhost", "127.0.0.1"],
-        MAX_CONTENT_LENGTH=4096,
-    )
+    app.config["SECRET_KEY"] = secrets.token_bytes(32)
+    app.config["TRUSTED_HOSTS"] = ["localhost", "127.0.0.1"]
+    app.config["MAX_CONTENT_LENGTH"] = 4096
 
     @app.before_request
     def same_origin_writes() -> tuple[Response, int] | None:
@@ -150,8 +148,8 @@ def _register_console_routes(app: Flask, boards: DashboardBoards, console: Conso
     @app.post("/api/console/input")
     def console_request() -> Response:
         if request.method == "POST" and request.path == "/api/console":
-            payload = request.get_json(silent=True)
-            if not isinstance(payload, dict) or payload:
+            payload: object = request.get_json(silent=True)
+            if not is_object_dict(payload) or payload:
                 raise InvalidRequest("Expected an empty console request")
             board_id = request.args.get("board")
             monitor = _board(boards)
@@ -198,7 +196,7 @@ def _register_api_routes(app: Flask, boards: DashboardBoards) -> None:
     def status() -> Response:
         board_id = request.args.get("board")
         if board_id is None:
-            return jsonify(_empty_snapshot())
+            return jsonify(empty_snapshot())
         snapshot = boards.monitor(board_id).status_snapshot()
         wireless = snapshot.get("wireless")
         if wireless is not None:
@@ -211,60 +209,63 @@ def _register_api_routes(app: Flask, boards: DashboardBoards) -> None:
 
     @app.post("/api/settings")
     def set_settings() -> Response | tuple[Response, int]:
-        payload = request.get_json(silent=True)
-        if not isinstance(payload, dict):
+        payload: object = request.get_json(silent=True)
+        if not is_object_dict(payload):
             return jsonify({"error": "Expected boot settings JSON"}), 400
         force = payload.pop("confirm_data_loss", False)
         if type(force) is not bool:
             return jsonify({"error": "confirm_data_loss must be boolean"}), 400
         if force:
             return jsonify({"error": "Forced save is not available on ESPForge"}), 400
-        _validate_settings(payload)
+        validate_settings(payload)
         return jsonify(_board(boards).set_settings(payload))
 
     @app.post("/api/reboot")
     def reboot() -> Response | tuple[Response, int]:
-        payload = request.get_json(silent=True)
-        if not isinstance(payload, dict) or payload.get("confirm") is not True:
+        payload: object = request.get_json(silent=True)
+        if not is_object_dict(payload) or payload.get("confirm") is not True:
             return jsonify({"error": "Explicit confirm: true is required"}), 400
         return jsonify(_board(boards).reboot())
 
     @app.post("/api/msc")
     def set_msc() -> Response | tuple[Response, int]:
-        payload = request.get_json(silent=True)
-        if (not isinstance(payload, dict) or set(payload) - {"enabled", "confirm_ejected"}
-                or type(payload.get("enabled")) is not bool
-                or type(payload.get("confirm_ejected", False)) is not bool):
+        payload: object = request.get_json(silent=True)
+        if not is_object_dict(payload) or set(payload) - {"enabled", "confirm_ejected"}:
             return jsonify({"error": "Expected enabled and optional confirm_ejected booleans"}), 400
-        if not payload["enabled"] and payload.get("confirm_ejected") is not True:
+        enabled, confirm_ejected = payload.get("enabled"), payload.get("confirm_ejected", False)
+        if type(enabled) is not bool or type(confirm_ejected) is not bool:
+            return jsonify({"error": "Expected enabled and optional confirm_ejected booleans"}), 400
+        if not enabled and not confirm_ejected:
             return jsonify({"error": "Safely eject the USB drive and supply confirm_ejected: true"}), 400
-        return jsonify(_board(boards).set_msc(payload["enabled"], payload.get("confirm_ejected", False)))
+        return jsonify(_board(boards).set_msc(enabled, confirm_ejected))
 
     @app.post("/api/benchmark")
     def benchmark() -> Response | tuple[Response, int]:
-        payload = request.get_json(silent=True)
-        if (not isinstance(payload, dict) or set(payload) - {"start", "size_mib", "confirm"}
-                or type(payload.get("start")) is not bool or type(payload.get("size_mib", 0)) is not int
-                or type(payload.get("confirm", False)) is not bool):
+        payload: object = request.get_json(silent=True)
+        if not is_object_dict(payload) or set(payload) - {"start", "size_mib", "confirm"}:
             return jsonify({"error": "Expected benchmark start boolean and integer size_mib"}), 400
-        start, size = payload["start"], payload.get("size_mib", 0)
-        if (start and (payload.get("confirm") is not True or not 1 <= size <= 1024)
+        start, size, confirm = payload.get("start"), payload.get("size_mib", 0), payload.get("confirm", False)
+        if type(start) is not bool or type(size) is not int or type(confirm) is not bool:
+            return jsonify({"error": "Expected benchmark start boolean and integer size_mib"}), 400
+        if (start and (not confirm or not 1 <= size <= 1024)
                 or not start and size != 0):
             return jsonify({"error": "Confirm file writes with 1..1024 MiB, or cancel with zero size"}), 400
         return jsonify(_board(boards).benchmark(start, size))
 
     @app.post("/api/led")
     def led() -> Response | tuple[Response, int]:
-        payload = request.get_json(silent=True)
-        if (not isinstance(payload, dict) or set(payload) != {"colour"}
-                or type(payload["colour"]) is not int or not 0 <= payload["colour"] <= 7):
+        payload: object = request.get_json(silent=True)
+        if not is_object_dict(payload) or set(payload) != {"colour"}:
             return jsonify({"error": "Expected colour as an RGB bitmask 0..7"}), 400
-        return jsonify(_board(boards).set_led_colour(payload["colour"]))
+        colour = payload["colour"]
+        if type(colour) is not int or not 0 <= colour <= 7:
+            return jsonify({"error": "Expected colour as an RGB bitmask 0..7"}), 400
+        return jsonify(_board(boards).set_led_colour(colour))
 
     @app.post("/api/control/resync")
     def resync_control() -> Response | tuple[Response, int]:
-        payload = request.get_json(silent=True)
-        if not isinstance(payload, dict) or payload.get("confirm") is not True:
+        payload: object = request.get_json(silent=True)
+        if not is_object_dict(payload) or payload.get("confirm") is not True:
             return jsonify({"error": "Explicit confirm: true is required"}), 400
         result = _board(boards).resync_command()
         wireless = result["wireless"]
@@ -282,14 +283,13 @@ def _register_wireless_routes(app: Flask, boards: DashboardBoards) -> None:
 
     @app.post("/api/wireless/test")
     def test_wireless() -> Response | tuple[Response, int]:
-        payload = request.get_json(silent=True)
-        if not isinstance(payload, dict) or set(payload) - {"ssid", "ssid_hex", "password"}:
+        payload: object = request.get_json(silent=True)
+        if not is_object_dict(payload) or set(payload) - {"ssid", "ssid_hex", "password"}:
             return jsonify({"error": "Expected SSID and optional password"}), 400
-        ssid = request_ssid(payload) if "ssid_hex" in payload else payload.get("ssid", "")
-        build_wireless_command_report(1, ControlOpcode.STAGE_SSID, value=ssid)
-        build_wireless_command_report(1, ControlOpcode.STAGE_PASSWORD, value=payload.get("password", ""))
+        ssid = request_ssid(payload) if "ssid_hex" in payload else ssid_bytes(payload.get("ssid", ""))
+        password = password_bytes(payload.get("password", "")).decode("ascii")
         try:
-            return jsonify(_board(boards).test_wireless(ssid, payload.get("password", "")))
+            return jsonify(_board(boards).test_wireless(ssid, password))
         except TimeoutError:
             app.logger.exception("Wi-Fi test timed out")
             return _unavailable("Wi-Fi test timed out; confirm the result before retrying", uncertain=True)
@@ -307,8 +307,8 @@ def _register_wireless_routes(app: Flask, boards: DashboardBoards) -> None:
 
     @app.post("/api/wireless")
     def set_wireless() -> Response | tuple[Response, int]:
-        payload = request.get_json(silent=True)
-        if not isinstance(payload, dict):
+        payload: object = request.get_json(silent=True)
+        if not is_object_dict(payload):
             return jsonify({"error": "Expected wireless configuration JSON"}), 400
         validate_wireless_configuration(payload)  # Bad input is 400 whatever the board state.
         try:

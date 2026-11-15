@@ -55,7 +55,7 @@ class CommandOutcomeUncertain(RuntimeError):
     """A control command was delivered but its final outcome was not confirmed."""
 
 
-def _empty_snapshot() -> DashboardSnapshot:
+def empty_snapshot() -> DashboardSnapshot:
     return {
         "connected": False,
         "reconnecting": False,
@@ -109,7 +109,7 @@ class DeviceMonitor:
         self._close_error: Exception | None = None
         self._failed_client: ESPForgeHid | None = None
         self._stop = threading.Event()
-        self._snapshot = _empty_snapshot()
+        self._snapshot = empty_snapshot()
         self._input_received_at: dict[str, float] = {}
         self._wireless_received_at: float | None = None
         self._last_status_request_at = time.monotonic() - _VIEWER_IDLE_TIMEOUT_SECONDS
@@ -124,8 +124,7 @@ class DeviceMonitor:
             self._thread.start()
 
     def snapshot(self) -> DashboardSnapshot:
-        # ponytail: a deep copy (~50 us for a full snapshot) keeps route code off shared state; copy only changed
-        # sections if one status request exceeds 1 ms or more than ~10 tabs poll at once.
+        # A deep copy prevents callers from mutating the worker's shared snapshot.
         with self._lock:
             result = deepcopy(self._snapshot)
             received_at = self._input_received_at.copy()
@@ -156,7 +155,7 @@ class DeviceMonitor:
         with self._lock:
             self._input_received_at = {}
             self._wireless_received_at = None
-            self._snapshot = cast(DashboardSnapshot, {**_empty_snapshot(), **fields})
+            self._snapshot = cast(DashboardSnapshot, {**empty_snapshot(), **fields})
 
     def close(self) -> None:
         self._stop.set()
@@ -196,8 +195,7 @@ class DeviceMonitor:
     @contextmanager
     def _device(self, *, allow_cleanup: bool = False) -> Generator[None, None, None]:
         """Own the board for one API command, or refuse quickly while a long Wi-Fi operation holds it."""
-        # ponytail: a 2 s wait turns a 15 s scan or 35 s test into a quick 409 instead of a hung request; queue
-        # commands per board if users need them to run after the operation instead of retrying.
+        # Long wireless operations own the device; competing requests fail instead of queueing writes.
         if not self._device_lock.acquire(timeout=_BUSY_WAIT_SECONDS):
             raise BoardConflict("Board is busy with another command; retry when it finishes")
         try:

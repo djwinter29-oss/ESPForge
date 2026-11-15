@@ -7,7 +7,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from helpers import make_monitor
-from espforge.dashboard.monitor import BoardConflict, CommandOutcomeUncertain, DeviceMonitor, _empty_snapshot
+from espforge.dashboard.monitor import BoardConflict, CommandOutcomeUncertain, DeviceMonitor, empty_snapshot
 from espforge.reports import ProtocolError
 
 
@@ -57,7 +57,7 @@ class MonitorCommandTests(unittest.TestCase):
 
     def test_settings_have_no_forced_save_and_refuse_unexpected_msc_state(self):
         settings = {"system_clock_mhz": 240, "sdcard_profile": 0, "radios": 0}
-        snapshot = {**_empty_snapshot(), "connected": True, "settings_supported": True,
+        snapshot = {**empty_snapshot(), "connected": True, "settings_supported": True,
                     "hardware": {"capabilities": 0x96, "storage_transport": "sdmmc"},
                     "memory": {"msc": {"enabled": False, "transition_pending": False}}}
         self.monitor._snapshot = dict(snapshot)
@@ -109,11 +109,11 @@ class MonitorCommandTests(unittest.TestCase):
         self.assertTrue(self.monitor.snapshot()["storage_stale"])
 
     def test_disconnect_after_command_preserves_disconnected_snapshot(self):
-        self.monitor._snapshot = {**_empty_snapshot(), "connected": True}
+        self.monitor._snapshot = {**empty_snapshot(), "connected": True}
 
         def disconnect():
             with self.monitor._lock:
-                self.monitor._snapshot = _empty_snapshot()
+                self.monitor._snapshot = empty_snapshot()
             return {"status": "completed", "error": "none"}
 
         self.client.reboot.side_effect = disconnect
@@ -132,13 +132,13 @@ class MonitorCommandTests(unittest.TestCase):
     def test_reboot_exposes_control_result(self):
         result = {"status": "completed", "opcode": 2, "transaction_id": 1}
         self.client.reboot.return_value = result
-        self.monitor._snapshot = {**_empty_snapshot(), "connected": True}
+        self.monitor._snapshot = {**empty_snapshot(), "connected": True}
         self.assertEqual(self.monitor.reboot(), {"control_result": result})
         self.assertEqual(self.monitor.snapshot()["control_result"], result)
 
     def test_uncertain_command_blocks_writes_even_after_client_reconnects(self):
         self.monitor._snapshot = {
-            **_empty_snapshot(),
+            **empty_snapshot(),
             "connected": True,
             "settings_supported": True,
             "hardware": {"settings_supported": True},
@@ -340,7 +340,7 @@ class MonitorReconnectTests(unittest.TestCase):
         self.assertEqual(snapshot["board_configuration"], client.read_configuration.return_value)
         self.assertTrue(snapshot["settings_supported"])
         self.assertTrue(snapshot["telemetry_stale"] and snapshot["storage_stale"] and snapshot["self_test_stale"])
-        self.assertEqual(set(snapshot), set(_empty_snapshot()))
+        self.assertEqual(set(snapshot), set(empty_snapshot()))
 
     def test_storage_reports_publish_state_and_freshness_without_self_test(self):
         monitor = make_monitor(fresh=False)
