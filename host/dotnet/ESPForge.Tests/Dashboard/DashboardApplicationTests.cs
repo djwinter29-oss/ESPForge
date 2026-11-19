@@ -136,6 +136,25 @@ public sealed class DashboardApplicationTests
     }
 
     [Fact]
+    public async Task ForcedSaveMatchesTheSharedHostApiContract()
+    {
+        var boards = new StubBoards();
+        await using var app = await Build(boards);
+        await app.StartAsync();
+        using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
+        using var contract = JsonDocument.Parse(File.ReadAllText(
+            Path.Combine(AppContext.BaseDirectory, "api-contract.json")));
+        var forcedSave = contract.RootElement.GetProperty("forced_save");
+        var route = forcedSave.GetProperty("route").GetString();
+        using var response = await client.PostAsJsonAsync(route, forcedSave.GetProperty("body"));
+        Assert.Equal(forcedSave.GetProperty("status").GetInt32(), (int)response.StatusCode);
+        var error = (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("error").GetString();
+        Assert.Equal(forcedSave.GetProperty("error").GetString(), error);
+        Assert.Equal(0, boards.Lookups);
+        await app.StopAsync();
+    }
+
+    [Fact]
     public async Task KnownWirelessCancellationReturnsConflictNotServerFault()
     {
         var commands = new MonitorCommandTests.Commands();

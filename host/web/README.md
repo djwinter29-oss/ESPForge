@@ -37,13 +37,14 @@ including heap pools, not live usage; flash capacity is not free space. No capac
 | `POST /api/reboot` | Confirmed reboot, with `{"confirm":true}` |
 | `POST /api/led` | Volatile onboard RGB colour |
 | `POST /api/msc` | Explicitly enable USB storage or return it after confirmed OS eject |
+| `POST /api/benchmark` | Explicitly start or cancel the temporary-file storage benchmark |
 | `POST /api/control/resync` | Explicitly reconcile an uncertain command outcome |
 | `POST /api/wireless` | Save Wi-Fi credentials, Control key and radio switches |
 | `POST /api/wireless/scan` | Scan for Wi-Fi networks |
 | `POST /api/wireless/test` | Test candidate credentials |
 | `POST /api/wireless/cancel` | Cancel a test and clear temporary credentials |
 
-Settings requests with `confirm_data_loss:true` are refused (HTTP 400 in Python, HTTP 409 in .NET);
+Settings requests with `confirm_data_loss:true` are refused with HTTP 409 and the same error body on both hosts;
 there is no forced-save workflow.
 Wireless requests may omit `tcp_cli_enabled` or supply `false`, never `true`. Omitted credentials are not
 restaged. Opaque SSIDs use `ssid_hex` alongside an escaped display label; test/save requests may use the hex
@@ -127,5 +128,6 @@ The browser checks need Playwright for Python and the .NET SDK because they serv
 
 `POST /api/led` accepts only `{"colour":0..7}` with an integer additive RGB mask: red=1, green=2, blue=4,
 zero=Off. Capability and fresh available-driver telemetry are required; storage activity does not block it.
-Success means queued transmission, not physical verification or persistence. The shared dropdown beside Device
-information displays reported colour and uses the existing explicit Re-sync flow after an uncertain outcome.
+Success returns `{"accepted":true}` and means queued transmission, not physical verification or persistence. The shared
+dropdown beside Device information displays reported colour and uses the existing explicit Re-sync flow after an
+uncertain outcome.

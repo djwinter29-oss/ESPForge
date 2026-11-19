@@ -177,7 +177,10 @@ class WebTests(unittest.TestCase):
         client = create_app(boards).test_client()
         response = client.post("/api/control/resync?board=a", json={"confirm": True})
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json, {"accepted": True})
+        self.assertEqual(response.json, {
+            "uncertain": False, "control_result": None,
+            "wireless": {"wifi_state": "connected", "ssid_hex": "4100ff"},
+        })
         self.assertEqual(response.json["wireless"], {"wifi_state": "connected", "ssid_hex": "4100ff"})
         self.assertEqual(wireless["wifi_state_id"], 2)
         self.assertIs(result["wireless"], wireless)
@@ -258,14 +261,15 @@ class WebTests(unittest.TestCase):
         monitor = FakeMonitor()
         client = create_app(FakeBoards(monitor)).test_client()
         settings = {"system_clock_mhz": 240, "sdcard_profile": 0, "radios": 0}
+        contract = json.loads((WEB_ROOT / "tests" / "api-contract.json").read_text(encoding="utf-8"))["forced_save"]
         for invalid in ["yes", 1, None]:
             response = client.post("/api/settings", json={**settings, "confirm_data_loss": invalid},
                                    base_url="http://127.0.0.1")
             self.assertEqual(response.status_code, 400)
-        response = client.post("/api/settings", json={**settings, "confirm_data_loss": True},
+        response = client.post(contract["route"], json=contract["body"],
                                base_url="http://127.0.0.1")
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.json["error"], "Forced save is not available on ESPForge")
+        self.assertEqual(response.status_code, contract["status"])
+        self.assertEqual(response.json["error"], contract["error"])
         self.assertFalse(hasattr(monitor, "last_settings"))
         response = client.post("/api/settings", json={**settings, "confirm_data_loss": False},
                                base_url="http://127.0.0.1")

@@ -12,7 +12,6 @@
  * @property {boolean} [reboot_pending]
  * @property {boolean} [telemetry_stale]
  * @property {boolean} [storage_stale]
- * @property {boolean} [telemetry_stale]
  * @property {{led_available?: boolean, led_colour?: number | null} | null} [runtime]
  * @property {boolean} [self_test_stale]
  * @property {{active?: boolean} | null} [self_test]

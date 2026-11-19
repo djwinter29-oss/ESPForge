@@ -14,6 +14,7 @@ Copyright (c) 2026 Ji Dong
     <InterceptorsNamespaces>$(InterceptorsNamespaces);Microsoft.AspNetCore.OpenApi.Generated</InterceptorsNamespaces>
   </PropertyGroup>
   <ItemGroup>
+    <None Include="../../web/tests/api-contract.json" Link="api-contract.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Fixtures/*" Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
     <PackageReference Include="xunit" Version="2.9.3" />

@@ -216,7 +216,7 @@ def _register_api_routes(app: Flask, boards: DashboardBoards) -> None:
         if type(force) is not bool:
             return jsonify({"error": "confirm_data_loss must be boolean"}), 400
         if force:
-            return jsonify({"error": "Forced save is not available on ESPForge"}), 400
+            return jsonify({"error": "Forced save is unavailable on ESPForge firmware"}), 409
         validate_settings(payload)
         return jsonify(_board(boards).set_settings(payload))
 

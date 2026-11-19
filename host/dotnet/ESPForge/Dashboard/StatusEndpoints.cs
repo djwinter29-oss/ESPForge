@@ -32,7 +32,7 @@ internal static class StatusEndpoints
     public sealed record LedRequest([property: JsonNumberHandling(JsonNumberHandling.Strict)] int? Colour);
     /// <summary>Every <c>/api</c> error body, matching the Python server.</summary>
     public sealed record ApiError(string Error);
-    /// <summary>Explicit admission acknowledgement for a completed HID command request.</summary>
+    /// <summary>Acknowledges command admission, not completion of any follow-on hardware work.</summary>
     public sealed record CommandAcceptedResponse(bool Accepted);
     /// <summary>Empty success response.</summary>
     public sealed record EmptyResponse;

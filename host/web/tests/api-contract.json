@@ -1,0 +1,13 @@
+{
+  "forced_save": {
+    "route": "/api/settings",
+    "body": {
+      "system_clock_mhz": 240,
+      "sdcard_profile": 0,
+      "radios": 0,
+      "confirm_data_loss": true
+    },
+    "status": 409,
+    "error": "Forced save is unavailable on ESPForge firmware"
+  }
+}

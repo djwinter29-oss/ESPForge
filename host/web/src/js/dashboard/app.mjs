@@ -4,9 +4,10 @@
 // @ts-check
 import { initializeSettings, normalizeStatus, renderStatus as renderDashboardStatus } from "./view.mjs";
 import { createCommandLifecycle } from "./command-lifecycle.mjs";
+import { createDeviceActions } from "./device-actions.mjs";
 import { bindWirelessForm } from "./wireless-form.mjs";
 import {
-  acknowledge, DashboardError, reconciledResult, responseJson, savedSettings, savedWireless,
+  DashboardError, reconciledResult, responseJson, savedSettings, savedWireless,
   scannedBoards, scannedNetworks, statusResponse, testedWireless,
   wirelessConfiguration,
 } from "./api.mjs";
@@ -22,9 +23,6 @@ const settingsSave = /** @type {HTMLButtonElement} */ (document.querySelector("#
 const configurationDialog = /** @type {HTMLDialogElement} */ (document.querySelector("#configuration-dialog"));
 const rebootDialog = /** @type {HTMLDialogElement} */ (document.querySelector("#reboot-dialog"));
 const mscDialog = /** @type {HTMLDialogElement} */ (document.querySelector("#msc-dialog"));
-let mscTarget = false;
-/** @type {string | null} */
-let mscBoard = null;
 /** @type {string | null} */
 let configurationIdentity = null;
 const clockControl = /** @type {HTMLSelectElement} */ (document.querySelector("#settings-clock"));
@@ -247,6 +245,18 @@ const wirelessForm = bindWirelessForm({
     }
   },
   changed: () => { if (currentSnapshot) renderStatus(currentSnapshot); },
+});
+const deviceActions = createDeviceActions({
+  getCurrentSnapshot: () => currentSnapshot,
+  getSelectedBoard: () => selectedBoard,
+  operationState,
+  runCommandLifecycle,
+  boardUrl,
+  fetchWithDeadline,
+  publishCommandResult,
+  markCommandOutcomeUncertain,
+  uncertainMessage,
+  setSettingsMessage: message => { settingsMessage = message; },
 });
 
 function wirelessReady() {
@@ -604,114 +614,13 @@ async function saveSettings() {
   });
 }
 
-async function requestReboot() {
-  const response = await fetchWithDeadline(boardUrl("/api/reboot"), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ confirm: true }),
-  }, 15000);
-  publishCommandResult(acknowledge(await responseJson(response, `Reboot endpoint returned HTTP ${response.status}`, true), 2));
-}
-
-async function rebootDevice() {
-  if (!rebootDialog.open) return;
-  rebootDialog.close();
-  const operations = operationState();
-  if (!currentSnapshot?.connected || operations.busy || !operations.canReboot) return;
-  await runCommandLifecycle({
-    startMessage: "Requesting reboot...",
-    clearFailure: 2,
-    refresh: "uncertain",
-  }, async () => {
-    await requestReboot();
-    settingsMessage = "Reboot requested. Waiting for the device to reconnect.";
-  }, error => {
-    if (markCommandOutcomeUncertain(error)) {
-      settingsMessage = uncertainMessage(error,
-        "Reboot outcome is uncertain; waiting for the board to reconnect before retrying.");
-    } else settingsMessage = `Reboot failed: ${error.message}`;
-  });
-}
-
-/** @param {boolean} enabled */
-function requestMsc(enabled) {
-  const operations = operationState();
-  if (!(enabled ? operations.canEnableMsc : operations.canReturnMsc)) return;
-  mscTarget = enabled;
-  mscBoard = selectedBoard;
-  element("msc-dialog-title").textContent = enabled ? "Enable USB drive?" : "Return card to firmware?";
-  element("msc-warning").textContent = enabled
-    ? "Firmware will unmount the card and give Linux/Windows exclusive access. USB reconnects briefly; unsaved dashboard edits may be lost."
-    : "Safely eject the USB drive in Linux/Windows first. Confirm only after eject completes; firmware cannot verify the host cache is flushed.";
-  element("confirm-msc").textContent = enabled ? "Enable USB drive" : "I have safely ejected";
-  mscDialog.showModal();
-}
-
-async function setMsc() {
-  if (!mscDialog.open || mscBoard !== selectedBoard) return;
-  const enabled = mscTarget;
-  mscDialog.close();
-  const operations = operationState();
-  if (!(enabled ? operations.canEnableMsc : operations.canReturnMsc) || !currentSnapshot) return;
-  const snapshot = currentSnapshot;
-  await runCommandLifecycle({
-    startMessage: "Requesting storage handoff...",
-    updateBoardControls: true,
-    refresh: "always",
-  }, async () => {
-    const response = await fetchWithDeadline(boardUrl("/api/msc"), {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ enabled, confirm_ejected: !enabled }),
-    }, 15000);
-    publishCommandResult(acknowledge(await responseJson(response, "Storage handoff failed", true), 3));
-    snapshot.storage_stale = true;
-    settingsMessage = "Storage handoff admitted. Waiting for fresh card ownership status.";
-  }, error => {
-    if (!markCommandOutcomeUncertain(error, undefined, { kind: "resync" }))
-      settingsMessage = `Storage handoff failed: ${error.message}`;
-  });
-}
-
-/** @param {boolean} start */
-async function benchmark(start) {
-  if (!(start ? operationState().canStartBenchmark : operationState().canCancelBenchmark)) return;
-  const size = start ? Number(/** @type {HTMLInputElement} */ (element("benchmark-size")).value) : 0;
-  if (start && !window.confirm(`Write and verify ${size} MiB in EFTEST.BIN, then delete that file? Back up the card first. This causes card wear.`))
-    return;
-  const boardId = selectedBoard;
-  await runCommandLifecycle({ refresh: "always" }, async () => {
-    const response = await fetchWithDeadline(boardUrl("/api/benchmark", boardId), {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ start, size_mib: size, confirm: start }),
-    }, 15000);
-    publishCommandResult(acknowledge(await responseJson(response, "Benchmark request failed", true), 4));
-  }, error => {
-    if (!markCommandOutcomeUncertain(error, undefined, { kind: "resync" }, boardId))
-      settingsMessage = `Benchmark request failed: ${error.message}`;
-  });
-}
-element("led-colour").addEventListener("change", async () => {
-  if (!operationState().canSetLed) return;
-  const colour = Number(/** @type {HTMLSelectElement} */ (element("led-colour")).value);
-  const boardId = selectedBoard;
-  const snapshot = currentSnapshot;
-  await runCommandLifecycle({ refresh: "always" }, async () => {
-    const response = await fetchWithDeadline(boardUrl("/api/led", boardId), {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ colour }),
-    }, 15000);
-    publishCommandResult(acknowledge(await responseJson(response, "LED colour request failed", true), 1));
-    if (snapshot) snapshot.telemetry_stale = true;
-  }, error => {
-    if (!markCommandOutcomeUncertain(error, undefined, { kind: "resync" }, boardId))
-      settingsMessage = `LED colour request failed: ${error.message}`;
-  });
-});
-element("benchmark-start").addEventListener("click", () => benchmark(true));
-element("benchmark-cancel").addEventListener("click", () => benchmark(false));
-element("msc-enable").addEventListener("click", () => requestMsc(true));
-element("msc-return").addEventListener("click", () => requestMsc(false));
+element("led-colour").addEventListener("change", deviceActions.setLed);
+element("benchmark-start").addEventListener("click", () => deviceActions.benchmark(true));
+element("benchmark-cancel").addEventListener("click", () => deviceActions.benchmark(false));
+element("msc-enable").addEventListener("click", () => deviceActions.requestMsc(true));
+element("msc-return").addEventListener("click", () => deviceActions.requestMsc(false));
 element("cancel-msc").addEventListener("click", () => mscDialog.close());
-element("confirm-msc").addEventListener("click", setMsc);
+element("confirm-msc").addEventListener("click", deviceActions.setMsc);
 boardSelect.addEventListener("change", () => selectBoard(boardSelect.value));
 rescanBoardsButton.addEventListener("click", rescanBoards);
 clockControl.addEventListener("change", () => {
@@ -755,7 +664,7 @@ for (const dialog of [configurationDialog, rebootDialog, mscDialog]) {
   });
 }
 element("confirm-configuration").addEventListener("click", saveSettings);
-element("confirm-reboot").addEventListener("click", rebootDevice);
+element("confirm-reboot").addEventListener("click", deviceActions.rebootDevice);
 void rescanBoards();
 const pollWhenVisible = () => {
   return document.hidden ? Promise.resolve() : updateStatus();
