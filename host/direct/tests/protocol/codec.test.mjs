@@ -336,6 +336,8 @@ test("strict result validation enforces details, scan padding, commit masks and 
   for (const [offset, value] of [[5, 0], [7, 18], [8, 33], [10, 1], [42, 8], [43, 1]]) {
     const bad = scan.slice(); bad[offset] = value; assert.throws(() => decodeControlResult(bad));
   }
+  const unavailableMount = result(1, 4, 6, 6); unavailableMount[5] = 10;
+  assert.throws(() => decodeControlResult(unavailableMount));
   const saved = result(1, 5); saved.set([240, 0, 0, 3, 7], 5);
   assert.equal(decodeControlResult(saved).commit_mask, 7);
   saved[9] = 8; assert.throws(() => decodeControlResult(saved));

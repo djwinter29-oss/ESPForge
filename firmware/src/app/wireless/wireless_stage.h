@@ -10,8 +10,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "wireless_limits.h"
+
 #define EF_STAGE_LIFETIME_MS 600000
-#define EF_STAGE_SSID_MAX 32u
 #define EF_STAGE_PASSWORD_MAX 63u
 #define EF_STAGE_KEY_SIZE 32u
 
@@ -45,7 +46,7 @@ typedef struct {
 	bool pair_tested;
 	bool expired;
 	uint8_t ssid_length;
-	uint8_t ssid[EF_STAGE_SSID_MAX];
+	uint8_t ssid[EF_SSID_MAX_BYTES];
 	uint8_t password_length;
 	char password[EF_STAGE_PASSWORD_MAX + 1];
 	bool key_clear;

@@ -17,6 +17,8 @@
 #include <zephyr/sys/reboot.h>
 
 #define RAM_TOTAL_BYTES (512u * 1024u)
+/* Report 1 UID prefix: the six-byte eFuse base MAC; the remaining UID bytes stay zero. */
+#define UID_MAC_SIZE 6u
 #define SD_PINCTRL DT_PHANDLE_BY_IDX(DT_ALIAS(espforge_sd), pinctrl_0, 0)
 #define SD_SPI_PINCTRL DT_PHANDLE_BY_IDX(DT_PARENT(DT_ALIAS(espforge_sd)), pinctrl_0, 0)
 #define GPIO_FROM_MUX(node, index) (DT_PROP_BY_IDX(node, pinmux, index) & ESP32_PIN_NUM_MASK)
@@ -45,7 +47,7 @@ void ef_unlock(void)
 void ef_board_init(void)
 {
 	uint32_t cause = 0;
-	ssize_t length = hwinfo_get_device_id(uid, 6);
+	ssize_t length = hwinfo_get_device_id(uid, UID_MAC_SIZE);
 
 	if (length < 0) {
 		memset(uid, 0, sizeof(uid));

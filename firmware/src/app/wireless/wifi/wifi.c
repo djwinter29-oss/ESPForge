@@ -79,13 +79,13 @@ enum event {
 };
 
 struct network {
-	uint8_t ssid[EF_SSID_MAX];
+	uint8_t ssid[EF_SSID_MAX_BYTES];
 	uint8_t ssid_length;
 	char password[EF_WIFI_PASSWORD_SIZE];
 };
 
 struct scan_entry {
-	uint8_t ssid[EF_SSID_MAX];
+	uint8_t ssid[EF_SSID_MAX_BYTES];
 	uint8_t ssid_length;
 	int8_t rssi;
 	uint8_t security;
@@ -248,7 +248,7 @@ static uint8_t security_bits(enum wifi_security_type security)
 /* Keep the strongest result per SSID and the strongest SCAN_MAX SSIDs overall. */
 static void add_scan_result(const struct wifi_scan_result *result)
 {
-	uint8_t length = MIN(result->ssid_length, EF_SSID_MAX);
+	uint8_t length = MIN(result->ssid_length, EF_SSID_MAX_BYTES);
 	struct scan_entry *slot = NULL;
 
 	if (scan_state != EF_SCAN_RUNNING || length == 0) {
@@ -527,8 +527,8 @@ int ef_wifi_test_start(const uint8_t *ssid, uint8_t ssid_length, const char *pas
 		++test_generation;
 	}
 	wipe(&test);
-	memcpy(test.ssid, ssid, MIN(ssid_length, EF_SSID_MAX));
-	test.ssid_length = MIN(ssid_length, EF_SSID_MAX);
+	memcpy(test.ssid, ssid, MIN(ssid_length, EF_SSID_MAX_BYTES));
+	test.ssid_length = MIN(ssid_length, EF_SSID_MAX_BYTES);
 	strncpy(test.password, password, sizeof(test.password) - 1);
 	if (iface == NULL) {
 		command = COMMAND_FAILED;
@@ -595,7 +595,7 @@ int ef_wifi_scan_entry(uint8_t index, uint8_t *ssid, uint8_t *ssid_length, int8_
 	if (scan_state != EF_SCAN_COMPLETE || index >= scan_count) {
 		return -EINVAL;
 	}
-	memcpy(ssid, scan[index].ssid, EF_SSID_MAX);
+	memcpy(ssid, scan[index].ssid, EF_SSID_MAX_BYTES);
 	*ssid_length = scan[index].ssid_length;
 	*rssi = scan[index].rssi;
 	*security = scan[index].security;

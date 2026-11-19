@@ -24,9 +24,21 @@ int ef_platform_led_request(uint8_t colour);
 void ef_platform_led_status(uint8_t *colour, bool *available);
 /** True while the storage worker is busy or USB exclusively owns the card. */
 bool ef_platform_storage_busy(void);
-/** Admit one USB ownership request without doing disk I/O; correlate its result before USB refresh. */
+/**
+ * @brief Admit one USB ownership request without doing disk I/O; correlate its result before USB refresh.
+ * @param usb True requests USB ownership; false returns the medium to firmware.
+ * @param transaction Feature 20 transaction whose result read shortens the handoff delay.
+ * @return Zero when admitted or the owner is already active, -EBUSY while storage is busy, -ENOMEDIUM when
+ *         USB is requested without an initialized card with valid geometry, or another negative errno.
+ */
 int ef_platform_storage_request(bool usb, uint8_t transaction);
-/** Admit or cancel a serialized benchmark; returns a benchmark detail code without disk I/O. */
+/**
+ * @brief Admit or cancel a serialized benchmark without disk I/O.
+ * @param start True starts a run; false cancels any active run.
+ * @param size_mib Run size in MiB when starting; zero when cancelling.
+ * @return EF_BENCHMARK_ERROR_NONE when admitted, an ef_benchmark_error_t admission detail, or -ENOTSUP
+ *         when the benchmark is not built in.
+ */
 int ef_platform_benchmark_request(bool start, uint32_t size_mib);
 
 /** True while a candidate test is joining (Feature 12 wifi_state 4). */

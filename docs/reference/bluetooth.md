@@ -262,8 +262,8 @@ Writes to `0014` use a 9-byte form, not a truncated USB Feature `20` report. Sta
 | -----: | ---: | ----- | ------- |
 | 0 | 1 | `version` | `1`. |
 | 1 | 1 | `transaction_id` | Nonzero; independent of the USB sequence. |
-| 2 | 1 | `opcode` | `2` confirmed reboot or `5` save settings and reboot; `1` is recognized but unsupported. |
-| 3 | 1 | `flags` | Opcode `2` requires confirmation bit 0; opcode `5` requires zero (no forced save or wireless commit). |
+| 2 | 1 | `opcode` | `1` RGB LED colour, `2` confirmed reboot or `5` save settings and reboot. |
+| 3 | 1 | `flags` | Opcode `2` requires confirmation bit 0; opcodes `1` and `5` require zero (no forced save or wireless commit). |
 | 4 | 5 | `arguments` | Opcode arguments; unused bytes zero. |
 
 Opcode `1` uses argument byte 0 as an RGB mask `0`-`7`, with flags and other arguments zero, as specified in

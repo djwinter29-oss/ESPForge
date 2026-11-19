@@ -39,8 +39,14 @@ void ef_telemetry_report(uint8_t sequence, uint8_t out[EF_TELEMETRY_SIZE]);
 void ef_storage_report(uint8_t sequence, uint8_t out[EF_STORAGE_SIZE]);
 void ef_wireless_report(uint8_t out[EF_WIRELESS_SIZE]);
 
-int system_clock_apply(uint16_t mhz);
-uint32_t system_clock_hz(void);
+/**
+ * @brief Apply the saved CPU clock profile before transports start.
+ * @param mhz Saved clock profile; zero or the devicetree default leaves the clock unchanged.
+ * @return Zero on success or no change, otherwise a negative errno.
+ */
+int ef_system_clock_apply(uint16_t mhz);
+/** Running CPU clock in Hz, or the devicetree default when the clock driver cannot report it. */
+uint32_t ef_system_clock_hz(void);
 
 void ef_telemetry_init(void);
 /** Refresh the cached temperature and load window; call from the main loop. */
@@ -51,8 +57,6 @@ void ef_storage_init(void);
 void ef_benchmark_report(uint8_t sequence, uint8_t out[EF_BENCHMARK_SIZE]);
 /** Let the storage worker change owners after this Feature 20 result has left the control path. */
 void ef_storage_result_read(uint8_t transaction);
-/** Refresh native USB after confirmed handoff; called only by the storage worker. */
-int ef_storage_usb_refresh(void);
 
 void ef_wifi_init(bool enabled);
 /** Advance connects, tests and scans; call from the main loop. */

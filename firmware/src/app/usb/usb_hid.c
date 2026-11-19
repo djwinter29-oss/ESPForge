@@ -3,6 +3,7 @@
  */
 #include "app/espforge.h"
 #include "app/control/control.h"
+#include "app/storage/storage.h"
 
 #include <errno.h>
 #include <string.h>
@@ -65,7 +66,7 @@ static const struct device *const hid = DEVICE_DT_GET(DT_NODELABEL(espforge_hid)
 
 static atomic_t ready;
 static atomic_t in_flight;
-static uint8_t input[1 + EF_STORAGE_SIZE] __aligned(4);
+static uint8_t input[1 + MAX(EF_STORAGE_SIZE, MAX(EF_TELEMETRY_SIZE, EF_BENCHMARK_SIZE))] __aligned(4);
 static uint8_t telemetry_sequence;
 static uint8_t storage_sequence;
 static uint8_t benchmark_sequence;
@@ -134,7 +135,7 @@ static int get_report(const struct device *dev, const uint8_t type, const uint8_
 	case EF_REPORT_BENCHMARK:
 		ef_benchmark_report(0, buf + 1);
 		break;
-	default:
+	case EF_REPORT_STORAGE:
 		ef_storage_report(0, buf + 1);
 		break;
 	}

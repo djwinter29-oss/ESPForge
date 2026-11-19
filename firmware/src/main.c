@@ -21,7 +21,7 @@ int main(void)
 	ef_unlock();
 	printk("ESPForge %s (%s)\n", ESPFORGE_VERSION, ef_board_serial());
 
-	err = system_clock_apply(ef_sysclk_profile_mhz(ef_boot_config_boot_sysclk()));
+	err = ef_system_clock_apply(ef_sysclk_profile_mhz(ef_boot_config_boot_sysclk()));
 	if (err) {
 		printk("CPU clock change failed: %d\n", err);
 	}

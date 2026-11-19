@@ -161,6 +161,8 @@ void test_benchmark_admission_size_and_transport_rules(void)
 		      EF_STATUS_INVALID, EF_ERROR_ARGUMENT, 3);
 	assert_result(usb(EF_OP_BENCHMARK, 1, start, sizeof(start), 0),
 		      EF_STATUS_INVALID, EF_ERROR_MALFORMED, 0);
+	ef_platform_benchmark_request_ExpectAndReturn(true, 32, 1);
+	assert_result(usb(EF_OP_BENCHMARK, 0, start, sizeof(start), 0), EF_STATUS_BUSY, EF_ERROR_BUSY, 1);
 	ef_platform_benchmark_request_ExpectAndReturn(true, 32, 2);
 	assert_result(usb(EF_OP_BENCHMARK, 0, start, sizeof(start), 0), EF_STATUS_BUSY, EF_ERROR_BUSY, 2);
 	ef_platform_benchmark_request_ExpectAndReturn(true, 32, 4);
@@ -181,6 +183,10 @@ void test_msc_requires_confirmed_return_and_rejects_malformed_or_unsafe_actions(
 	assert_result(usb(EF_OP_MSC, 0, enable, 1, 0), EF_STATUS_COMPLETED, EF_ERROR_NONE, 0);
 	ef_platform_storage_request_ExpectAnyArgsAndReturn(-EBUSY);
 	assert_result(usb(EF_OP_MSC, 1, NULL, 0, 0), EF_STATUS_BUSY, EF_ERROR_BUSY, 0);
+	ef_platform_storage_request_ExpectAnyArgsAndReturn(-ENOMEDIUM);
+	assert_result(usb(EF_OP_MSC, 0, enable, 1, 0), EF_STATUS_INVALID, EF_ERROR_ARGUMENT, 0);
+	ef_platform_storage_request_ExpectAnyArgsAndReturn(-EIO);
+	assert_result(usb(EF_OP_MSC, 0, enable, 1, 0), EF_STATUS_FAILED, EF_ERROR_FAILED, 0);
 	assert_result(ble(EF_OP_MSC, 0, enable, 0), EF_STATUS_UNSUPPORTED, EF_ERROR_CAPABILITY, 0);
 }
 
@@ -266,7 +272,7 @@ void test_commit_new_network_and_key(void)
 	uint8_t key_args[64] = {32};
 	uint8_t key[EF_BLE_KEY_SIZE];
 	char password[EF_WIFI_PASSWORD_SIZE];
-	char ssid[EF_WIFI_SSID_SIZE];
+	char ssid[EF_SSID_BUFFER_SIZE];
 	const uint8_t *result;
 
 	memset(key_args + 1, 0x5A, 32);
@@ -390,7 +396,7 @@ void test_scan_start_and_entry(void)
 	const uint8_t stale[3] = {0, 8, 0};
 	const uint8_t out_of_range[3] = {2, 7, 0};
 	const uint8_t entry[3] = {1, 7, 0};
-	uint8_t ssid[32] = {'c', 'a', 'f', 'e'};
+	uint8_t ssid[EF_SSID_MAX_BYTES] = {'c', 'a', 'f', 'e'};
 	uint8_t length = 4;
 	int8_t rssi = -61;
 	uint8_t security = 3;

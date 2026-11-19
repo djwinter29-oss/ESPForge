@@ -13,9 +13,13 @@
 #define MONITOR_UART_TX 43u
 #define MONITOR_UART_RX 44u
 
-#define CONFIG_FLAG_MONITOR_UART 0x04u
-#define CONFIG_FLAG_WIFI 0x08u
-#define CONFIG_FLAG_BLE 0x10u
+/* Report 2 board_flags bits; bit 5, the reserved TCP CLI switch, stays clear. */
+#define BOARD_FLAG_CARD_DETECT 0x01u
+#define BOARD_FLAG_LED 0x02u
+#define BOARD_FLAG_MONITOR_UART 0x04u
+#define BOARD_FLAG_WIFI 0x08u
+#define BOARD_FLAG_BLE 0x10u
+#define BOARD_FLAG_MSC 0x40u
 
 static void put16(uint8_t *out, uint16_t value)
 {
@@ -60,22 +64,22 @@ void ef_report_memory(const ef_memory_inventory_t *memory, uint8_t out[EF_MEMORY
 
 void ef_report_config(const ef_config_t *config, uint8_t out[EF_CONFIG_SIZE])
 {
-	uint8_t flags = CONFIG_FLAG_MONITOR_UART;
+	uint8_t flags = BOARD_FLAG_MONITOR_UART;
 
 	if (config->led_available) {
-		flags |= 0x02u;
+		flags |= BOARD_FLAG_LED;
 	}
 	if (config->card_detect_available) {
-		flags |= 0x01u;
+		flags |= BOARD_FLAG_CARD_DETECT;
 	}
 	if (config->msc_supported) {
-		flags |= EF_CONFIG_FLAG_MSC;
+		flags |= BOARD_FLAG_MSC;
 	}
 	if (config->stored_radios & EF_WIRELESS_WIFI) {
-		flags |= CONFIG_FLAG_WIFI;
+		flags |= BOARD_FLAG_WIFI;
 	}
 	if (config->stored_radios & EF_WIRELESS_BLE) {
-		flags |= CONFIG_FLAG_BLE;
+		flags |= BOARD_FLAG_BLE;
 	}
 	memset(out, 0, EF_CONFIG_SIZE);
 	out[0] = 1;
@@ -163,7 +167,8 @@ void ef_report_benchmark(const ef_benchmark_t *status, uint8_t out[EF_BENCHMARK_
 
 void ef_report_wireless(const ef_wireless_t *wireless, uint8_t out[EF_WIRELESS_SIZE])
 {
-	uint8_t length = wireless->ssid_length <= EF_SSID_MAX ? wireless->ssid_length : EF_SSID_MAX;
+	uint8_t length = wireless->ssid_length <= EF_SSID_MAX_BYTES
+		? wireless->ssid_length : EF_SSID_MAX_BYTES;
 
 	memset(out, 0, EF_WIRELESS_SIZE);
 	out[0] = 1;

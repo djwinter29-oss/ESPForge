@@ -2,8 +2,6 @@
 #include "platform/ef_platform.h"
 
 #include <zephyr/device.h>
-#include <zephyr/drivers/clock_control.h>
-#include <zephyr/drivers/clock_control/esp32_clock_control.h>
 #include <zephyr/drivers/sensor.h>
 #include <zephyr/kernel.h>
 
@@ -20,18 +18,6 @@ static uint64_t window_busy;
 static uint64_t window_total;
 static int64_t window_at;
 K_MUTEX_DEFINE(telemetry_lock);
-
-uint32_t system_clock_hz(void)
-{
-	const struct device *clock = DEVICE_DT_GET(DT_NODELABEL(clock));
-	uint32_t rate = 0;
-
-	if (!device_is_ready(clock) ||
-	    clock_control_get_rate(clock, (clock_control_subsys_t)ESP32_CLOCK_CONTROL_SUBSYS_CPU, &rate) != 0) {
-		return DT_PROP(DT_NODELABEL(cpu0), clock_frequency);
-	}
-	return rate;
-}
 
 static bool cpu_cycles(uint64_t *busy, uint64_t *total)
 {
@@ -99,7 +85,7 @@ void ef_telemetry_report(uint8_t sequence, uint8_t out[EF_TELEMETRY_SIZE])
 {
 	ef_telemetry_t telemetry = {
 		.uptime_ms = (uint64_t)k_uptime_get(),
-		.system_clock_hz = system_clock_hz(),
+		.system_clock_hz = ef_system_clock_hz(),
 		.sequence = sequence,
 		.usb_configured = ef_usb_configured(),
 	};

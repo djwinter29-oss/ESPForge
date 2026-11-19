@@ -588,7 +588,7 @@ internal static partial class HidProtocol
                 26 => op is Opcode.SaveSettings or Opcode.WifiTest or Opcode.WifiScan or Opcode.WifiEntry,
                 _ => false
             };
-        return result.Status == ControlStatus.Failed && op == Opcode.SelfTest && detail is 4 or 5 or 6 or 7 or 10;
+        return result.Status == ControlStatus.Failed && op == Opcode.SelfTest && detail is 4 or 5 or 6 or 7;
     }
 
     public static void RequireCompleted(ControlResult result, byte transactionId, Opcode opcode)

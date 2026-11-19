@@ -55,7 +55,20 @@ static void finish(result_t *result, uint8_t status, uint8_t error, uint8_t deta
 	result->data[0] = detail;
 }
 
-static void put_saved_network(ef_saved_network_t *saved, uint8_t ssid[32], char password[EF_WIFI_PASSWORD_SIZE])
+/** Map a platform admission result: zero Completed, -EBUSY Busy, any other error Failed. */
+static void finish_errno(result_t *result, int err)
+{
+	if (err == 0) {
+		finish(result, EF_STATUS_COMPLETED, EF_ERROR_NONE, 0);
+	} else if (err == -EBUSY) {
+		finish(result, EF_STATUS_BUSY, EF_ERROR_BUSY, 0);
+	} else {
+		finish(result, EF_STATUS_FAILED, EF_ERROR_FAILED, 0);
+	}
+}
+
+static void put_saved_network(ef_saved_network_t *saved, uint8_t ssid[EF_SSID_MAX_BYTES],
+			      char password[EF_WIFI_PASSWORD_SIZE])
 {
 	saved->ssid_length = ef_boot_config_wifi_ssid_bytes(ssid);
 	ef_boot_config_wifi_password(password);
@@ -70,7 +83,7 @@ static void reboot(const request_t *request, result_t *result)
 	} else if (!(request->flags & FLAG_CONFIRM)) {
 		finish(result, EF_STATUS_INVALID, EF_ERROR_CONFIRMATION, 0);
 	} else if (ef_platform_storage_busy()) {
-		finish(result, EF_STATUS_BUSY, EF_ERROR_BUSY, 1);
+		finish(result, EF_STATUS_BUSY, EF_ERROR_BUSY, EF_DETAIL_CONFLICT);
 	} else if (request->ble && ef_stage_active(&stage)) {
 		finish(result, EF_STATUS_BUSY, EF_ERROR_BUSY, EF_DETAIL_USB_STAGED);
 	} else if (ef_platform_schedule_reboot() != 0) {
@@ -121,7 +134,7 @@ static void save(const request_t *request, result_t *result)
 		return;
 	}
 	if (ef_platform_storage_busy()) {
-		finish(result, EF_STATUS_BUSY, EF_ERROR_BUSY, 1);
+		finish(result, EF_STATUS_BUSY, EF_ERROR_BUSY, EF_DETAIL_CONFLICT);
 		return;
 	}
 	if (request->ble && ef_stage_active(&stage)) {
@@ -141,7 +154,7 @@ static void save(const request_t *request, result_t *result)
 		return;
 	}
 	if (commit) {
-		uint8_t ssid[32];
+		uint8_t ssid[EF_SSID_MAX_BYTES];
 		char password[EF_WIFI_PASSWORD_SIZE];
 		ef_saved_network_t saved;
 
@@ -188,7 +201,7 @@ static void stage_value(const request_t *request, result_t *result, int64_t now_
 	static uint8_t (*const check[])(const uint8_t *) = {
 		ef_stage_check_ssid, ef_stage_check_password, ef_stage_check_key,
 	};
-	static const uint8_t capacity[] = {EF_STAGE_SSID_MAX, EF_STAGE_PASSWORD_MAX, EF_STAGE_KEY_SIZE};
+	static const uint8_t capacity[] = {EF_SSID_MAX_BYTES, EF_STAGE_PASSWORD_MAX, EF_STAGE_KEY_SIZE};
 	unsigned index = request->opcode - EF_OP_STAGE_SSID;
 	uint8_t detail;
 
@@ -222,7 +235,7 @@ static void stage_value(const request_t *request, result_t *result, int64_t now_
 
 static void test_wifi(result_t *result)
 {
-	uint8_t ssid[32];
+	uint8_t ssid[EF_SSID_MAX_BYTES];
 	char password[EF_WIFI_PASSWORD_SIZE];
 	ef_saved_network_t saved;
 	ef_candidate_t candidate;
@@ -252,7 +265,7 @@ static void test_wifi(result_t *result)
 static void scan_entry(const request_t *request, result_t *result)
 {
 	uint16_t generation = (uint16_t)(request->args[1] | request->args[2] << 8);
-	uint8_t ssid[32] = {0};
+	uint8_t ssid[EF_SSID_MAX_BYTES] = {0};
 	uint8_t length = 0;
 	int8_t rssi = 0;
 	uint8_t security = 0;
@@ -274,7 +287,7 @@ static void scan_entry(const request_t *request, result_t *result)
 	result->data[0] = (uint8_t)generation;
 	result->data[1] = (uint8_t)(generation >> 8);
 	result->data[2] = request->args[0];
-	result->data[3] = length <= 32 ? length : 32;
+	result->data[3] = length <= EF_SSID_MAX_BYTES ? length : EF_SSID_MAX_BYTES;
 	memcpy(result->data + 4, ssid, result->data[3]);
 	result->data[36] = (uint8_t)rssi;
 	result->data[37] = security & 0x07u;
@@ -300,8 +313,12 @@ static void msc(const request_t *request, result_t *result)
 		finish(result, EF_STATUS_INVALID, EF_ERROR_CONFIRMATION, 0);
 	} else {
 		err = ef_platform_storage_request(action == 1, request->transaction_id);
-		finish(result, err == 0 ? EF_STATUS_COMPLETED : err == -EBUSY ? EF_STATUS_BUSY : EF_STATUS_FAILED,
-		       err == 0 ? EF_ERROR_NONE : err == -EBUSY ? EF_ERROR_BUSY : EF_ERROR_FAILED, 0);
+		if (err == -ENOMEDIUM) {
+			/* No initialized card with valid geometry is a state precondition, not an execution failure. */
+			finish(result, EF_STATUS_INVALID, EF_ERROR_ARGUMENT, 0);
+		} else {
+			finish_errno(result, err);
+		}
 	}
 }
 
@@ -327,10 +344,7 @@ static void execute(const request_t *request, result_t *result, int64_t now_ms)
 		} else if (request->args[0] > 7) {
 			finish(result, EF_STATUS_INVALID, EF_ERROR_ARGUMENT, 0);
 		} else {
-			int err = ef_platform_led_request(request->args[0]);
-
-			finish(result, err == 0 ? EF_STATUS_COMPLETED : err == -EBUSY ? EF_STATUS_BUSY : EF_STATUS_FAILED,
-			       err == 0 ? EF_ERROR_NONE : err == -EBUSY ? EF_ERROR_BUSY : EF_ERROR_FAILED, 0);
+			finish_errno(result, ef_platform_led_request(request->args[0]));
 		}
 		break;
 	case EF_OP_BENCHMARK:
@@ -348,8 +362,13 @@ static void execute(const request_t *request, result_t *result, int64_t now_ms)
 				break;
 			}
 			detail = ef_platform_benchmark_request(start, size);
-			finish(result, detail == 0 ? EF_STATUS_COMPLETED : detail <= 2 ? EF_STATUS_BUSY : EF_STATUS_FAILED,
-			       detail == 0 ? EF_ERROR_NONE : detail <= 2 ? EF_ERROR_BUSY : EF_ERROR_FAILED, detail);
+			if (detail == EF_BENCHMARK_ERROR_NONE) {
+				finish(result, EF_STATUS_COMPLETED, EF_ERROR_NONE, 0);
+			} else if (detail == EF_BENCHMARK_ERROR_BUSY || detail == EF_BENCHMARK_ERROR_USB) {
+				finish(result, EF_STATUS_BUSY, EF_ERROR_BUSY, (uint8_t)detail);
+			} else {
+				finish(result, EF_STATUS_FAILED, EF_ERROR_FAILED, (uint8_t)detail);
+			}
 		}
 #else
 		finish(result, EF_STATUS_UNSUPPORTED, EF_ERROR_CAPABILITY, 0);
@@ -406,7 +425,7 @@ static void execute(const request_t *request, result_t *result, int64_t now_ms)
 		}
 		break;
 	default:
-		/* LED and TCP CLI proof are absent. */
+		/* Opcode 13, the reserved TCP CLI proof: the diagnostic TCP shell has no management switch. */
 		finish(result, EF_STATUS_UNSUPPORTED, EF_ERROR_CAPABILITY, 0);
 		break;
 	}

@@ -53,7 +53,7 @@ static void save_valid_record(void)
 
 static void assert_defaults(void)
 {
-	char ssid[EF_WIFI_SSID_SIZE];
+	char ssid[EF_SSID_BUFFER_SIZE];
 
 	TEST_ASSERT_EQUAL_UINT8(EF_WIRELESS_WIFI | EF_WIRELESS_BLE, ef_boot_config_radios());
 	TEST_ASSERT_EQUAL_INT(EF_SYSCLK_DEFAULT, ef_boot_config_sysclk());
@@ -148,7 +148,7 @@ void test_record_layout_matches_documented_offsets(void)
 
 void test_saved_record_round_trips_and_applies_at_next_boot(void)
 {
-	uint8_t ssid[32];
+	uint8_t ssid[EF_SSID_MAX_BYTES];
 	const uint8_t opaque[] = {'a', 0, 'b'};
 	char password[EF_WIFI_PASSWORD_SIZE];
 
@@ -203,7 +203,7 @@ void test_discard_restores_last_saved_values(void)
 	TEST_ASSERT_TRUE(ef_boot_config_set_wifi_ssid(""));
 	TEST_ASSERT_TRUE(ef_boot_config_set_sysclk(EF_SYSCLK_80MHZ));
 	ef_boot_config_discard();
-	char ssid[EF_WIFI_SSID_SIZE];
+	char ssid[EF_SSID_BUFFER_SIZE];
 	ef_boot_config_wifi_ssid(ssid);
 	TEST_ASSERT_EQUAL_STRING("lab", ssid);
 	TEST_ASSERT_EQUAL_INT(EF_SYSCLK_DEFAULT, ef_boot_config_sysclk());

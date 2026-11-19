@@ -10,6 +10,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "app/storage/benchmark.h"
+#include "wireless_limits.h"
 
 #define EF_REPORT_IDENTITY 1u
 #define EF_REPORT_CONFIG 2u
@@ -58,11 +59,8 @@
 			(EF_ENABLE_STORAGE_BENCHMARK ? EF_CAP_BENCHMARK : 0))
 
 #define EF_UID_SIZE 8u
-#define EF_SSID_MAX 32u
 #define EF_LOAD_UNAVAILABLE 0xFFFFu
 #define EF_GPIO_UNASSIGNED 0xFFu
-/** Report 2 board flag: native USB mass storage with explicit owner handoff is available. */
-#define EF_CONFIG_FLAG_MSC 0x40u
 
 typedef struct {
 	uint8_t uid[EF_UID_SIZE];
@@ -130,7 +128,7 @@ typedef struct {
 	uint8_t flags;
 	uint8_t ipv4[4];
 	uint8_t ssid_length;
-	uint8_t ssid[EF_SSID_MAX];
+	uint8_t ssid[EF_SSID_MAX_BYTES];
 	uint8_t scan_state;
 	uint16_t scan_generation;
 	uint8_t scan_count;

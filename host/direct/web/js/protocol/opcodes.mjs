@@ -93,7 +93,7 @@ export const OPCODES = Object.freeze({
     facts: { keys: ["msc_enabled"], read: r => ({ msc_enabled: r[4] === 1 }),
       valid: facts => typeof facts.msc_enabled === "boolean" } },
   [OP.BENCHMARK]: { capability: CAP.SELF_TEST, ble: null, excluded: [1],
-    details: { 1: 5, 2: 5, 3: 3, 4: 6, 10: 6 }, invalidates: [REPORT.BENCHMARK, REPORT.STORAGE],
+    details: { 1: 5, 2: 5, 3: 3, 4: 6 }, invalidates: [REPORT.BENCHMARK, REPORT.STORAGE],
     request: (r, unused) => {
       const size = new DataView(r.buffer, r.byteOffset, r.byteLength).getUint32(5, true);
       return r[3] === 0 && [0, 1].includes(r[4]) && unused(9)

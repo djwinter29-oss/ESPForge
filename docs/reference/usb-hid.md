@@ -562,7 +562,7 @@ Error enum: `0` none; `1` malformed flags/unused arguments; `2` missing confirma
 | `3` | Benchmark size invalid | Invalid/error `3`, opcode `4` |
 | `4` | Card unavailable | Failed/error `6`, opcode `4` |
 | `5`-`9` | Reserved command details; Report `11` execution errors are separate | - |
-| `10` | Mount unavailable | Failed/error `6`, opcode `4` |
+| `10` | Reserved in the Feature `20` detail namespace | - |
 | `11`-`15` | Reserved | - |
 | `16` | Invalid SSID length | Invalid/error `3`, opcode `6` |
 | `17` | Invalid password length/characters | Invalid/error `3`, opcode `7` |
@@ -580,17 +580,20 @@ Error enum: `0` none; `1` malformed flags/unused arguments; `2` missing confirma
 | `29`-`255` | Reserved | - |
 
 Details are zero for Idle, Pending, Completed and Unsupported. Report `12` has a separate Wi-Fi detail namespace.
+Report `11` separately uses execution error `10` for an unavailable firmware filesystem mount.
 
 | USB opcode | Current terminal statuses |
 | --- | --- |
-| `1`, `4`, `13` | Unsupported/error `4` |
+| `1` | Completed (queued), Invalid/error `1` or `3`, Busy, Failed |
 | `2` | Completed, Invalid/error `1` or `2`, Busy, Failed |
 | `3` | Completed (admitted), Invalid/error `1`, `2` or `3`, Busy, Failed; older firmware Unsupported/error `4` |
+| `4` | Completed (admitted), Invalid/error `1` or `3`, Busy, Failed; Unsupported/error `4` without capability bit 5 |
 | `5` | Completed, Invalid/error `1` or `3`, Unsupported/error `4`, Busy, Failed |
 | `6`-`8` | Completed, Invalid/error `1` or `3`, Busy |
 | `9`, `11` | Completed, Invalid/error `1` or `3`, Busy, Failed |
 | `10` | Completed, Invalid/error `1` |
 | `12` | Completed, Invalid/error `1` or `3`, Busy |
+| `13` | Unsupported/error `4` |
 | Unassigned | Unsupported/error `7` |
 
 Validation follows these rules:
@@ -754,12 +757,13 @@ See [qualification gaps](../validation/qualification-gaps.md) and the
 
 ## Implementation and Integration
 
-The native USB interface uses Zephyr's `udc_dwc2` driver. Feature GET supports IDs `1`, `2`, `12`, `20`;
-Input GET supports `3`, `10`. Unsupported type/ID or an insufficient GET buffer is rejected.
+The native USB interface uses Zephyr's `udc_dwc2` driver. Feature GET supports IDs `1`, `2`, `12`, `13`, `20`;
+Input GET supports `3`, `10`, and `11` when the benchmark is built in. Unsupported type/ID or an insufficient GET
+buffer is rejected.
 SET requires Feature `20`, exactly 69 bytes including ID, and a valid envelope.
 The callback rejects invalid envelopes before the status stage completes, leaving the prior result readable.
 
-Input publication is scheduled from the main loop, nominally 250 ms telemetry / 500 ms storage.
+Input publication is scheduled from the main loop, nominally 250 ms telemetry / 500 ms storage and benchmark.
 One transfer is in flight at a time, so intervals are not delivery guarantees.
 USB callbacks run in the stack thread; shared control access holds the application mutex.
 Python (`hidapi`), .NET (`HidSharp`) and Direct (WebHID) implement the same payload contract.

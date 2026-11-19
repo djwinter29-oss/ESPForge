@@ -21,7 +21,7 @@ static void touch(ef_stage_t *stage, int64_t now_ms)
 
 uint8_t ef_stage_check_ssid(const uint8_t *args)
 {
-	if (args[0] > EF_STAGE_SSID_MAX) {
+	if (args[0] > EF_SSID_MAX_BYTES) {
 		return EF_DETAIL_SSID_LENGTH;
 	}
 	return 0;

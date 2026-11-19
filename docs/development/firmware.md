@@ -7,12 +7,12 @@ Keep hardware-dependent integration separate from portable management logic.
 
 | Directory | Contents |
 | --- | --- |
-| `src/config/` | Board identity, UID/serial, reset cause and board facts |
-| `src/platform/` | Boot settings, flash access, CPU clock and platform hooks |
-| `src/app/` | Shared services and telemetry |
+| `src/config/` | Board identity, UID/serial, reset cause, memory inventory, board facts, app lock and delayed reboot |
+| `src/platform/` | Portable boot settings and platform hooks; Zephyr settings flash, CPU clock, RGB LED, SD worker, USB drive disk and benchmark file backend |
+| `src/app/` | Shared Zephyr service interface and telemetry |
 | `src/app/control/` | Portable Report 20 control dispatcher shared by USB and BLE |
 | `src/app/usb/` | USB HID integration and portable report encoding |
-| `src/app/storage/` | SD-card mount and Storage report |
+| `src/app/storage/` | Portable SD presence, mount-retry and ownership policy, and the optional benchmark engine |
 | `src/app/wireless/` | Portable staging, command authentication and SHA-256/HMAC |
 | `src/app/wireless/bluetooth/` | BLE GATT service and advertising |
 | `src/app/wireless/wifi/` | Wi-Fi saved-network joins, candidate tests and scans |
@@ -50,8 +50,9 @@ Zephyr stack integration, hardware sampling, SD mounting, flash access and clock
 
 | Suite | Production logic exercised |
 | --- | --- |
-| Control | Shared opcode dispatcher: status/error replies, Wi-Fi base/key staging, test/cancel/scan, settings, reboot, resync and unsupported opcodes |
+| Control | Shared opcode dispatcher: status/error replies, LED, MSC and benchmark admission, Wi-Fi base/key staging, test/cancel/scan, settings, reboot, resync and unsupported opcodes |
 | Reports | Exact USB HID/BLE report byte layouts, little-endian fields and flags |
+| Storage | SD presence debounce, paced mount retry, USB/firmware ownership handoff and card-change cancellation over mocked media operations |
 | Benchmark | Temporary-file write/read verification and cancellation/cleanup safety over an in-memory backend |
 | Authentication | HMAC-SHA-256 command authentication, nonces, replay rejection and key-change handling |
 | Wireless staging | Staged Wi-Fi credentials, password rules, expiry, tested flag and key-only commits |
@@ -114,10 +115,10 @@ Outputs are separate: `build/firmware/zephyr/zephyr.bin` (native) and
 Both retain card detection, FAT mounting and explicit USB drive handoff; neither formats a card.
 Use the matching [SD wiring](../reference/sdcard.md#pin-allocation) and disconnect card power when changing buses.
 
-Host Validation also compiles the report tests for SPI with benchmarking enabled:
+Host Validation also compiles the report and control tests for SPI with benchmarking enabled:
 
 ```sh
-bundle exec ceedling --mixin '={project: {build_root: build/ceedling-sd-spi}, defines: {test: [EF_STORAGE_SPI=1, EF_ENABLE_STORAGE_BENCHMARK=1]}}' test:test_hid_reports
+bundle exec ceedling --mixin '={project: {build_root: build/ceedling-sd-spi}, defines: {test: [EF_STORAGE_SPI=1, EF_ENABLE_STORAGE_BENCHMARK=1]}}' test:test_hid_reports test:test_control
 ```
 
 For changes to board/configuration selection, use a pristine build from the workspace:

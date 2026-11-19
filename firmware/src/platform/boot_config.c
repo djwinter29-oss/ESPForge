@@ -15,7 +15,7 @@ struct boot_config {
 	uint8_t disabled;
 	uint8_t auth;
 	uint8_t ssid_length;
-	uint8_t ssid[32];
+	uint8_t ssid[EF_SSID_MAX_BYTES];
 	char password[EF_WIFI_PASSWORD_SIZE];
 	uint8_t key[EF_BLE_KEY_SIZE];
 	uint8_t flags;
@@ -189,10 +189,10 @@ uint8_t ef_boot_config_boot_radios(void)
 	return (uint8_t)(~boot.disabled & SERVICE_BITS);
 }
 
-void ef_boot_config_wifi_ssid(char ssid[EF_WIFI_SSID_SIZE])
+void ef_boot_config_wifi_ssid(char ssid[EF_SSID_BUFFER_SIZE])
 {
 	memcpy(ssid, staged.ssid, sizeof(staged.ssid));
-	ssid[EF_WIFI_SSID_SIZE - 1] = '\0';
+	ssid[EF_SSID_BUFFER_SIZE - 1] = '\0';
 }
 
 bool ef_boot_config_set_wifi_ssid(const char *ssid)
@@ -202,13 +202,14 @@ bool ef_boot_config_set_wifi_ssid(const char *ssid)
 	}
 	size_t length = 0;
 
-	while (length < EF_WIFI_SSID_SIZE && ssid[length]) {
+	while (length < EF_SSID_BUFFER_SIZE && ssid[length]) {
 		++length;
 	}
-	return length < EF_WIFI_SSID_SIZE && ef_boot_config_set_wifi_ssid_bytes((const uint8_t *)ssid, (uint8_t)length);
+	return length < EF_SSID_BUFFER_SIZE &&
+	       ef_boot_config_set_wifi_ssid_bytes((const uint8_t *)ssid, (uint8_t)length);
 }
 
-uint8_t ef_boot_config_wifi_ssid_bytes(uint8_t ssid[32])
+uint8_t ef_boot_config_wifi_ssid_bytes(uint8_t ssid[EF_SSID_MAX_BYTES])
 {
 	memcpy(ssid, staged.ssid, sizeof(staged.ssid));
 	return staged.ssid_length;

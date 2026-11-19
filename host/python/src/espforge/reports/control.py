@@ -135,7 +135,6 @@ def _validate_detail(opcode: int, status: int, error: int, detail: int) -> None:
             ControlDetail.INSUFFICIENT_SPACE,
             ControlDetail.BENCHMARK_FILE_EXISTS,
             ControlDetail.PREFLIGHT_FILESYSTEM_IO,
-            ControlDetail.FILESYSTEM_NOT_MOUNTED,
         }
     if detail not in allowed:
         raise ValueError("invalid HID control detail for opcode/status/error")

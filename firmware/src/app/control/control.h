@@ -13,6 +13,7 @@
 
 #include "app/usb/hid_reports.h"
 
+/** Result status values. */
 #define EF_STATUS_IDLE 0u
 #define EF_STATUS_PENDING 1u
 #define EF_STATUS_COMPLETED 2u
@@ -21,6 +22,7 @@
 #define EF_STATUS_BUSY 5u
 #define EF_STATUS_FAILED 6u
 
+/** Result error_reason values. */
 #define EF_ERROR_NONE 0u
 #define EF_ERROR_MALFORMED 1u
 #define EF_ERROR_CONFIRMATION 2u
@@ -30,6 +32,7 @@
 #define EF_ERROR_FAILED 6u
 #define EF_ERROR_OPCODE 7u
 
+/** Assigned opcodes; 3, 4 and 6-13 are USB-only. */
 #define EF_OP_LED 1u
 #define EF_OP_REBOOT 2u
 #define EF_OP_MSC 3u
@@ -44,13 +47,17 @@
 #define EF_OP_SCAN_ENTRY 12u
 #define EF_OP_TCP_PROOF 13u
 
-#define EF_DETAIL_CONFLICT 1u
-#define EF_DETAIL_SCAN_STALE 22u
-#define EF_DETAIL_SCAN_INDEX 23u
-#define EF_DETAIL_TEST_ACTIVE 25u
-#define EF_DETAIL_SCAN_ACTIVE 26u
-#define EF_DETAIL_COMMIT_FLAG 27u
-#define EF_DETAIL_USB_STAGED 28u
+/*
+ * Dispatcher-owned result details. Staging owns details 16-21; benchmark admission returns its own
+ * ef_benchmark_error_t values, which share the same wire namespace.
+ */
+#define EF_DETAIL_CONFLICT 1u /**< Storage worker busy or USB owns the medium. */
+#define EF_DETAIL_SCAN_STALE 22u /**< Scan generation is stale or incomplete. */
+#define EF_DETAIL_SCAN_INDEX 23u /**< Scan index is out of range. */
+#define EF_DETAIL_TEST_ACTIVE 25u /**< A candidate Wi-Fi test is active. */
+#define EF_DETAIL_SCAN_ACTIVE 26u /**< A Wi-Fi scan is active. */
+#define EF_DETAIL_COMMIT_FLAG 27u /**< Staged values exist but the save commit flag is clear. */
+#define EF_DETAIL_USB_STAGED 28u /**< Unexpired USB staging blocks a BLE save or reboot. */
 
 void ef_control_init(void);
 

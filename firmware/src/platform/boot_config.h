@@ -18,12 +18,12 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "wireless_limits.h"
+
 /** Wi-Fi radio master-switch bit. */
 #define EF_WIRELESS_WIFI 1u
 /** BLE radio master-switch bit. */
 #define EF_WIRELESS_BLE 2u
-/** NUL-terminated SSID storage size, including its terminator. */
-#define EF_WIFI_SSID_SIZE 33u
 /** NUL-terminated passphrase storage size, including its terminator. */
 #define EF_WIFI_PASSWORD_SIZE 64u
 /** Control key size in bytes. */
@@ -111,25 +111,25 @@ bool ef_boot_config_set_radios(uint8_t radios);
 uint8_t ef_boot_config_boot_radios(void);
 
 /**
- * @brief Copy the staged SSID into a 33-byte buffer, with a final terminator.
+ * @brief Copy the staged SSID into a NUL-terminated buffer.
  *
  * Opaque SSIDs may contain embedded zeros; use the byte getter for network identity.
  */
-void ef_boot_config_wifi_ssid(char ssid[EF_WIFI_SSID_SIZE]);
+void ef_boot_config_wifi_ssid(char ssid[EF_SSID_BUFFER_SIZE]);
 /**
  * @brief Stage an SSID string; an empty string clears it.
- * @return false for null or a string longer than 32 bytes.
+ * @return false for null or a string longer than EF_SSID_MAX_BYTES.
  */
 bool ef_boot_config_set_wifi_ssid(const char *ssid);
 /**
- * @brief Copy the staged opaque SSID, zero padded to 32 bytes.
+ * @brief Copy the staged opaque SSID, zero padded to EF_SSID_MAX_BYTES.
  * @return Saved byte length, including embedded zero bytes.
  */
-uint8_t ef_boot_config_wifi_ssid_bytes(uint8_t ssid[32]);
+uint8_t ef_boot_config_wifi_ssid_bytes(uint8_t ssid[EF_SSID_MAX_BYTES]);
 /**
  * @brief Stage an opaque SSID without text conversion.
  * @param ssid Bytes to copy; may be null only when length is zero.
- * @param length Byte length, zero through 32.
+ * @param length Byte length, zero through EF_SSID_MAX_BYTES.
  */
 bool ef_boot_config_set_wifi_ssid_bytes(const uint8_t *ssid, uint8_t length);
 /** @brief Copy the staged private passphrase; never expose it in a host report. */
