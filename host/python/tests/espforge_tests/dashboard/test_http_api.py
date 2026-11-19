@@ -79,7 +79,7 @@ class FakeMonitor:
     def set_settings(self, settings):
         validate_settings(settings)
         self.last_settings = settings
-        return {"settings": settings, "control_result": None}
+        return {"settings": settings}
 
     def reboot(self):
         return {"control_result": {"status": "completed", "opcode": 2, "transaction_id": 1}}
@@ -480,7 +480,8 @@ class WebTests(unittest.TestCase):
     def test_settings_endpoint_validates_and_returns_confirmed_values(self):
         monitor = FakeMonitor()
         client = create_app(FakeBoards(monitor)).test_client()
-        settings = {"system_clock_mhz": 160, "sdcard_profile": 0, "radios": 2}
+        contract = API_CONTRACT["settings_save"]
+        settings = contract["body"]
         for invalid in (
             {**settings, "system_clock_mhz": 100},
             {**settings, "system_clock_mhz": 200},
@@ -491,8 +492,8 @@ class WebTests(unittest.TestCase):
             response = client.post("/api/settings?board=board-a", json=invalid, base_url="http://127.0.0.1")
             self.assertEqual(response.status_code, 400)
         response = client.post("/api/settings?board=board-a", json=settings, base_url="http://127.0.0.1")
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json["settings"], settings)
+        self.assertEqual(response.status_code, contract["status"])
+        self.assertEqual(response.json, contract["response"])
         self.assertEqual(monitor.last_settings, settings)
 
     def test_settings_endpoint_reports_invalid_device_readback_as_service_error(self):

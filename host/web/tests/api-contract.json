@@ -33,6 +33,12 @@
     "status": 409,
     "error": "Forced save is unavailable on ESPForge firmware"
   },
+  "settings_save": {
+    "route": "/api/settings",
+    "body": {"system_clock_mhz": 240, "sdcard_profile": 0, "radios": 0},
+    "status": 200,
+    "response": {"settings": {"system_clock_mhz": 240, "sdcard_profile": 0, "radios": 0}}
+  },
   "reboot_ack": {
     "route": "/api/reboot",
     "body": {"confirm": true},

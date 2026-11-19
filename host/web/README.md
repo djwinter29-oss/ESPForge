@@ -45,7 +45,8 @@ including heap pools, not live usage; flash capacity is not free space. No capac
 | `POST /api/wireless/cancel` | Cancel a test and clear temporary credentials |
 
 Settings requests with `confirm_data_loss:true` are refused with HTTP 409 and the same error body on both hosts;
-there is no forced-save workflow.
+there is no forced-save workflow. Successful settings saves return the confirmed values as
+`{"settings":{"system_clock_mhz":240,"sdcard_profile":0,"radios":0}}` on both hosts.
 Wireless requests may omit `tcp_cli_enabled` or supply `false`, never `true`. Omitted credentials are not
 restaged. Opaque SSIDs use `ssid_hex` alongside an escaped display label; test/save requests may use the hex
 form to preserve network bytes.

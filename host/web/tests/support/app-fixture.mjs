@@ -187,10 +187,11 @@ export async function appFixture(context) {
       const status = state.settingsOutcomeConflict ? 409
         : state.saveFails ? state.settingsFailure === "unsupported" ? 503 : 409 : 200;
       return { ok: !state.saveFails && !state.settingsOutcomeConflict, status,
-        json: async () => ({ error: state.settingsOutcomeConflict
-          ? "Save outcome is uncertain; the command was not resent"
-          : state.settingsFailure === "unsupported" ? "HID settings command is not supported" : "save rejected",
-        settings: state.readbackMismatch ? { ...settings, sdcard_profile: 99 } : settings }) };
+        json: async () => status === 200
+          ? { settings: state.readbackMismatch ? { ...settings, sdcard_profile: 99 } : settings }
+          : { error: state.settingsOutcomeConflict
+            ? "Save outcome is uncertain; the command was not resent"
+            : state.settingsFailure === "unsupported" ? "HID settings command is not supported" : "save rejected" } };
     }
     if (url.startsWith("/api/reboot?board=")) {
       assert.deepEqual(JSON.parse(options.body), { confirm: true });

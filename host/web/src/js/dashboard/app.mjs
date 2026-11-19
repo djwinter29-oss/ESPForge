@@ -3,12 +3,13 @@
 
 // @ts-check
 import { initializeSettings, normalizeStatus, renderStatus as renderDashboardStatus } from "./view.mjs";
+import { createBoardSession } from "./board-session.mjs";
 import { createCommandLifecycle } from "./command-lifecycle.mjs";
 import { createDeviceActions } from "./device-actions.mjs";
 import { bindWirelessForm } from "./wireless-form.mjs";
 import {
   DashboardError, reconciledResult, responseJson, savedSettings, savedWireless,
-  scannedBoards, scannedNetworks, statusResponse, testedWireless,
+  scannedNetworks, testedWireless,
   wirelessConfiguration,
 } from "./api.mjs";
 import {
@@ -29,6 +30,8 @@ const clockControl = /** @type {HTMLSelectElement} */ (document.querySelector("#
 const rebootControl = /** @type {HTMLButtonElement} */ (document.querySelector("#reboot-control"));
 const identityDetails = ["product-information", "module-memory"]
   .map(id => /** @type {HTMLDetailsElement} */ (element(id)));
+/** @type {ReturnType<typeof createBoardSession>} */
+let boardSession;
 for (const details of identityDetails) {
   const show = () => {
     for (const other of identityDetails) other.open = other === details;
@@ -59,9 +62,7 @@ function element(id) {
 /** @param {string} url @param {RequestInit} options @param {number} timeoutMs */
 const fetchWithDeadline = (url, options, timeoutMs) =>
   fetch(url, { ...options, signal: AbortSignal.timeout(timeoutMs) });
-let requestInProgress = false;
 /** @typedef {import("./api.mjs").StatusSnapshot} DashboardSnapshot
- * @typedef {{id: string, serial_number?: string | null, device_path: string}} Board
  */
 /** @type {DashboardSnapshot | null} */
 let currentSnapshot = null;
@@ -72,22 +73,8 @@ let settingsRequestInProgress = false;
 let settingsDraft = {};
 /** @type {string | null} */
 let settingsMessage = null;
-/** @type {string | null} */
-let selectedBoard = null;
-let selectedBoardLabel = "";
-/** @type {Board[]} */
-let knownBoards = [];
-let scanningBoards = false;
-/** @type {string | null} */
-let boardScanWarning = null;
-let unknownBoardRescanAt = 0;
-// Selection fences board ownership; command versions reject observations started before a local transition.
-let selectionVersion = 0;
-let commandVersion = 0;
 /** @type {((phase: string) => void) | null} */
 let wirelessProgress = null;
-/** @type {string | null} */
-let statusReadError = null;
 let boardState = createCommandState();
 /** @type {Map<string, import("./operation-state.mjs").BoardCommandState>} */
 const boardCommandStates = new Map();
@@ -116,10 +103,11 @@ function uncertainMessage(error, fallback) {
  * @param {import("./operation-state.mjs").Recovery} [recovery] @param {string | null} [boardId]
  */
 function markCommandOutcomeUncertain(error, message =
-  "Command outcome is uncertain. Use Re-sync before retrying.", recovery = { kind: "reconnect" }, boardId = selectedBoard) {
+  "Command outcome is uncertain. Use Re-sync before retrying.", recovery = { kind: "reconnect" },
+  boardId = boardSession.state().selectedBoard) {
   if (!hasUnknownOutcome(error)) return false;
   const command = { ...recovery, message };
-  if (boardId !== selectedBoard) {
+  if (boardId !== boardSession.state().selectedBoard) {
     if (boardId) commandStateFor(boardId).uncertainCommand = command;
     return true;
   }
@@ -137,7 +125,7 @@ function operationState(snapshot = currentSnapshot) {
     uncertain: boardState.uncertainCommand !== null, rebootPending: boardState.rebootPending !== null,
     resyncing: commandResyncInProgress, saving: settingsRequestInProgress,
     wirelessBusy: wirelessForm.operationBusy(), wirelessInFlight: wirelessForm.inFlight(),
-    statusFailed: statusReadError !== null, scanning: scanningBoards,
+    statusFailed: boardSession.state().statusError !== null, scanning: boardSession.state().scanning,
     radiosDirty: wirelessForm.radioEdited("wifi") || wirelessForm.radioEdited("ble"),
     settingsDirty: settingsDirty(), wirelessDirty: wirelessForm.dirty(),
     wirelessBlockReason: wirelessForm.saveBlockReason(),
@@ -167,19 +155,19 @@ function clearCommandFailure(opcode) {
 }
 const runCommandLifecycle = createCommandLifecycle({
   begin: options => {
-    commandVersion++;
+    boardSession.commandChanged();
     settingsRequestInProgress = true;
     if (options.clearFailure !== undefined) clearCommandFailure(options.clearFailure);
     if (options.startMessage !== undefined) settingsMessage = options.startMessage;
     if (currentSnapshot) renderStatus(currentSnapshot);
   },
   finish: options => {
-    commandVersion++;
+    boardSession.commandChanged();
     settingsRequestInProgress = false;
     if (options.updateBoardControls) updateBoardSelectionControls();
     if (currentSnapshot) renderStatus(currentSnapshot);
     if (options.refresh === "always" || options.refresh === "uncertain" && boardState.uncertainCommand)
-      void updateStatus();
+      void boardSession.updateStatus();
   },
 });
 const wirelessForm = bindWirelessForm({
@@ -187,8 +175,8 @@ const wirelessForm = bindWirelessForm({
   cleanupRequired: () => Boolean(currentSnapshot?.wireless_cleanup_required),
   ready: wirelessReady,
   scan: async () => {
-    const boardId = selectedBoard;
-    commandVersion++;
+    const boardId = boardSession.state().selectedBoard;
+    boardSession.commandChanged();
     try {
       const response = await fetchWithDeadline(boardUrl("/api/wireless/scan", boardId), { method: "POST" }, 20000);
       const result = await responseJson(response, `Wireless scan returned HTTP ${response.status}`, true);
@@ -198,13 +186,13 @@ const wirelessForm = bindWirelessForm({
       markCommandOutcomeUncertain(error, undefined, { kind: "resync" }, boardId);
       throw error;
     } finally {
-      commandVersion++;
+      boardSession.commandChanged();
     }
   },
   test: async (settings, onProgress) => {
-    const version = selectionVersion;
-    const boardId = selectedBoard;
-    commandVersion++;
+    const version = boardSession.state().selectionVersion;
+    const boardId = boardSession.state().selectedBoard;
+    boardSession.commandChanged();
     wirelessProgress = onProgress;
     try {
       const response = await fetchWithDeadline(boardUrl("/api/wireless/test"), {
@@ -222,13 +210,13 @@ const wirelessForm = bindWirelessForm({
       }
       throw error;
     } finally {
-      commandVersion++;
-      if (version === selectionVersion) wirelessProgress = null;
+      boardSession.commandChanged();
+      if (version === boardSession.state().selectionVersion) wirelessProgress = null;
     }
   },
   cancelTest: async () => {
-    const boardId = selectedBoard;
-    commandVersion++;
+    const boardId = boardSession.state().selectedBoard;
+    boardSession.commandChanged();
     try {
       const response = await fetchWithDeadline(boardUrl("/api/wireless/cancel"), { method: "POST" }, 10000);
       const result = await responseJson(response, `Cancel returned HTTP ${response.status}`, true);
@@ -241,14 +229,63 @@ const wirelessForm = bindWirelessForm({
       markCommandOutcomeUncertain(error, undefined, { kind: "resync" }, boardId);
       throw error;
     } finally {
-      commandVersion++;
+      boardSession.commandChanged();
     }
   },
   changed: () => { if (currentSnapshot) renderStatus(currentSnapshot); },
 });
+boardSession = createBoardSession({
+  boardSelect,
+  rescanButton: rescanBoardsButton,
+  fetchWithDeadline,
+  normalizeSnapshot: normalizeStatus,
+  getOperationState: operationState,
+  statusBlocked: () => settingsRequestInProgress,
+  onStatus: snapshot => {
+    if (!commandResyncInProgress
+      && observeCommandStatus(boardState, snapshot)?.kind === "settings") {
+      settingsDraft = {};
+      settingsMessage = "Settings readback matches the requested values.";
+    }
+    currentSnapshot = snapshot;
+    acceptConnection(snapshot);
+    if (currentSnapshot.wireless_phase) wirelessProgress?.(currentSnapshot.wireless_phase);
+    if (wirelessReady() && currentSnapshot.wireless) wirelessForm.initialize(currentSnapshot.wireless);
+    initializeSettings({ ...snapshot, ...settingsEditState() });
+    renderStatus(currentSnapshot);
+  },
+  onStatusError: error => {
+    const failedSnapshot = currentSnapshot?.connected
+      ? { ...currentSnapshot, error: `Status unavailable: ${error.message}`,
+        telemetry_stale: true, storage_stale: true }
+      : { connected: false, error: error.message };
+    renderStatus(failedSnapshot);
+  },
+  onScanError: error => {
+    const message = `Board scan failed: ${error.message}`;
+    if (currentSnapshot?.connected) {
+      currentSnapshot = { ...currentSnapshot, error: message };
+      renderStatus(currentSnapshot);
+    } else {
+      renderStatus({ connected: false, error: message });
+    }
+  },
+  onSelectionChanged: (boardId, source) => {
+    configurationDialog.close();
+    rebootDialog.close();
+    mscDialog.close();
+    disconnectedUi = false;
+    currentSnapshot = null;
+    acceptConnection({ connected: false });
+    settingsDraft = {};
+    if (source === "select") settingsMessage = null;
+    boardState = boardId ? commandStateFor(boardId) : createCommandState();
+    renderStatus({ connected: false });
+  },
+});
 const deviceActions = createDeviceActions({
   getCurrentSnapshot: () => currentSnapshot,
-  getSelectedBoard: () => selectedBoard,
+  getSelectedBoard: () => boardSession.state().selectedBoard,
   operationState,
   runCommandLifecycle,
   boardUrl,
@@ -292,24 +329,12 @@ async function saveCombinedSettings(settings) {
 }
 
 /** @param {string} path @param {string | null} [boardId] */
-function boardUrl(path, boardId = selectedBoard) {
-  if (!boardId) return path;
-  return `${path}${path.includes("?") ? "&" : "?"}board=${encodeURIComponent(boardId)}`;
+function boardUrl(path, boardId) {
+  return boardSession.boardUrl(path, boardId);
 }
 
-/** @param {Board} board */
-function boardLabel(board) {
-  return board.serial_number ? `ESPForge / ${board.serial_number}` : `ESPForge / HID ${board.device_path}`;
-}
-
-function boardSelectionBusy() {
-  return operationState().boardSelectionBusy;
-}
-
-/** @param {OperationState} [operations] */
-function updateBoardSelectionControls(operations = operationState()) {
-  boardSelect.disabled = operations.boardSelectionBusy || knownBoards.length === 0;
-  rescanBoardsButton.disabled = operations.boardSelectionBusy;
+function updateBoardSelectionControls() {
+  boardSession?.updateControls();
 }
 
 /** @param {DashboardSnapshot} snapshot */
@@ -333,20 +358,21 @@ function settingsEditState() {
 /** @param {DashboardSnapshot} snapshot */
 function renderStatus(snapshot) {
   const operations = operationState(snapshot);
-  updateBoardSelectionControls(operations);
+  updateBoardSelectionControls();
+  const session = boardSession.state();
   renderDashboardStatus({
     ...snapshot,
     error: snapshot.error ?? (boardState.uncertainCommand ? snapshot.command_resync_supported
       ? boardState.uncertainCommand.message
         : "Command outcome is uncertain. Reconnect the board and reload the dashboard before retrying."
-      : boardState.commandFailure?.message ?? boardScanWarning),
-    no_board_selected: !selectedBoard,
-    console_url: selectedBoard && statusReadError === null ? boardUrl("/console") : null,
+      : boardState.commandFailure?.message ?? session.scanWarning),
+    no_board_selected: !session.selectedBoard,
+    console_url: session.selectedBoard && session.statusError === null ? boardUrl("/console") : null,
     ...settingsEditState(),
     wireless_dirty: wirelessForm.dirty(),
     settings_message: settingsMessage ?? snapshot.settings_message,
-    status_read_error: statusReadError !== null,
-    status_reading: requestInProgress,
+    status_read_error: session.statusError !== null,
+    status_reading: session.statusReading,
   }, operations);
   const discard = /** @type {HTMLButtonElement} */ (element("wireless-discard"));
   discard.hidden = !wirelessForm.conflicted();
@@ -356,27 +382,27 @@ function renderStatus(snapshot) {
 
 element("wireless-discard").addEventListener("click", async () => {
   if (!operationState().canProvisionWireless || !wirelessForm.conflicted()) return;
-  commandVersion++;
+  boardSession.commandChanged();
   try {
     if (!await wirelessForm.discardEdits() || !currentSnapshot) return;
     currentSnapshot.wireless = null;
     renderStatus(currentSnapshot);
   } finally {
-    commandVersion++;
-    await updateStatus();
+    boardSession.commandChanged();
+    await boardSession.updateStatus();
   }
 });
 
 async function resyncCommandOutcome() {
   const operations = operationState();
   if (!operations.canRecover || !currentSnapshot) return;
-  const version = selectionVersion;
-  commandVersion++;
+  const version = boardSession.state().selectionVersion;
+  boardSession.commandChanged();
   commandResyncInProgress = true;
   renderStatus(currentSnapshot);
   try {
     if (operations.recovery === "cleanup") {
-      if (await wirelessForm.clearTest()) await updateStatus();
+      if (await wirelessForm.clearTest()) await boardSession.updateStatus();
       return;
     }
     const response = await fetchWithDeadline(boardUrl("/api/control/resync"), {
@@ -385,7 +411,7 @@ async function resyncCommandOutcome() {
       body: JSON.stringify({ confirm: true }),
     }, 10000);
     const result = await responseJson(response, `Command re-sync returned HTTP ${response.status}`, true);
-    if (version !== selectionVersion) return;
+    if (version !== boardSession.state().selectionVersion) return;
     const control = reconciledResult(result);
     boardState.uncertainCommand = null;
     currentSnapshot.command_outcome_uncertain = false;
@@ -397,145 +423,15 @@ async function resyncCommandOutcome() {
     } else if (control?.opcode !== 10) wirelessForm.cancelResolved(false);
     if (result.wireless != null) currentSnapshot.wireless = wirelessConfiguration(result.wireless);
     if (result.control_result) currentSnapshot.control_result = result.control_result;
-    await updateStatus();
+    await boardSession.updateStatus();
   } catch (error) {
     if (!(error instanceof Error)) throw error;
-    if (version === selectionVersion && currentSnapshot) currentSnapshot.error = error.message;
+    if (version === boardSession.state().selectionVersion && currentSnapshot) currentSnapshot.error = error.message;
   } finally {
-    commandVersion++;
+    boardSession.commandChanged();
     commandResyncInProgress = false;
     updateBoardSelectionControls();
-    if (version === selectionVersion && currentSnapshot) renderStatus(currentSnapshot);
-  }
-}
-
-async function updateStatus() {
-  if (requestInProgress || settingsRequestInProgress) return;
-  requestInProgress = true;
-  const version = selectionVersion;
-  const command = commandVersion;
-  try {
-    const response = await fetchWithDeadline(boardUrl("/api/status"), { cache: "no-store" }, 5000);
-    /** @type {DashboardSnapshot} */
-    const snapshot = normalizeStatus(statusResponse(
-      await responseJson(response, `Status endpoint returned HTTP ${response.status}`)));
-    if (version !== selectionVersion || command !== commandVersion) return;
-    if (settingsRequestInProgress) return;
-    statusReadError = null;
-    if (!commandResyncInProgress
-      && observeCommandStatus(boardState, snapshot)?.kind === "settings") {
-      settingsDraft = {};
-      settingsMessage = "Settings readback matches the requested values.";
-    }
-    currentSnapshot = snapshot;
-    acceptConnection(snapshot);
-    if (currentSnapshot.wireless_phase) wirelessProgress?.(currentSnapshot.wireless_phase);
-    if (wirelessReady() && currentSnapshot.wireless) wirelessForm.initialize(currentSnapshot.wireless);
-    initializeSettings({ ...snapshot, ...settingsEditState() });
-    renderStatus(currentSnapshot);
-  } catch (error) {
-    if (!(error instanceof Error)) throw error;
-    if (version !== selectionVersion || command !== commandVersion) return;
-    // Both hosts return 404 for an unknown board; a restart requires discovery to register it again.
-    if (error instanceof DashboardError && error.status === 404
-      && Date.now() - unknownBoardRescanAt >= 5000) {
-      unknownBoardRescanAt = Date.now();
-      void rescanBoards();
-    }
-    statusReadError = error.message;
-    const failedSnapshot = currentSnapshot?.connected
-      ? { ...currentSnapshot, error: `Status unavailable: ${error.message}`,
-        telemetry_stale: true, storage_stale: true }
-      : { connected: false, error: error.message };
-    renderStatus(failedSnapshot);
-  } finally {
-    requestInProgress = false;
-    updateBoardSelectionControls();
-    if (version !== selectionVersion || command !== commandVersion) void updateStatus();
-  }
-}
-
-/** @param {string} boardId */
-function selectBoard(boardId) {
-  if (boardSelectionBusy()) {
-    boardSelect.value = selectedBoard || "";
-    return;
-  }
-  const nextBoard = boardId || null;
-  if (nextBoard === selectedBoard) return;
-  configurationDialog.close();
-  rebootDialog.close();
-  mscDialog.close();
-  selectedBoard = nextBoard;
-  const selected = knownBoards.find(board => board.id === selectedBoard);
-  selectedBoardLabel = selected ? boardLabel(selected) : selectedBoardLabel;
-  selectionVersion++;
-  disconnectedUi = false;
-  currentSnapshot = null;
-  acceptConnection({ connected: false });
-  settingsDraft = {};
-  settingsMessage = null;
-  boardState = selectedBoard ? commandStateFor(selectedBoard) : createCommandState();
-  renderStatus({ connected: false });
-  void updateStatus();
-}
-
-async function rescanBoards() {
-  if (boardSelectionBusy()) return;
-  scanningBoards = true;
-  updateBoardSelectionControls();
-  try {
-    const response = await fetchWithDeadline("/api/boards", { cache: "no-store" }, 10000);
-    const result = await responseJson(response, `Board scan returned HTTP ${response.status}`);
-    boardScanWarning = Array.isArray(result.warnings) ? result.warnings.join(" ") || null : null;
-    const previousBoard = selectedBoard;
-    knownBoards = scannedBoards(result);
-    boardSelect.replaceChildren();
-    const placeholder = document.createElement("option");
-    placeholder.value = "";
-    placeholder.textContent = knownBoards.length ? "Select a board" : "No boards found";
-    boardSelect.append(placeholder);
-    for (const board of knownBoards) {
-      const option = document.createElement("option");
-      option.value = board.id;
-      option.textContent = boardLabel(board);
-      boardSelect.append(option);
-    }
-    if (!selectedBoard && typeof result.default_board_id === "string") {
-      selectedBoard = result.default_board_id;
-    }
-    const selected = knownBoards.find(board => board.id === selectedBoard);
-    if (selected) {
-      selectedBoardLabel = boardLabel(selected);
-    } else if (selectedBoard) {
-      const missing = document.createElement("option");
-      missing.value = selectedBoard;
-      missing.textContent = `${selectedBoardLabel || selectedBoard} (not found)`;
-      boardSelect.append(missing);
-    }
-    boardSelect.value = selectedBoard || "";
-    if (previousBoard !== selectedBoard) {
-      selectionVersion++;
-      disconnectedUi = false;
-      currentSnapshot = null;
-      acceptConnection({ connected: false });
-      settingsDraft = {};
-      boardState = selectedBoard ? commandStateFor(selectedBoard) : createCommandState();
-      renderStatus({ connected: false });
-    }
-    await updateStatus();
-  } catch (error) {
-    if (!(error instanceof Error)) throw error;
-    const message = `Board scan failed: ${error.message}`;
-    if (currentSnapshot?.connected) {
-      currentSnapshot = { ...currentSnapshot, error: message };
-      renderStatus(currentSnapshot);
-    } else {
-      renderStatus({ connected: false, error: message });
-    }
-  } finally {
-    scanningBoards = false;
-    updateBoardSelectionControls();
+    if (version === boardSession.state().selectionVersion && currentSnapshot) renderStatus(currentSnapshot);
   }
 }
 
@@ -621,8 +517,8 @@ element("msc-enable").addEventListener("click", () => deviceActions.requestMsc(t
 element("msc-return").addEventListener("click", () => deviceActions.requestMsc(false));
 element("cancel-msc").addEventListener("click", () => mscDialog.close());
 element("confirm-msc").addEventListener("click", deviceActions.setMsc);
-boardSelect.addEventListener("change", () => selectBoard(boardSelect.value));
-rescanBoardsButton.addEventListener("click", rescanBoards);
+boardSelect.addEventListener("change", () => boardSession.selectBoard(boardSelect.value));
+rescanBoardsButton.addEventListener("click", boardSession.rescanBoards);
 clockControl.addEventListener("change", () => {
   const value = Number(clockControl.value);
   if (!Number.isInteger(value) || value < 0) throw new Error(`Invalid system_clock_mhz: ${clockControl.value}`);
@@ -665,9 +561,9 @@ for (const dialog of [configurationDialog, rebootDialog, mscDialog]) {
 }
 element("confirm-configuration").addEventListener("click", saveSettings);
 element("confirm-reboot").addEventListener("click", deviceActions.rebootDevice);
-void rescanBoards();
+void boardSession.rescanBoards();
 const pollWhenVisible = () => {
-  return document.hidden ? Promise.resolve() : updateStatus();
+  return document.hidden ? Promise.resolve() : boardSession.updateStatus();
 };
 document.addEventListener?.("visibilitychange", pollWhenVisible);
 window.setInterval(pollWhenVisible, 1000);

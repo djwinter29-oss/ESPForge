@@ -316,7 +316,7 @@ class DeviceMonitor:
             self._require_firmware_storage()
             saved = self._send_control(client.set_settings, settings)
             self._publish_saved_settings(saved)
-            return {"settings": saved, "control_result": client.last_command_result}
+            return {"settings": saved}
 
     def set_led_colour(self, colour: int) -> ControlResponse:
         with self._device():

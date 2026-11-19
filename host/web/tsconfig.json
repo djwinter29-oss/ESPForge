@@ -20,6 +20,7 @@
     "src/js/dashboard/operation-state.mjs",
     "src/js/dashboard/wireless-policy.mjs",
     "src/js/dashboard/wireless-form.mjs",
+    "src/js/dashboard/board-session.mjs",
     "src/js/dashboard/command-lifecycle.mjs",
     "src/js/dashboard/device-actions.mjs",
     "src/js/dashboard/app.mjs",

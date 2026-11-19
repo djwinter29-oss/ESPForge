@@ -174,6 +174,39 @@ public sealed class DashboardApplicationTests
         await app.StopAsync();
     }
 
+    [Fact]
+    public async Task SettingsSaveMatchesTheSharedHostApiContract()
+    {
+        await using var app = await Build(new OneBoard(new SettingsMonitor()));
+        await app.StartAsync();
+        using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
+        using var contract = JsonDocument.Parse(File.ReadAllText(
+            Path.Combine(AppContext.BaseDirectory, "api-contract.json")));
+        var settings = contract.RootElement.GetProperty("settings_save");
+        using var response = await client.PostAsJsonAsync(
+            settings.GetProperty("route").GetString() + "?board=board-a", settings.GetProperty("body"));
+        Assert.Equal(settings.GetProperty("status").GetInt32(), (int)response.StatusCode);
+        var expected = settings.GetProperty("response");
+        var actual = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(expected.EnumerateObject().Select(property => property.Name).OrderBy(name => name),
+            actual.EnumerateObject().Select(property => property.Name).OrderBy(name => name));
+        var expectedValues = expected.GetProperty("settings");
+        var actualValues = actual.GetProperty("settings");
+        Assert.Equal(expectedValues.GetProperty("system_clock_mhz").GetInt32(),
+            actualValues.GetProperty("system_clock_mhz").GetInt32());
+        Assert.Equal(expectedValues.GetProperty("sdcard_profile").GetInt32(),
+            actualValues.GetProperty("sdcard_profile").GetInt32());
+        Assert.Equal(expectedValues.GetProperty("radios").GetInt32(),
+            actualValues.GetProperty("radios").GetInt32());
+        await app.StopAsync();
+    }
+
+    private sealed class SettingsMonitor : TestMonitor
+    {
+        public override BootSettingsResponse SetSettings(BootSettingsResponse settings,
+            CancellationToken cancel = default) => settings;
+    }
+
     private sealed class RebootMonitor : TestMonitor
     {
         public override void Reboot(CancellationToken cancel = default) { }

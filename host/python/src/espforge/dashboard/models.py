@@ -74,7 +74,6 @@ class ControlResponse(TypedDict):
 
 class SettingsResponse(TypedDict):
     settings: BootSettings
-    control_result: ControlResult | None
 
 
 class _ResyncReset(TypedDict, total=False):
