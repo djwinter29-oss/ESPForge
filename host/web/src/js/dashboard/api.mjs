@@ -77,20 +77,28 @@ export async function responseJson(response, fallback, mutation = false) {
   return result;
 }
 
-/** Validate facts used for lifecycle transitions before a status reply can replace the last known snapshot.
+const REQUIRED_STATUS_FLAGS = [
+  "connected", "command_outcome_uncertain", "reboot_pending", "settings_supported",
+  "telemetry_stale", "storage_stale", "self_test_stale",
+];
+const OPTIONAL_STATUS_FLAGS = [
+  "reconnecting", "command_resync_supported", "wireless_cleanup_required", "outcome_uncertain",
+];
+const OPTIONAL_STATUS_SECTIONS = ["hardware", "runtime", "memory", "self_test", "board_configuration", "wireless"];
+
+/** Validate required lifecycle facts and degradable optional diagnostics before replacing the last known snapshot.
  * @param {Record<string, unknown>} result
  * @returns {StatusSnapshot}
  */
 export function statusResponse(result) {
-  for (const field of ["connected", "command_outcome_uncertain", "reboot_pending", "settings_supported",
-    "telemetry_stale", "storage_stale", "self_test_stale"]) {
+  for (const field of REQUIRED_STATUS_FLAGS) {
     if (typeof result[field] !== "boolean") throw new DashboardError(`Invalid status field: ${field}`);
   }
-  for (const field of ["reconnecting", "command_resync_supported", "wireless_cleanup_required", "outcome_uncertain"]) {
+  for (const field of OPTIONAL_STATUS_FLAGS) {
     if (result[field] !== undefined && typeof result[field] !== "boolean")
       throw new DashboardError(`Invalid status field: ${field}`);
   }
-  for (const field of ["hardware", "runtime", "memory", "self_test", "board_configuration", "wireless"]) {
+  for (const field of OPTIONAL_STATUS_SECTIONS) {
     if (result[field] != null && !isObject(result[field])) throw new DashboardError(`Invalid status section: ${field}`);
   }
   /** @type {Array<[unknown, string[]]>} */
@@ -289,13 +297,11 @@ export function scannedBoards(result) {
 }
 
 /**
- * Python reports the completed control result; .NET returns an empty acknowledgement.
+ * Both hosts return the same explicit admission acknowledgement. An empty object is never success.
  * @param {Record<string, unknown>} result @param {number} opcode @returns {ControlResult}
  */
 export function acknowledge(result, opcode) {
-  if (Object.keys(result).length === 0) return { opcode, status: "completed" };
-  const control = result.control_result;
-  if (isControlResult(control) && control.status === "completed" && control.opcode === opcode) return control;
+  if (result.accepted === true) return { opcode, status: "completed" };
   throw new DashboardError("Invalid command acknowledgement; outcome is uncertain", undefined, true);
 }
 

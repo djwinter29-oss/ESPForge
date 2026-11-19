@@ -6,7 +6,7 @@ import test from "node:test";
 import {
   CAPABILITY_REBOOT, CAPABILITY_SETTINGS, CAPABILITY_SDMMC, CAPABILITY_WIRELESS,
   commandEffects, commandSettled, createCommandState, observeCommandStatus, operationState,
-} from "../../src/js/operation-state.mjs";
+} from "../../src/js/dashboard/operation-state.mjs";
 
 const ready = {
   connected: true, hardware: { capabilities: 0x96 }, msc: { enabled: false, transition_pending: false },

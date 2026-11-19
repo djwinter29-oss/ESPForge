@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Ji Dong
 
 // @ts-check
-import { ConsoleTerminal, consoleKey } from "./console-terminal.mjs";
+import { ConsoleTerminal, consoleKey } from "./terminal.mjs";
 
 /**
  * @param {{openUrl: string, openBody: object, check?: () => Promise<void>}} options

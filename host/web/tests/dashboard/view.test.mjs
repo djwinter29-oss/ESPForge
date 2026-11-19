@@ -3,9 +3,9 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { normalizeStatus, renderStatus as renderServerStatus } from "../../src/js/dashboard.mjs";
-import { operationState } from "../../src/js/operation-state.mjs";
-import { statusResponse } from "../../src/js/dashboard-api.mjs";
+import { normalizeStatus, renderStatus as renderServerStatus } from "../../src/js/dashboard/view.mjs";
+import { operationState } from "../../src/js/dashboard/operation-state.mjs";
+import { statusResponse } from "../../src/js/dashboard/api.mjs";
 
 function withDocument(run) {
   const saved = globalThis.document;

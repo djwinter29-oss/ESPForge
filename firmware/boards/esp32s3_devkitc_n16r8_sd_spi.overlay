@@ -1,4 +1,4 @@
-#include "esp32s3_devkitc.overlay"
+#include "esp32s3_devkitc_n16r8_sdmmc.overlay"
 
 / {
 	aliases {

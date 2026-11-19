@@ -8,6 +8,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "wireless_limits.h"
+
 /** Feature 12 scan_state values. */
 #define EF_SCAN_IDLE 0u
 #define EF_SCAN_RUNNING 1u
@@ -56,7 +58,7 @@ uint8_t ef_wifi_scan_state(void);
 uint16_t ef_wifi_scan_generation(void);
 uint8_t ef_wifi_scan_count(void);
 
-/** Copy one completed scan entry; ssid must hold 32 bytes. */
+/** Copy one completed scan entry; ssid must hold EF_SSID_MAX_BYTES bytes. */
 int ef_wifi_scan_entry(uint8_t index, uint8_t *ssid, uint8_t *ssid_length, int8_t *rssi, uint8_t *security);
 
 #endif

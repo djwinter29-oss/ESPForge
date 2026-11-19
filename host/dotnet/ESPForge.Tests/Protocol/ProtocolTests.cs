@@ -385,6 +385,9 @@ public sealed class ProtocolTests
         Assert.Equal(HttpStatusCode.BadRequest, unconfirmed.StatusCode);
         var reboot = await client.PostAsJsonAsync("/api/reboot?board=board-a", new { confirm = true });
         Assert.Equal(HttpStatusCode.OK, reboot.StatusCode);
+        var rebootBody = await reboot.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.True(rebootBody.GetProperty("accepted").GetBoolean());
+        Assert.Single(rebootBody.EnumerateObject());
         Assert.True(monitor.RebootRequested);
         var unconfirmedResync = await client.PostAsJsonAsync("/api/control/resync?board=board-a",
             new { confirm = false });

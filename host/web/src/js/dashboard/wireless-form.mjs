@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Ji Dong
 
 // @ts-check
-import { testedWireless } from "./dashboard-api.mjs";
+import { testedWireless } from "./api.mjs";
 
 /**
  * @typedef {"wifi" | "ble"} Radio
@@ -64,7 +64,7 @@ export function renderWirelessStatus(snapshot, consoleUrl = null) {
 }
 
 /** Bind the staged Wi-Fi/Bluetooth dialogs to one atomic boot configuration save.
- * @param {{scan: () => Promise<import("./dashboard-api.mjs").WirelessNetwork[]>,
+ * @param {{scan: () => Promise<import("./api.mjs").WirelessNetwork[]>,
  * test: (settings: WifiPair & {password: string}, progress: (phase: string) => void) =>
  * Promise<ReturnType<typeof testedWireless>>, cancelTest: () => Promise<unknown>,
  * ready: () => boolean, supported: () => boolean, cleanupRequired?: () => boolean, changed?: () => void}} options
@@ -236,7 +236,7 @@ export function bindWirelessForm({
     password = "";
     input("wifi-password").value = "";
   };
-  /** @param {import("./dashboard-api.mjs").WirelessNetwork[]} networks */
+  /** @param {import("./api.mjs").WirelessNetwork[]} networks */
   const renderNetworks = networks => {
     const list = el("wifi-networks");
     list.replaceChildren();

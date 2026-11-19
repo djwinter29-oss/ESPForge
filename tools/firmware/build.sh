@@ -13,8 +13,8 @@ while (($#)); do
 	esac
 done
 case "$storage" in
-	sdmmc) build=firmware; overlay=esp32s3_devkitc.overlay ;;
-	sd-spi) build=firmware-sd-spi; overlay=esp32s3_devkitc_sd_spi.overlay ;;
+	sdmmc) build=firmware; overlay=esp32s3_devkitc_n16r8_sdmmc.overlay ;;
+	sd-spi) build=firmware-sd-spi; overlay=esp32s3_devkitc_n16r8_sd_spi.overlay ;;
 	*) printf 'Error: --storage must be sdmmc or sd-spi.\n' >&2; exit 1 ;;
 esac
 source "$(dirname "${BASH_SOURCE[0]}")/env.sh"

@@ -8,6 +8,7 @@
 #include "platform/boot_config.h"
 #include "app/control/control.h"
 #include "platform/ef_platform.h"
+#include "wireless_limits.h"
 
 #include <errno.h>
 #include <string.h>

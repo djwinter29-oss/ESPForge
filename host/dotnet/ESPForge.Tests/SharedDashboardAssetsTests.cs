@@ -17,11 +17,15 @@ public sealed class SharedDashboardAssetsTests
     [InlineData("index.html")]
     [InlineData("favicon.svg")]
     [InlineData("css/dashboard.css")]
-    [InlineData("js/app.mjs")]
-    [InlineData("js/dashboard.mjs")]
-    [InlineData("js/dashboard-api.mjs")]
-    [InlineData("js/operation-state.mjs")]
-    [InlineData("js/wireless-form.mjs")]
+    [InlineData("js/dashboard/app.mjs")]
+    [InlineData("js/dashboard/view.mjs")]
+    [InlineData("js/dashboard/api.mjs")]
+    [InlineData("js/dashboard/operation-state.mjs")]
+    [InlineData("js/dashboard/wireless-form.mjs")]
+    [InlineData("js/dashboard/command-lifecycle.mjs")]
+    [InlineData("js/console/app.mjs")]
+    [InlineData("js/console/session.mjs")]
+    [InlineData("js/console/terminal.mjs")]
     public void OutputContainsCurrentSharedDashboardAsset(string relativePath)
     {
         var source = Path.Combine(WebRoot(), relativePath);
@@ -105,8 +109,8 @@ public sealed class SharedDashboardAssetsTests
         using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/index.html")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/console.html")).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/js/app.mjs")).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/src/js/app.mjs")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/js/dashboard/app.mjs")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/src/js/dashboard/app.mjs")).StatusCode);
         await app.StopAsync();
     }
 

@@ -115,7 +115,7 @@ class WrapperTests(unittest.TestCase):
         self.assertIn("-m west update --narrow -o=--depth=1", commands)
         self.assertIn("-m west blobs fetch hal_espressif", commands)
         self.assertIn("-b esp32s3_devkitc/esp32s3/procpu", commands)
-        self.assertIn("-DDTC_OVERLAY_FILE=boards/esp32s3_devkitc.overlay", commands)
+        self.assertIn("-DDTC_OVERLAY_FILE=boards/esp32s3_devkitc_n16r8_sdmmc.overlay", commands)
         self.assertIn("-DEF_ENABLE_STORAGE_BENCHMARK=ON", commands)
 
     def test_flash_builds_missing_artifacts_then_flashes_once(self):
@@ -139,7 +139,7 @@ class WrapperTests(unittest.TestCase):
         result = self.run_script("build.sh", "--storage", "sd-spi")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("-d " + str(self.root / "build/firmware-sd-spi"), self.commands())
-        self.assertIn("-DDTC_OVERLAY_FILE=boards/esp32s3_devkitc_sd_spi.overlay", self.commands())
+        self.assertIn("-DDTC_OVERLAY_FILE=boards/esp32s3_devkitc_n16r8_sd_spi.overlay", self.commands())
         self.log.write_text("")
         result = self.run_script("flash.sh", "--storage", "sd-spi", "--port", "/dev/mock")
         self.assertEqual(result.returncode, 0, result.stderr)

@@ -4,8 +4,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { renderStatus } from "../../src/js/dashboard.mjs";
-import { appFixture } from "../support/app-fixture.mjs";
+import { renderStatus } from "../../../src/js/dashboard/view.mjs";
+import { appFixture } from "../../support/app-fixture.mjs";
 
 test("server dashboard presents expected USB reconnection without hiding real errors", () => {
   const saved = globalThis.document;
@@ -143,7 +143,7 @@ test("ESP32-S3 clock choices are fixed and storage stays on the Standard profile
   const { connected, elements, saveAndConfirm, savedSettings, state } = await appFixture(context);
   assert.deepEqual(elements.get("#settings-clock").children.map(option => [option.value, option.textContent]),
     [["0", "Default (240 MHz)"], ["80", "80 MHz"], ["160", "160 MHz"], ["240", "240 MHz"]]);
-  const html = readFileSync(new URL("../../src/index.html", import.meta.url), "utf8");
+  const html = readFileSync(new URL("../../../src/index.html", import.meta.url), "utf8");
   assert.doesNotMatch(html, /id="settings-storage"|High-Speed|id="settings-tcp-cli"/);
   connected.settings.sdcard_profile = 1;
   await state.tick();
@@ -238,7 +238,7 @@ test("storage telemetry, pin rows, and dashboard layout preserve presentation", 
   assert.equal(elements.get("#board-mcu").textContent, "--");
   renderStatus({ ...connected, runtime: { cpu_usage_core0_basis_points: 1234, cpu_usage_core1_basis_points: null } });
   assert.equal(elements.get("#cpu-usage-core0").textContent, "12.3% / --");
-  const html = readFileSync(new URL("../../src/index.html", import.meta.url), "utf8");
+  const html = readFileSync(new URL("../../../src/index.html", import.meta.url), "utf8");
   const identity = html.split('aria-label="Hardware identity"')[1].split("</section>")[0];
   assert.deepEqual([...identity.matchAll(/<strong id="([^"]+)"/g)].map(match => match[1]),
     ["product-name", "serial", "identity-clock", "firmware-version", "memory-capacity"]);
@@ -428,7 +428,7 @@ test("settings and reboot recovery preserve per-board command ownership", async 
   state.responses.set("/api/reboot", async options => {
     assert.deepEqual(JSON.parse(options.body), { confirm: true });
     await rebootGate;
-    return { ok: true, json: async () => ({}) };
+    return { ok: true, json: async () => ({ accepted: true }) };
   });
   await handlers.get("#reboot-control:click")();
   const pendingReboot = handlers.get("#confirm-reboot:click")();

@@ -6,8 +6,8 @@ import { renderWirelessStatus } from "./wireless-form.mjs";
 import { CAPABILITY_SPI, CAPABILITY_SDMMC, CAPABILITY_WIRELESS, operationState } from "./operation-state.mjs";
 
 /**
- * @typedef {import("./dashboard-api.mjs").StatusSnapshot & {
- * settings_draft?: import("./dashboard-api.mjs").BootSettings,
+ * @typedef {import("./api.mjs").StatusSnapshot & {
+ * settings_draft?: import("./api.mjs").BootSettings,
  * settings_dirty?: boolean, wireless_dirty?: boolean, no_board_selected?: boolean, console_url?: string | null,
  * status_read_error?: boolean, status_reading?: boolean}} DashboardView
  */
@@ -32,7 +32,7 @@ function uptimeLabel(milliseconds) {
   return days ? `${days}d ${hours}h ${minutes}m` : `${hours}h ${minutes}m ${seconds}s`;
 }
 
-/** @type {{memory: import("./dashboard-api.mjs").Memory, filesystemFormat: string | null | undefined} | null} */
+/** @type {{memory: import("./api.mjs").Memory, filesystemFormat: string | null | undefined} | null} */
 let lastStorageDetails = null;
 let cardDetected = false;
 /** @type {string | null} */
@@ -46,8 +46,8 @@ let boardConfigurationDocument = null;
 /**
  * Lift the view's shortcuts out of the shared status shape (tests/status-contract.json): both servers nest USB-drive
  * ownership and filesystem format in `memory` and next-boot settings in `board_configuration`.
- * @param {import("./dashboard-api.mjs").StatusSnapshot} snapshot
- * @returns {import("./dashboard-api.mjs").StatusSnapshot}
+ * @param {import("./api.mjs").StatusSnapshot} snapshot
+ * @returns {import("./api.mjs").StatusSnapshot}
  */
 export function normalizeStatus(snapshot) {
   const configuration = snapshot.settings_supported ? snapshot.board_configuration : null;
@@ -312,7 +312,7 @@ function renderBoardConfiguration(snapshot) {
   setText(resetCause, resetCauseLabel);
 }
 
-/** @param {import("./dashboard-api.mjs").Memory | null | undefined} memory
+/** @param {import("./api.mjs").Memory | null | undefined} memory
  * @param {string | null | undefined} filesystemFormat @param {boolean} stale @param {number | undefined} cardDetectGpio
  */
 function renderMemory(memory, filesystemFormat, stale, cardDetectGpio) {
@@ -361,7 +361,7 @@ function renderMemory(memory, filesystemFormat, stale, cardDetectGpio) {
     ? manufacturer.serial_number.toString(16).padStart(8, "0") : "--");
 }
 
-/** @param {import("./dashboard-api.mjs").Manufacturer | null | undefined} manufacturer */
+/** @param {import("./api.mjs").Manufacturer | null | undefined} manufacturer */
 function formatManufacturer(manufacturer) {
   if (!manufacturer) return "--";
   const id = manufacturer.id ?? manufacturer.manufacturer_id;

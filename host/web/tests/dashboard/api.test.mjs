@@ -6,7 +6,7 @@ import test from "node:test";
 import {
   acknowledge, DashboardError, reconciledResult, responseJson, savedSettings, savedWireless, scannedBoards,
   scannedNetworks, statusResponse, testedWireless,
-} from "../../src/js/dashboard-api.mjs";
+} from "../../src/js/dashboard/api.mjs";
 
 test("reset recovery is explicit and cannot masquerade as a successful control result", () => {
   assert.equal(reconciledResult({
@@ -80,10 +80,9 @@ test("status validates lifecycle and admission facts before allowing any transit
 });
 
 test("MSC acknowledgements accept admission but never infer settled ownership", () => {
-  assert.deepEqual(acknowledge({}, 3), { opcode: 3, status: "completed" });
-  assert.equal(acknowledge({ control_result: { opcode: 3, status: "completed" } }, 3).status, "completed");
-  assert.throws(() => acknowledge({ control_result: { opcode: 2, status: "completed" } }, 3),
-    { uncertain: true });
+  assert.deepEqual(acknowledge({ accepted: true }, 3), { opcode: 3, status: "completed" });
+  for (const result of [{}, { accepted: false }, { control_result: { opcode: 3, status: "completed" } }])
+    assert.throws(() => acknowledge(result, 3), { uncertain: true });
 });
 
 test("successful Wi-Fi testing requires a validated generation and firmware lifetime", () => {
@@ -228,11 +227,8 @@ test("optional diagnostic ranges match CID dates, integer GPIO bytes and UART in
 
 test("mutation success contracts accept both hosts and reject contradictory results", () => {
   for (const opcode of [1, 2, 4]) {
-    assert.deepEqual(acknowledge({}, opcode), { status: "completed", opcode });
-    assert.deepEqual(acknowledge({ control_result: { status: "completed", opcode } }, opcode),
-      { status: "completed", opcode });
-    for (const result of [{ ok: false }, { control_result: { status: "pending", opcode } },
-      { control_result: { status: "completed", opcode: 255 } }])
+    assert.deepEqual(acknowledge({ accepted: true }, opcode), { status: "completed", opcode });
+    for (const result of [{ ok: false }, {}, { accepted: false }, { accepted: "true" }])
       assert.throws(() => acknowledge(result, opcode), { uncertain: true });
   }
   const settings = { system_clock_mhz: 160, sdcard_profile: 0, radios: 3 };

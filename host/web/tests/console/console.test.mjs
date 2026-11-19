@@ -3,8 +3,8 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ConsoleTerminal, consoleKey } from "../../src/js/console-terminal.mjs";
-import { mountConsole } from "../../src/js/console-session.mjs";
+import { ConsoleTerminal, consoleKey } from "../../src/js/console/terminal.mjs";
+import { mountConsole } from "../../src/js/console/session.mjs";
 import { domFixture } from "../support/dom-fixture.mjs";
 
 test("native erase, insertion and cursor sequences render text safely and clear scrollback", () => {

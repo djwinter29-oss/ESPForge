@@ -352,8 +352,11 @@ public sealed class MonitorCommandTests
             Memory = Ready().Memory! with { Initialized = true, Present = true }
         };
         monitor.Attach(commands, mscReady);
-        Assert.Equal(HttpStatusCode.OK,
-            (await client.PostAsJsonAsync("/api/msc?board=board-a", new { enabled = true })).StatusCode);
+        var mscAdmission = await client.PostAsJsonAsync("/api/msc?board=board-a", new { enabled = true });
+        Assert.Equal(HttpStatusCode.OK, mscAdmission.StatusCode);
+        var mscBody = await mscAdmission.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.True(mscBody.GetProperty("accepted").GetBoolean());
+        Assert.Single(mscBody.EnumerateObject());
         Assert.True(monitor.Snapshot.StorageStale);
         monitor.Attach(commands, mscReady with
         {

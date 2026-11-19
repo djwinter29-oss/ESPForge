@@ -4,12 +4,13 @@
 // @ts-check
 import {
   acknowledge, reconciledResult, responseJson, savedSettings, scannedNetworks, statusResponse, testedWireless,
-} from "../../src/js/dashboard-api.mjs";
+} from "../../../src/js/dashboard/api.mjs";
+import { createCommandLifecycle } from "../../../src/js/dashboard/command-lifecycle.mjs";
 import {
   commandEffects, commandSettled, createCommandState, observeCommandStatus, operationState,
-} from "../../src/js/operation-state.mjs";
-import { bindWirelessForm } from "../../src/js/wireless-form.mjs";
-import { initializeSettings, normalizeStatus, renderStatus } from "../../src/js/dashboard.mjs";
+} from "../../../src/js/dashboard/operation-state.mjs";
+import { bindWirelessForm } from "../../../src/js/dashboard/wireless-form.mjs";
+import { initializeSettings, normalizeStatus, renderStatus } from "../../../src/js/dashboard/view.mjs";
 
 const state = operationState({ connected: true }, { uncertain: false });
 state.canReboot.valueOf();
@@ -35,7 +36,7 @@ wirelessForm.radioEdited("wifi");
 // @ts-expect-error Radio draft serialization requires numeric saved bits.
 wirelessForm.selectedRadios("3");
 const credentials = wirelessForm.credentialActions();
-/** @type {import("../../src/js/wireless-form.mjs").CredentialAction} */
+/** @type {import("../../../src/js/dashboard/wireless-form.mjs").CredentialAction} */
 const preserve = credentials.wifi;
 // @ts-expect-error A credential action cannot be an arbitrary command.
 credentials.wifi = "delete";
@@ -44,7 +45,7 @@ wirelessForm.radioEdited("clock");
 // @ts-expect-error Form baselines require SSID information.
 wirelessForm.initialize({ wifi_enabled: true });
 const commands = createCommandState();
-/** @type {import("../../src/js/operation-state.mjs").UncertainCommand} */
+/** @type {import("../../../src/js/dashboard/operation-state.mjs").UncertainCommand} */
 const lostSave = { kind: "settings", expected: { system_clock_mhz: 240, sdcard_profile: 0, radios: 0 }, message: "uncertain" };
 commands.uncertainCommand = lostSave;
 observeCommandStatus(commands, { connected: true, reboot_pending: false });
@@ -88,6 +89,8 @@ saved.radios.toFixed();
 // @ts-expect-error Boot settings fields must be numeric.
 savedSettings(result, { system_clock_mhz: 240, sdcard_profile: "0", radios: 0 });
 acknowledge(result, 2);
+const lifecycle = createCommandLifecycle({ begin() {}, finish() {} });
+lifecycle({}, async () => 1, error => error.message.toUpperCase()).then(value => value?.toFixed());
 scannedNetworks(result)[0].ssid_hex.toLowerCase();
 // @ts-expect-error Validated signal strength is numeric.
 scannedNetworks(result)[0].rssi.toUpperCase();

@@ -98,14 +98,14 @@ const mock = `<script>
       state.mscRequests.push(payload);
       connected.memory = { ...connected.memory, sample_valid: !payload.enabled, initialized: !payload.enabled,
         present: payload.enabled ? null : true, msc: { enabled: payload.enabled, transition_pending: false } };
-      return response({control_result: {opcode: 3, status: "completed"}});
+      return response({accepted: true});
     }
     if (url.pathname === "/api/reboot") {
       state.reboots++;
       if (state.failedCommand === 2) connected.command_outcome_uncertain = true;
       if (state.rebootUncertain || state.failedCommand === 2 || state.noResultCommand === 2)
         throw new TypeError("lost reboot reply");
-      return response({});
+      return response({accepted: true});
     }
     if (url.pathname === "/api/settings") {
       const settings = JSON.parse(options.body);
@@ -169,12 +169,12 @@ const mock = `<script>
     return response({ error: "Unexpected browser-check request" }, 404);
   };
 </script>
-<script type="module" src="js/app.mjs"></script>`;
+<script type="module" src="js/dashboard/app.mjs"></script>`;
 const html = source
   .replace("<head>", `<head><base href="${new URL("../../src/", import.meta.url)}">`)
-  .replace('<script type="module" src="/js/app.mjs"></script>', mock)
+  .replace('<script type="module" src="/js/dashboard/app.mjs"></script>', mock)
   .replaceAll('href="/', `href="${new URL("../../src/", import.meta.url)}`)
-  .replace('src="js/app.mjs"', `src="${new URL("../../src/js/app.mjs", import.meta.url)}"`);
+  .replace('src="js/dashboard/app.mjs"', `src="${new URL("../../src/js/dashboard/app.mjs", import.meta.url)}"`);
 dashboard.style.width = "1000px";
 dashboard.style.height = "800px";
 dashboard.srcdoc = html;

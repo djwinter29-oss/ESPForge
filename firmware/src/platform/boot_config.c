@@ -105,7 +105,8 @@ static bool decode(const uint8_t record[EF_BOOT_CONFIG_RECORD_SIZE], struct boot
 		return false;
 	}
 	if (record[8] > EF_SYSCLK_240MHZ || record[9] != 0 || (record[10] & ~SERVICE_BITS) ||
-	    record[11] > EF_WIFI_AUTH_SAE || record[12] > 32 || !zero(record + 13 + record[12], 32 - record[12]) ||
+	    record[11] > EF_WIFI_AUTH_SAE || record[12] > EF_SSID_MAX_BYTES ||
+	    !zero(record + 13 + record[12], EF_SSID_MAX_BYTES - record[12]) ||
 	    !password_valid(password, EF_WIFI_PASSWORD_SIZE) || (record[141] & ~KEY_PRESENT) ||
 	    (!(record[141] & KEY_PRESENT) && !zero(record + 109, EF_BLE_KEY_SIZE)) || record[142] || record[143]) {
 		return false;

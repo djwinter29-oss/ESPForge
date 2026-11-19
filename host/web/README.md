@@ -3,6 +3,9 @@
 The browser frontend served by both the [Python host](../python/README.md) and the
 [.NET host](../dotnet/ESPForge/README.md). It uses static assets and browser ES modules without a build step.
 The independent Direct dashboard does not share this code.
+Dashboard modules live under `src/js/dashboard/`; the standalone terminal lives under `src/js/console/`.
+Unit, integration and type checks follow the same split under `tests/dashboard/` and `tests/console/`;
+shared browser, CSS and fixture checks stay at the test root.
 
 Choose **Configure…** in the Wi-Fi or Bluetooth dropdown to open its provisioning dialog without changing
 the radio's Enabled/Disabled selection. Wireless edits are saved with **Save&Reboot**.
@@ -50,8 +53,8 @@ MSC requests use `{"enabled":true}` to export or `{"enabled":false,"confirm_ejec
 `enabled` is required and boolean; optional `confirm_ejected` is boolean and defaults to false. Extra fields,
 nonboolean values and unconfirmed return are HTTP 400. Unavailable/stale/busy ownership is HTTP 409; transport
 failure is HTTP 503 and may leave an uncertain outcome. HTTP 200 acknowledges admission, not completed handoff:
-Python includes `control_result`, while .NET returns `{}`. Poll `/api/status` for `memory.msc.transition_pending`,
-`enabled` and `request_rejected`; do not automatically replay. See the
+both hosts return `{"accepted":true}`. Poll `/api/status` for `memory.msc.transition_pending`, `enabled` and
+`request_rejected`; do not automatically replay. See the
 [SD handoff contract](../../docs/reference/sdcard.md#usb-drive-handoff) for OS eject, reconnect and safety limitations.
 
 Unsupported routes are not served: `/api/msc/force-return` and `/api/self-test`. The UI never requests them.
@@ -60,7 +63,8 @@ Unsupported routes are not served: `/api/msc/force-return` and `/api/self-test`.
 `{"start":false,"size_mib":0}`. Start requires 1–1024 MiB and explicit write confirmation.
 Fields are strictly typed, extras are rejected (HTTP 400), and cancel requires zero size.
 Unavailable/stale/busy admission is HTTP 409; transport errors are HTTP 503 and may require explicit resync.
-HTTP 200 acknowledges admission (Python `control_result`, .NET `{}`), not a passing run.
+HTTP 200 acknowledges admission, not a passing run. Both hosts return `{"accepted":true}`; this does not indicate
+benchmark completion.
 Poll `self_test` and `self_test_stale` for [Report 11](../../docs/reference/usb-hid.md#report-id-11-storage-benchmark-status)
 progress/result. `self_test` is null when absent or stale; zero-duration throughput is null.
 Controls remain hidden without capability bit 5 or detected storage; BLE is read-only.

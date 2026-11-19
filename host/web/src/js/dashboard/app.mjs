@@ -2,13 +2,14 @@
 // Copyright (c) 2026 Ji Dong
 
 // @ts-check
-import { initializeSettings, normalizeStatus, renderStatus as renderDashboardStatus } from "./dashboard.mjs";
+import { initializeSettings, normalizeStatus, renderStatus as renderDashboardStatus } from "./view.mjs";
+import { createCommandLifecycle } from "./command-lifecycle.mjs";
 import { bindWirelessForm } from "./wireless-form.mjs";
 import {
   acknowledge, DashboardError, reconciledResult, responseJson, savedSettings, savedWireless,
   scannedBoards, scannedNetworks, statusResponse, testedWireless,
   wirelessConfiguration,
-} from "./dashboard-api.mjs";
+} from "./api.mjs";
 import {
   CAPABILITY_WIRELESS, commandEffects, createCommandState, observeCommandStatus,
   operationState as deriveOperationState,
@@ -61,7 +62,7 @@ function element(id) {
 const fetchWithDeadline = (url, options, timeoutMs) =>
   fetch(url, { ...options, signal: AbortSignal.timeout(timeoutMs) });
 let requestInProgress = false;
-/** @typedef {import("./dashboard-api.mjs").StatusSnapshot} DashboardSnapshot
+/** @typedef {import("./api.mjs").StatusSnapshot} DashboardSnapshot
  * @typedef {{id: string, serial_number?: string | null, device_path: string}} Board
  */
 /** @type {DashboardSnapshot | null} */
@@ -69,7 +70,7 @@ let currentSnapshot = null;
 let disconnectedUi = false;
 let commandResyncInProgress = false;
 let settingsRequestInProgress = false;
-/** @type {Partial<Pick<import("./dashboard-api.mjs").BootSettings, "system_clock_mhz">>} */
+/** @type {Partial<Pick<import("./api.mjs").BootSettings, "system_clock_mhz">>} */
 let settingsDraft = {};
 /** @type {string | null} */
 let settingsMessage = null;
@@ -146,7 +147,7 @@ function operationState(snapshot = currentSnapshot) {
 }
 
 /** Apply the same confirmed lifecycle effects for ordinary acknowledgements and explicit Re-sync.
- * @param {import("./dashboard-api.mjs").ControlResult} result
+ * @param {import("./api.mjs").ControlResult} result
  */
 function publishCommandResult(result) {
   const effects = commandEffects(result);
@@ -166,6 +167,23 @@ function publishCommandResult(result) {
 function clearCommandFailure(opcode) {
   if (boardState.commandFailure?.opcode === opcode) boardState.commandFailure = null;
 }
+const runCommandLifecycle = createCommandLifecycle({
+  begin: options => {
+    commandVersion++;
+    settingsRequestInProgress = true;
+    if (options.clearFailure !== undefined) clearCommandFailure(options.clearFailure);
+    if (options.startMessage !== undefined) settingsMessage = options.startMessage;
+    if (currentSnapshot) renderStatus(currentSnapshot);
+  },
+  finish: options => {
+    commandVersion++;
+    settingsRequestInProgress = false;
+    if (options.updateBoardControls) updateBoardSelectionControls();
+    if (currentSnapshot) renderStatus(currentSnapshot);
+    if (options.refresh === "always" || options.refresh === "uncertain" && boardState.uncertainCommand)
+      void updateStatus();
+  },
+});
 const wirelessForm = bindWirelessForm({
   supported: () => Boolean((currentSnapshot?.hardware?.capabilities ?? 0) & CAPABILITY_WIRELESS),
   cleanupRequired: () => Boolean(currentSnapshot?.wireless_cleanup_required),
@@ -236,7 +254,7 @@ function wirelessReady() {
 }
 
 /** Save board settings and credentials in one firmware commit; failures before delivery stay retryable.
- * @param {import("./dashboard-api.mjs").BootSettings} settings
+ * @param {import("./api.mjs").BootSettings} settings
  */
 async function saveCombinedSettings(settings) {
   const request = { ...wirelessForm.request(), wifi_enabled: Boolean(settings.radios & 1),
@@ -547,51 +565,43 @@ async function saveSettings() {
     if (currentSnapshot) renderStatus(currentSnapshot);
     return;
   }
+  const snapshot = currentSnapshot;
   if (confirmedIdentity !== saveIdentity()) {
     settingsMessage = "The proposed configuration changed. Review the settings and confirm again.";
-    renderStatus(currentSnapshot);
+    renderStatus(snapshot);
     return;
   }
   const combined = wirelessForm.dirty();
-  commandVersion++;
-  settingsRequestInProgress = true;
-  clearCommandFailure(5);
-  settingsMessage = "Saving boot settings...";
   const settings = selectedSettings();
-  renderStatus(currentSnapshot);
-  try {
+  await runCommandLifecycle({
+    startMessage: "Saving boot settings...",
+    clearFailure: 5,
+    updateBoardControls: true,
+    refresh: "uncertain",
+  }, async () => {
     if (combined) {
-      currentSnapshot.settings = await saveCombinedSettings(settings);
-      settingsDraft = {};
-      settingsMessage = "Settings saved. Reboot requested. Waiting for the device to reconnect.";
-      return;
+      snapshot.settings = await saveCombinedSettings(settings);
+    } else {
+      const response = await fetchWithDeadline(boardUrl("/api/settings"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(settings),
+      }, 15000);
+      const result = await responseJson(response, `Settings endpoint returned HTTP ${response.status}`, true);
+      publishCommandResult({ opcode: 5, status: "completed" });
+      snapshot.settings = savedSettings(result, settings);
+      snapshot.settings_supported = true;
     }
-    const response = await fetchWithDeadline(boardUrl("/api/settings"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(settings),
-    }, 15000);
-    const result = await responseJson(response, `Settings endpoint returned HTTP ${response.status}`, true);
-    publishCommandResult({ opcode: 5, status: "completed" });
-    currentSnapshot.settings = savedSettings(result, settings);
-    currentSnapshot.settings_supported = true;
     settingsDraft = {};
     settingsMessage = "Settings saved. Reboot requested. Waiting for the device to reconnect.";
-  } catch (error) {
-    if (!(error instanceof Error)) throw error;
+  }, error => {
     if (markCommandOutcomeUncertain(error, undefined,
       combined ? { kind: "resync" } : { kind: "settings", expected: settings })) {
       settingsMessage = combined
         ? "Wireless save outcome is uncertain; use Re-sync before retrying."
         : "Save outcome is uncertain; checking status before allowing another save.";
     } else settingsMessage = `Save failed: ${error.message}`;
-  } finally {
-    commandVersion++;
-    settingsRequestInProgress = false;
-    updateBoardSelectionControls();
-    if (currentSnapshot) renderStatus(currentSnapshot);
-    if (boardState.uncertainCommand) void updateStatus();
-  }
+  });
 }
 
 async function requestReboot() {
@@ -608,26 +618,19 @@ async function rebootDevice() {
   rebootDialog.close();
   const operations = operationState();
   if (!currentSnapshot?.connected || operations.busy || !operations.canReboot) return;
-  commandVersion++;
-  settingsRequestInProgress = true;
-  clearCommandFailure(2);
-  settingsMessage = "Requesting reboot...";
-  renderStatus(currentSnapshot);
-  try {
+  await runCommandLifecycle({
+    startMessage: "Requesting reboot...",
+    clearFailure: 2,
+    refresh: "uncertain",
+  }, async () => {
     await requestReboot();
     settingsMessage = "Reboot requested. Waiting for the device to reconnect.";
-  } catch (error) {
-    if (!(error instanceof Error)) throw error;
+  }, error => {
     if (markCommandOutcomeUncertain(error)) {
       settingsMessage = uncertainMessage(error,
         "Reboot outcome is uncertain; waiting for the board to reconnect before retrying.");
     } else settingsMessage = `Reboot failed: ${error.message}`;
-  } finally {
-    commandVersion++;
-    settingsRequestInProgress = false;
-    if (currentSnapshot) renderStatus(currentSnapshot);
-    if (boardState.uncertainCommand) void updateStatus();
-  }
+  });
 }
 
 /** @param {boolean} enabled */
@@ -650,29 +653,23 @@ async function setMsc() {
   mscDialog.close();
   const operations = operationState();
   if (!(enabled ? operations.canEnableMsc : operations.canReturnMsc) || !currentSnapshot) return;
-  commandVersion++;
-  settingsRequestInProgress = true;
-  settingsMessage = "Requesting storage handoff...";
-  renderStatus(currentSnapshot);
-  try {
+  const snapshot = currentSnapshot;
+  await runCommandLifecycle({
+    startMessage: "Requesting storage handoff...",
+    updateBoardControls: true,
+    refresh: "always",
+  }, async () => {
     const response = await fetchWithDeadline(boardUrl("/api/msc"), {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ enabled, confirm_ejected: !enabled }),
     }, 15000);
     publishCommandResult(acknowledge(await responseJson(response, "Storage handoff failed", true), 3));
-    currentSnapshot.storage_stale = true;
+    snapshot.storage_stale = true;
     settingsMessage = "Storage handoff admitted. Waiting for fresh card ownership status.";
-  } catch (error) {
-    if (!(error instanceof Error)) throw error;
+  }, error => {
     if (!markCommandOutcomeUncertain(error, undefined, { kind: "resync" }))
       settingsMessage = `Storage handoff failed: ${error.message}`;
-  } finally {
-    commandVersion++;
-    settingsRequestInProgress = false;
-    updateBoardSelectionControls();
-    if (currentSnapshot) renderStatus(currentSnapshot);
-    void updateStatus();
-  }
+  });
 }
 
 /** @param {boolean} start */
@@ -682,49 +679,32 @@ async function benchmark(start) {
   if (start && !window.confirm(`Write and verify ${size} MiB in EFTEST.BIN, then delete that file? Back up the card first. This causes card wear.`))
     return;
   const boardId = selectedBoard;
-  commandVersion++;
-  settingsRequestInProgress = true;
-  if (currentSnapshot) renderStatus(currentSnapshot);
-  try {
+  await runCommandLifecycle({ refresh: "always" }, async () => {
     const response = await fetchWithDeadline(boardUrl("/api/benchmark", boardId), {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ start, size_mib: size, confirm: start }),
     }, 15000);
     publishCommandResult(acknowledge(await responseJson(response, "Benchmark request failed", true), 4));
-  } catch (error) {
-    if (!(error instanceof Error)) throw error;
+  }, error => {
     if (!markCommandOutcomeUncertain(error, undefined, { kind: "resync" }, boardId))
       settingsMessage = `Benchmark request failed: ${error.message}`;
-  } finally {
-    commandVersion++;
-    settingsRequestInProgress = false;
-    if (currentSnapshot) renderStatus(currentSnapshot);
-    void updateStatus();
-  }
+  });
 }
 element("led-colour").addEventListener("change", async () => {
   if (!operationState().canSetLed) return;
   const colour = Number(/** @type {HTMLSelectElement} */ (element("led-colour")).value);
   const boardId = selectedBoard;
-  commandVersion++;
-  settingsRequestInProgress = true;
-  if (currentSnapshot) renderStatus(currentSnapshot);
-  try {
+  const snapshot = currentSnapshot;
+  await runCommandLifecycle({ refresh: "always" }, async () => {
     const response = await fetchWithDeadline(boardUrl("/api/led", boardId), {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ colour }),
     }, 15000);
     publishCommandResult(acknowledge(await responseJson(response, "LED colour request failed", true), 1));
-    if (currentSnapshot) currentSnapshot.telemetry_stale = true;
-  } catch (error) {
-    if (!(error instanceof Error)) throw error;
+    if (snapshot) snapshot.telemetry_stale = true;
+  }, error => {
     if (!markCommandOutcomeUncertain(error, undefined, { kind: "resync" }, boardId))
       settingsMessage = `LED colour request failed: ${error.message}`;
-  } finally {
-    commandVersion++;
-    settingsRequestInProgress = false;
-    if (currentSnapshot) renderStatus(currentSnapshot);
-    void updateStatus();
-  }
+  });
 });
 element("benchmark-start").addEventListener("click", () => benchmark(true));
 element("benchmark-cancel").addEventListener("click", () => benchmark(false));

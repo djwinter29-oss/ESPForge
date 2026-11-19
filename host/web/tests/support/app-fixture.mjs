@@ -198,14 +198,15 @@ export async function appFixture(context) {
         status: state.rebootResponseError ? 409 : state.rebootFails ? 503 : 200,
         json: async () => state.rebootFails || state.rebootResponseError
           ? { error: state.rebootResponseError
-            ? "Reboot outcome is uncertain; command was not resent" : "Reboot delivery failed" } : {} };
+            ? "Reboot outcome is uncertain; command was not resent" : "Reboot delivery failed" }
+          : { accepted: true } };
     }
     await state.gate;
     return { ok: false, status: 503, json: async () => ({ error: "HID command delivery failed" }) };
   };
 
   context.after(() => Object.assign(globalThis, saved));
-  await import(`../../src/js/app.mjs?fixture=${++generation}`);
+  await import(`../../src/js/dashboard/app.mjs?fixture=${++generation}`);
   await new Promise(resolve => setImmediate(resolve));
   await new Promise(resolve => setImmediate(resolve));
   return {

@@ -177,6 +177,7 @@ class WebTests(unittest.TestCase):
         client = create_app(boards).test_client()
         response = client.post("/api/control/resync?board=a", json={"confirm": True})
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json, {"accepted": True})
         self.assertEqual(response.json["wireless"], {"wifi_state": "connected", "ssid_hex": "4100ff"})
         self.assertEqual(wireless["wifi_state_id"], 2)
         self.assertIs(result["wireless"], wireless)
@@ -196,7 +197,9 @@ class WebTests(unittest.TestCase):
         boards = Mock()
         boards.monitor.return_value.set_led_colour.return_value = {"control_result": {"opcode": 1}}
         client = create_app(boards).test_client()
-        self.assertEqual(client.post("/api/led", json={"colour": 4}).status_code, 200)
+        response = client.post("/api/led", json={"colour": 4})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json, {"accepted": True})
         boards.monitor.return_value.set_led_colour.assert_called_once_with(4)
         for payload in ({}, {"colour": True}, {"colour": "4"}, {"colour": 4.0}, {"colour": 8},
                         {"colour": -1}, {"colour": None}, {"colour": 4, "extra": 1}):
@@ -282,8 +285,7 @@ class WebTests(unittest.TestCase):
 
     def test_msc_route_requires_boolean_intent_and_explicit_eject_confirmation(self):
         monitor = FakeMonitor()
-        result = {"control_result": {"opcode": 3, "status": "completed"}}
-        monitor.set_msc = Mock(return_value=result)
+        monitor.set_msc = Mock(return_value={"control_result": {"opcode": 3, "status": "completed"}})
         client = create_app(FakeBoards(monitor)).test_client()
         for payload in ({}, {"enabled": None}, {"enabled": 1}, {"enabled": "true"},
                         {"enabled": False}, {"enabled": False, "confirm_ejected": 1},
@@ -298,8 +300,20 @@ class WebTests(unittest.TestCase):
                 payload["confirm_ejected"] = True
             response = client.post("/api/msc?board=board-a", json=payload, base_url="http://127.0.0.1")
             self.assertEqual(response.status_code, 200)
-            self.assertEqual(response.json, result)
+            self.assertEqual(response.json, {"accepted": True})
             monitor.set_msc.assert_called_with(enabled, not enabled)
+
+    def test_benchmark_route_returns_common_admission_response(self):
+        monitor = Mock()
+        monitor.benchmark.return_value = {"control_result": {"opcode": 4, "status": "completed"}}
+        client = create_app(FakeBoards(monitor)).test_client()
+
+        response = client.post("/api/benchmark?board=board-a",
+                               json={"start": True, "size_mib": 32, "confirm": True})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json, {"accepted": True})
+        monitor.benchmark.assert_called_once_with(True, 32)
 
     def test_dashboard_port_defaults_to_8001_and_can_be_overridden(self):
         self.assertEqual(parse_args(["web"]).port, 8001)
@@ -521,7 +535,7 @@ class WebTests(unittest.TestCase):
         response = client.post("/api/reboot?board=board-a", json={"confirm": True},
                                base_url="http://127.0.0.1")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json["control_result"]["opcode"], 2)
+        self.assertEqual(response.json, {"accepted": True})
         self.assertEqual(boards.last_board_id, "board-a")
 
 

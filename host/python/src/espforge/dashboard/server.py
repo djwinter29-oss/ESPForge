@@ -225,7 +225,8 @@ def _register_api_routes(app: Flask, boards: DashboardBoards) -> None:
         payload: object = request.get_json(silent=True)
         if not is_object_dict(payload) or payload.get("confirm") is not True:
             return jsonify({"error": "Explicit confirm: true is required"}), 400
-        return jsonify(_board(boards).reboot())
+        _board(boards).reboot()
+        return jsonify({"accepted": True})
 
     @app.post("/api/msc")
     def set_msc() -> Response | tuple[Response, int]:
@@ -237,7 +238,8 @@ def _register_api_routes(app: Flask, boards: DashboardBoards) -> None:
             return jsonify({"error": "Expected enabled and optional confirm_ejected booleans"}), 400
         if not enabled and not confirm_ejected:
             return jsonify({"error": "Safely eject the USB drive and supply confirm_ejected: true"}), 400
-        return jsonify(_board(boards).set_msc(enabled, confirm_ejected))
+        _board(boards).set_msc(enabled, confirm_ejected)
+        return jsonify({"accepted": True})
 
     @app.post("/api/benchmark")
     def benchmark() -> Response | tuple[Response, int]:
@@ -250,7 +252,8 @@ def _register_api_routes(app: Flask, boards: DashboardBoards) -> None:
         if (start and (not confirm or not 1 <= size <= 1024)
                 or not start and size != 0):
             return jsonify({"error": "Confirm file writes with 1..1024 MiB, or cancel with zero size"}), 400
-        return jsonify(_board(boards).benchmark(start, size))
+        _board(boards).benchmark(start, size)
+        return jsonify({"accepted": True})
 
     @app.post("/api/led")
     def led() -> Response | tuple[Response, int]:
@@ -260,7 +263,8 @@ def _register_api_routes(app: Flask, boards: DashboardBoards) -> None:
         colour = payload["colour"]
         if type(colour) is not int or not 0 <= colour <= 7:
             return jsonify({"error": "Expected colour as an RGB bitmask 0..7"}), 400
-        return jsonify(_board(boards).set_led_colour(colour))
+        _board(boards).set_led_colour(colour)
+        return jsonify({"accepted": True})
 
     @app.post("/api/control/resync")
     def resync_control() -> Response | tuple[Response, int]:

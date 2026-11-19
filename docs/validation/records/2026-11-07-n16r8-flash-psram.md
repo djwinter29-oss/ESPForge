@@ -5,7 +5,7 @@ Date: 2026-11-07. Scope: retargeting the firmware from the N8 default DTS to the
 
 ## Changes
 
-- [Board overlay](../../../firmware/boards/esp32s3_devkitc.overlay): `flash0` is 16 MB, the upstream 4 MB partition
+- [Board overlay](../../../firmware/boards/esp32s3_devkitc_n16r8_sdmmc.overlay): `flash0` is 16 MB, the upstream 4 MB partition
   table is replaced by Zephyr's `partitions_0x0_amp_16M.dtsi`, and `psram0` is 8 MB.
 - [prj.conf](../../../firmware/prj.conf): `CONFIG_ESPTOOLPY_FLASHSIZE_16MB`, `CONFIG_ESP_SPIRAM`,
   `CONFIG_SPIRAM_MODE_OCT` and the boot-time PSRAM memory test.

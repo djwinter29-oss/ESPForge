@@ -2,6 +2,7 @@
 #include "platform/boot_config.h"
 #include "platform/ef_platform.h"
 #include "app/wireless/wireless_stage.h"
+#include "wireless_limits.h"
 
 #include <errno.h>
 #include <string.h>

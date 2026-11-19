@@ -125,7 +125,7 @@ For changes to board/configuration selection, use a pristine build from the work
 
 ```sh
 west build -p always -b esp32s3_devkitc/esp32s3/procpu espforge/firmware \
-  -d espforge/build/firmware -- -DDTC_OVERLAY_FILE=boards/esp32s3_devkitc.overlay
+  -d espforge/build/firmware -- -DDTC_OVERLAY_FILE=boards/esp32s3_devkitc_n16r8_sdmmc.overlay
 ```
 
 Inspect generated `build/firmware/zephyr/.config` and `zephyr.dts`, not just source intent.
@@ -135,7 +135,7 @@ The configuration check also verifies native slot 0, four-bit width, the 25 MHz 
 GPIO12/11/13/14/15/10 in CLK/CMD/DAT0-DAT3 order, and command/data pull-up configuration.
 For SPI it instead verifies the SPI SD driver, disabled native slot, SPI3 SCK/MOSI/MISO on GPIO12/11/13
 and active-low CS on GPIO10. Both require active-high GPIO8 card detection with a pull-down.
-Manual SPI builds use `boards/esp32s3_devkitc_sd_spi.overlay` and a separate build directory.
+Manual SPI builds use `boards/esp32s3_devkitc_n16r8_sd_spi.overlay` and a separate build directory.
 The management protocol runs over the ESP32-S3 native USB connector (USB HID, VID:PID `CAFE:4021`)
 and BLE GATT.
 The UART connector carries the Zephyr diagnostic shell/log output and the ROM bootloader used for flashing;

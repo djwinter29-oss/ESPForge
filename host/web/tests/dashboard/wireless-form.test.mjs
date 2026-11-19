@@ -3,8 +3,8 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { bindWirelessForm, renderWirelessStatus } from "../../src/js/wireless-form.mjs";
-import { renderStatus } from "../../src/js/dashboard.mjs";
+import { bindWirelessForm, renderWirelessStatus } from "../../src/js/dashboard/wireless-form.mjs";
+import { renderStatus } from "../../src/js/dashboard/view.mjs";
 import { domFixture } from "../support/dom-fixture.mjs";
 
 function formFixture(context, overrides = {}) {

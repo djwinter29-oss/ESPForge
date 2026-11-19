@@ -3,7 +3,7 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { appFixture, assertWirelessConsistent } from "../support/app-fixture.mjs";
+import { appFixture, assertWirelessConsistent } from "../../support/app-fixture.mjs";
 
 const settle = () => new Promise(resolve => setImmediate(resolve));
 const deferred = () => {
@@ -689,7 +689,7 @@ test("lost reboot delivery waits for the originating board's disconnect without 
       await state.tick();
       assert.equal(elements.get("#reboot-control").disabled, false, "the observed disconnect settles the reboot");
       assert.equal(reboots(), 1);
-      state.responses.set("/api/reboot", () => reply({}));
+      state.responses.set("/api/reboot", () => reply({ accepted: true }));
       await send();
       assert.equal(reboots(), 2, "only an explicit user action retries the command");
     });
@@ -722,7 +722,7 @@ test("final failed Re-sync releases only the reboot gate and retains explicit-re
       assert.doesNotMatch(elements.get("#status-message").textContent, /Retry explicitly/);
       await switchBoard("board-a");
       assert.match(elements.get("#status-message").textContent, new RegExp(status));
-      state.responses.set("/api/reboot", () => reply({}));
+      state.responses.set("/api/reboot", () => reply({ accepted: true }));
       await handlers.get("#reboot-control:click")();
       await handlers.get("#confirm-reboot:click")();
       assert.equal(reboots(), 2);

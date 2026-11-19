@@ -32,6 +32,8 @@ internal static class StatusEndpoints
     public sealed record LedRequest([property: JsonNumberHandling(JsonNumberHandling.Strict)] int? Colour);
     /// <summary>Every <c>/api</c> error body, matching the Python server.</summary>
     public sealed record ApiError(string Error);
+    /// <summary>Explicit admission acknowledgement for a completed HID command request.</summary>
+    public sealed record CommandAcceptedResponse(bool Accepted);
     /// <summary>Empty success response.</summary>
     public sealed record EmptyResponse;
 
@@ -144,7 +146,7 @@ internal static class StatusEndpoints
         endpoints.MapPost("/api/reboot", Reboot)
             .WithName("RebootDevice")
             .WithSummary("Reboot ESPForge after explicit confirmation")
-            .Produces<EmptyResponse>(StatusCodes.Status200OK)
+            .Produces<CommandAcceptedResponse>(StatusCodes.Status200OK)
             .Errors(CommandErrors);
         endpoints.MapPost("/api/control/resync", ResyncCommand)
             .WithName("ResyncCommandOutcome")
@@ -154,17 +156,17 @@ internal static class StatusEndpoints
         endpoints.MapPost("/api/msc", SetMsc)
             .WithName("SetUsbStorageOwnership")
             .WithSummary("Export the SD card or return it after confirmed OS eject")
-            .Produces<EmptyResponse>(StatusCodes.Status200OK)
+            .Produces<CommandAcceptedResponse>(StatusCodes.Status200OK)
             .Errors(CommandErrors);
         endpoints.MapPost("/api/benchmark", Benchmark)
             .WithName("StorageBenchmark")
             .WithSummary("Start or cancel the optional temporary-file benchmark")
-            .Produces<EmptyResponse>(StatusCodes.Status200OK)
+            .Produces<CommandAcceptedResponse>(StatusCodes.Status200OK)
             .Errors(CommandErrors);
         endpoints.MapPost("/api/led", Led)
             .WithName("LedColour")
             .WithSummary("Set the onboard RGB LED colour")
-            .Produces<EmptyResponse>(StatusCodes.Status200OK)
+            .Produces<CommandAcceptedResponse>(StatusCodes.Status200OK)
             .Errors(CommandErrors);
         return endpoints;
     }
@@ -191,7 +193,7 @@ internal static class StatusEndpoints
     {
         if (!request.Confirm) throw new ApiInputException("Explicit reboot confirmation is required");
         dashboard.Monitor(board).Reboot(cancel);
-        return Results.Ok(new EmptyResponse());
+        return Results.Ok(new CommandAcceptedResponse(true));
     }
 
     private static IResult ResyncCommand(CommandResyncRequest request, string? board, IDashboardBoards dashboard,
@@ -206,7 +208,7 @@ internal static class StatusEndpoints
         if (request.Colour is not { } colour || colour is < 0 or > 7)
             throw new ApiInputException("Expected colour as an RGB bitmask 0..7");
         dashboard.Monitor(board).SetLedColour(colour, cancel);
-        return Results.Ok(new EmptyResponse());
+        return Results.Ok(new CommandAcceptedResponse(true));
     }
 
     private static IResult Benchmark(BenchmarkRequest request, string? board, IDashboardBoards dashboard,
@@ -216,7 +218,7 @@ internal static class StatusEndpoints
                 ? !request.Confirm || request.SizeMib is < 1 or > 1024 : request.SizeMib != 0))
             throw new ApiInputException("Confirm file writes with 1..1024 MiB, or cancel with zero size");
         dashboard.Monitor(board).Benchmark(start, request.SizeMib, cancel);
-        return Results.Ok(new EmptyResponse());
+        return Results.Ok(new CommandAcceptedResponse(true));
     }
 
     private static IResult SetMsc(MscRequest request, string? board, IDashboardBoards dashboard,
@@ -227,6 +229,6 @@ internal static class StatusEndpoints
         if (!enabled && !request.ConfirmEjected)
             throw new ApiInputException("Safely eject the USB drive and supply confirm_ejected: true");
         dashboard.Monitor(board).SetMsc(enabled, request.ConfirmEjected, cancel);
-        return Results.Ok(new EmptyResponse());
+        return Results.Ok(new CommandAcceptedResponse(true));
     }
 }

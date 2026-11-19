@@ -20,7 +20,7 @@
  * @property {{transition_pending?: boolean, enabled?: boolean} | null} [msc]
  * @property {{board_flags?: number} | null} [board_configuration]
  * @property {{sample_valid?: boolean, initialized?: boolean} | null} [memory]
- * @property {(import("./dashboard-api.mjs").BootSettings & {tcp_cli_enabled?: boolean}) | null} [settings]
+ * @property {(import("./api.mjs").BootSettings & {tcp_cli_enabled?: boolean}) | null} [settings]
  * @property {boolean} [settings_supported]
  * @property {string | null} [settings_message]
  * @property {boolean} [busy]
@@ -42,7 +42,7 @@
  * @property {string | null} [wirelessBlockReason]
  *
  * @typedef {{kind: "reconnect" | "resync"}
- *   | {kind: "settings", expected: import("./dashboard-api.mjs").BootSettings}} Recovery
+ *   | {kind: "settings", expected: import("./api.mjs").BootSettings}} Recovery
  * @typedef {Recovery & {message: string}} UncertainCommand
  */
 
@@ -98,7 +98,7 @@ export function observeCommandStatus(state, snapshot) {
 }
 
 /** Terminal acknowledgement and lifecycle effects; MSC completion acknowledges admission, not settled ownership.
- * @param {import("./dashboard-api.mjs").ControlResult} result
+ * @param {import("./api.mjs").ControlResult} result
  */
 export function commandEffects(result) {
   const completed = result.status === "completed";
