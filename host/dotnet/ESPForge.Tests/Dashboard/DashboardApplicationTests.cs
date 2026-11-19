@@ -83,7 +83,7 @@ public sealed class DashboardApplicationTests
         await app.StartAsync();
         using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
         using var shared = JsonDocument.Parse(File.ReadAllText(
-            Path.Combine(AppContext.BaseDirectory, "host-invalid-requests.json")));
+            Path.Combine(AppContext.BaseDirectory, "api-contract.json")));
         foreach (var body in new[]
         {
             "{\"start\":true,\"size_mib\":32}",
@@ -120,7 +120,7 @@ public sealed class DashboardApplicationTests
                 Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
                 Assert.True((await response.Content.ReadFromJsonAsync<JsonElement>()).TryGetProperty("error", out _));
             }
-            foreach (var invalid in shared.RootElement.EnumerateArray())
+            foreach (var invalid in shared.RootElement.GetProperty("invalid_requests").EnumerateArray())
             {
                 var route = invalid.GetProperty("route").GetString();
                 using var response = await client.PostAsJsonAsync(route + "?board=a",
@@ -152,6 +152,31 @@ public sealed class DashboardApplicationTests
         Assert.Equal(forcedSave.GetProperty("error").GetString(), error);
         Assert.Equal(0, boards.Lookups);
         await app.StopAsync();
+    }
+
+    [Fact]
+    public async Task RebootAdmissionMatchesTheSharedHostApiContract()
+    {
+        await using var app = await Build(new OneBoard(new RebootMonitor()));
+        await app.StartAsync();
+        using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
+        using var contract = JsonDocument.Parse(File.ReadAllText(
+            Path.Combine(AppContext.BaseDirectory, "api-contract.json")));
+        var reboot = contract.RootElement.GetProperty("reboot_ack");
+        using var response = await client.PostAsJsonAsync(
+            reboot.GetProperty("route").GetString() + "?board=board-a", reboot.GetProperty("body"));
+        Assert.Equal(reboot.GetProperty("status").GetInt32(), (int)response.StatusCode);
+        var expected = reboot.GetProperty("response");
+        var actual = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(expected.EnumerateObject().Select(property => property.Name).OrderBy(name => name),
+            actual.EnumerateObject().Select(property => property.Name).OrderBy(name => name));
+        Assert.Equal(expected.GetProperty("accepted").GetBoolean(), actual.GetProperty("accepted").GetBoolean());
+        await app.StopAsync();
+    }
+
+    private sealed class RebootMonitor : TestMonitor
+    {
+        public override void Reboot(CancellationToken cancel = default) { }
     }
 
     [Fact]

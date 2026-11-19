@@ -1,4 +1,27 @@
 {
+  "invalid_requests": [
+    {"route": "/api/benchmark", "body": {"start": true, "size_mib": 32}},
+    {"route": "/api/benchmark", "body": {"start": true, "size_mib": 0, "confirm": true}},
+    {"route": "/api/benchmark", "body": {"start": true, "size_mib": 1025, "confirm": true}},
+    {"route": "/api/benchmark", "body": {"start": false, "size_mib": 1}},
+    {"route": "/api/benchmark", "body": {"start": false, "confirm": "false"}},
+    {"route": "/api/benchmark", "body": {"start": true, "size_mib": true, "confirm": true}},
+    {"route": "/api/benchmark", "body": {"start": false, "force": true}},
+    {"route": "/api/wireless/test", "body": {"ssid": "ESP32", "password": null}},
+    {"route": "/api/wireless/test", "body": {"ssid": "ESP32", "passwrod": "password"}},
+    {"route": "/api/wireless/test", "body": {"ssid": "ESP32", "password": "password", "unknown": true}},
+    {"route": "/api/wireless/test", "body": {"ssid": null, "password": "password"}},
+    {"route": "/api/wireless/test", "body": {"ssid": "ESP32", "ssid_hex": null}},
+    {"route": "/api/wireless/test", "body": {"ssid": "ESP32", "password": "short"}},
+    {"route": "/api/wireless/test", "body": {"ssid": "ESP32", "password": 123}},
+    {"route": "/api/settings", "body": {"system_clock_mhz": 240, "sdcard_profile": 0, "radios": 0, "unknown": true}},
+    {"route": "/api/settings", "body": {"system_clock_mhz": null, "sdcard_profile": 0, "radios": 0}},
+    {"route": "/api/settings", "body": {"system_clock_mhz": 200, "sdcard_profile": 0, "radios": 0}},
+    {"route": "/api/settings", "body": {"system_clock_mhz": 240, "sdcard_profile": 1, "radios": 0}},
+    {"route": "/api/settings", "body": {"system_clock_mhz": 240, "sdcard_profile": 0, "radios": 4}},
+    {"route": "/api/settings", "body": {"system_clock_mhz": 240, "sdcard_profile": 0, "radios": 0,
+                                         "confirm_data_loss": "yes"}}
+  ],
   "forced_save": {
     "route": "/api/settings",
     "body": {
@@ -9,5 +32,11 @@
     },
     "status": 409,
     "error": "Forced save is unavailable on ESPForge firmware"
+  },
+  "reboot_ack": {
+    "route": "/api/reboot",
+    "body": {"confirm": true},
+    "status": 200,
+    "response": {"accepted": true}
   }
 }

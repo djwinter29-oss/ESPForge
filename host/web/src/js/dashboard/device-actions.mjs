@@ -19,7 +19,8 @@ import { acknowledge, responseJson } from "./api.mjs";
  *   boardUrl: (path: string, boardId?: string | null) => string,
  *   fetchWithDeadline: (url: string, options: RequestInit, timeoutMs: number) => Promise<Response>,
  *   publishCommandResult: (result: ControlResult) => void,
- *   markCommandOutcomeUncertain: (error: Error, message?: string, recovery?: Recovery, boardId?: string | null) => boolean,
+ *   markCommandOutcomeUncertain: (error: Error, message?: string, recovery?: Recovery,
+ *     boardId?: string | null) => boolean,
  *   uncertainMessage: (error: Error, fallback: string) => string,
  *   setSettingsMessage: (message: string) => void,
  * }} DeviceActionOptions
@@ -81,8 +82,10 @@ export function createDeviceActions({
     mscBoard = getSelectedBoard();
     element("msc-dialog-title").textContent = enabled ? "Enable USB drive?" : "Return card to firmware?";
     element("msc-warning").textContent = enabled
-      ? "Firmware will unmount the card and give Linux/Windows exclusive access. USB reconnects briefly; unsaved dashboard edits may be lost."
-      : "Safely eject the USB drive in Linux/Windows first. Confirm only after eject completes; firmware cannot verify the host cache is flushed.";
+      ? "Firmware will unmount the card and give Linux/Windows exclusive access. "
+        + "USB reconnects briefly; unsaved dashboard edits may be lost."
+      : "Safely eject the USB drive in Linux/Windows first. Confirm only after eject completes; "
+        + "firmware cannot verify the host cache is flushed.";
     element("confirm-msc").textContent = enabled ? "Enable USB drive" : "I have safely ejected";
     /** @type {HTMLDialogElement} */ (element("msc-dialog")).showModal();
   }
@@ -117,8 +120,9 @@ export function createDeviceActions({
   async function benchmark(start) {
     if (!(start ? operationState().canStartBenchmark : operationState().canCancelBenchmark)) return;
     const size = start ? Number(/** @type {HTMLInputElement} */ (element("benchmark-size")).value) : 0;
-    if (start && !window.confirm(`Write and verify ${size} MiB in EFTEST.BIN, then delete that file? Back up the card first. This causes card wear.`))
-      return;
+    const warning = `Write and verify ${size} MiB in EFTEST.BIN, then delete that file? `
+      + "Back up the card first. This causes card wear.";
+    if (start && !window.confirm(warning)) return;
     const boardId = getSelectedBoard();
     await runCommandLifecycle({ refresh: "always" }, async () => {
       const response = await fetchWithDeadline(boardUrl("/api/benchmark", boardId), {

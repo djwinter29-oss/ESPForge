@@ -149,7 +149,8 @@ export function bindWirelessForm({
   const policyState = () => ({
     status, draft, ssid, password, bleKey, configurationConflict, foreignStage, awaitingPair,
     wifiStage, wifiAttempt, selectedSsidHex, wifiEdited, keyDirty, keyNeedsRegeneration, keyRevision,
-    busy, wifiCanceling, wifiCancelError, cleanupRequired: cleanupRequired(), remainingTestSeconds: remainingTestSeconds(),
+    busy, wifiCanceling, wifiCancelError, cleanupRequired: cleanupRequired(),
+    remainingTestSeconds: remainingTestSeconds(),
   });
   const saveBlockReason = () => wirelessSaveBlockReason(policyState());
   const credentialActions = () => wirelessCredentialActions(policyState());

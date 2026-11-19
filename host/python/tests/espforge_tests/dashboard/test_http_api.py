@@ -13,6 +13,8 @@ from espforge.cli import parse_args
 from espforge.reports import ProtocolError
 from espforge.reports.common import validate_settings
 
+API_CONTRACT = json.loads((WEB_ROOT / "tests" / "api-contract.json").read_text(encoding="utf-8"))
+
 
 class FakeMonitor:
     """Board monitor double; command fakes call the same report validators the HID client uses."""
@@ -103,31 +105,6 @@ class FalseyBoards(FakeBoards):
         return False
 
 
-# Malformed requests every ESPForge host must reject with 400 before any board lookup.
-INVALID_REQUESTS = [
-    {"route": "/api/benchmark", "body": {"start": True, "size_mib": 32}},
-    {"route": "/api/benchmark", "body": {"start": True, "size_mib": 0, "confirm": True}},
-    {"route": "/api/benchmark", "body": {"start": True, "size_mib": 1025, "confirm": True}},
-    {"route": "/api/benchmark", "body": {"start": False, "size_mib": 1}},
-    {"route": "/api/benchmark", "body": {"start": False, "confirm": "false"}},
-    {"route": "/api/benchmark", "body": {"start": True, "size_mib": True, "confirm": True}},
-    {"route": "/api/benchmark", "body": {"start": False, "force": True}},
-    {"route": "/api/wireless/test", "body": {"ssid": "ESP32", "password": None}},
-    {"route": "/api/wireless/test", "body": {"ssid": "ESP32", "passwrod": "password"}},
-    {"route": "/api/wireless/test", "body": {"ssid": "ESP32", "password": "password", "unknown": True}},
-    {"route": "/api/wireless/test", "body": {"ssid": None, "password": "password"}},
-    {"route": "/api/wireless/test", "body": {"ssid": "ESP32", "ssid_hex": None}},
-    {"route": "/api/wireless/test", "body": {"ssid": "ESP32", "password": "short"}},
-    {"route": "/api/wireless/test", "body": {"ssid": "ESP32", "password": 123}},
-    {"route": "/api/settings", "body": {"system_clock_mhz": 240, "sdcard_profile": 0, "radios": 0, "unknown": True}},
-    {"route": "/api/settings", "body": {"system_clock_mhz": None, "sdcard_profile": 0, "radios": 0}},
-    {"route": "/api/settings", "body": {"system_clock_mhz": 200, "sdcard_profile": 0, "radios": 0}},
-    {"route": "/api/settings", "body": {"system_clock_mhz": 240, "sdcard_profile": 1, "radios": 0}},
-    {"route": "/api/settings", "body": {"system_clock_mhz": 240, "sdcard_profile": 0, "radios": 4}},
-    {"route": "/api/settings", "body": {"system_clock_mhz": 240, "sdcard_profile": 0, "radios": 0,
-                                        "confirm_data_loss": "yes"}},
-]
-
 DROPPED_ROUTES = [
     ("POST", "/api/msc/force-return"), ("POST", "/api/self-test"),
 ]
@@ -135,7 +112,7 @@ DROPPED_ROUTES = [
 
 class WebTests(unittest.TestCase):
     def test_shared_malformed_request_contract_precedes_board_lookup(self):
-        cases = INVALID_REQUESTS
+        cases = API_CONTRACT["invalid_requests"]
         boards = Mock()
         client = create_app(boards).test_client()
         for state in (LookupError("unknown"), ConnectionError("disconnected"), RuntimeError("busy"), None):
@@ -261,7 +238,7 @@ class WebTests(unittest.TestCase):
         monitor = FakeMonitor()
         client = create_app(FakeBoards(monitor)).test_client()
         settings = {"system_clock_mhz": 240, "sdcard_profile": 0, "radios": 0}
-        contract = json.loads((WEB_ROOT / "tests" / "api-contract.json").read_text(encoding="utf-8"))["forced_save"]
+        contract = API_CONTRACT["forced_save"]
         for invalid in ["yes", 1, None]:
             response = client.post("/api/settings", json={**settings, "confirm_data_loss": invalid},
                                    base_url="http://127.0.0.1")
@@ -536,10 +513,11 @@ class WebTests(unittest.TestCase):
         response = client.post("/api/reboot", json={"confirm": 1}, base_url="http://127.0.0.1")
         self.assertEqual(response.status_code, 400)
         self.assertIsNone(boards.last_board_id)
-        response = client.post("/api/reboot?board=board-a", json={"confirm": True},
+        contract = API_CONTRACT["reboot_ack"]
+        response = client.post(contract["route"] + "?board=board-a", json=contract["body"],
                                base_url="http://127.0.0.1")
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json, {"accepted": True})
+        self.assertEqual(response.status_code, contract["status"])
+        self.assertEqual(response.json, contract["response"])
         self.assertEqual(boards.last_board_id, "board-a")
 
 

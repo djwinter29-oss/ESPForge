@@ -10,7 +10,8 @@
  * test_generation: number, test_id: string}} TestedPair
  * @typedef {WifiPair & {wifi_enabled?: boolean, ble_enabled?: boolean, ble_key_configured?: boolean,
  * tcp_cli_enabled?: boolean, stale?: boolean, key_staged?: boolean,
- * ssid_staged?: boolean, password_staged?: boolean, pair_tested?: boolean, test_generation?: number}} WirelessConfiguration
+ * ssid_staged?: boolean, password_staged?: boolean, pair_tested?: boolean,
+ * test_generation?: number}} WirelessConfiguration
  * @typedef {{wifi_enabled: boolean, ble_enabled: boolean, confirm_reboot: true,
  * ssid?: string, ssid_hex?: string, password?: string, ble_key?: string,
  * use_tested_wifi?: true, test_id?: string, test_generation?: number}} WirelessSave
@@ -69,7 +70,7 @@ export function wirelessRadioEdited(state, radio) {
   return state.draft[radio] !== undefined;
 }
 
-/** @param {WirelessPolicyState} state */
+/** @param {WirelessPolicyState} state @returns {{wifi: CredentialAction, ble: CredentialAction}} */
 export function wirelessCredentialActions(state) {
   return {
     wifi: wirelessRadioEdited(state, "wifi") && !wirelessRadioOn(state, "wifi") && state.status?.ssid
@@ -96,26 +97,31 @@ export function wirelessTestExpired(state) {
 
 /** @param {WirelessPolicyState} state */
 export function wirelessSaveBlockReason(state) {
-  const wifiOn = wirelessRadioOn(state, "wifi");
-  const bleOn = wirelessRadioOn(state, "ble");
   const wifiEdited = wirelessRadioEdited(state, "wifi");
   const bleEdited = wirelessRadioEdited(state, "ble");
-  const testExpired = wirelessTestExpired(state);
-  return state.configurationConflict
-    ? "Wireless configuration changed on the board. Discard wireless edits and reload its configuration before saving."
-    : (wifiEdited || bleEdited) && !state.status ? "Waiting for fresh wireless configuration before saving radio changes."
-    : state.foreignStage ? "Clear the temporary wireless credentials in Wi-Fi settings before saving; another client staged them."
-    : state.awaitingPair ? "Waiting for status matching the tested pair. If it was replaced, test again or clear the test."
-    : state.busy ? "Finish the wireless operation before saving."
-    : state.wifiCanceling || state.wifiCancelError || state.cleanupRequired ? "Clear the temporary Wi-Fi test before saving."
-    : state.wifiAttempt && !state.wifiStage ? "Test the connection again or clear the temporary Wi-Fi test before saving."
-    : wifiOn && state.wifiEdited ? "Network details changed; test the connection again before saving."
-    : testExpired ? "Test credentials expired; test the connection again before saving."
-    : state.keyNeedsRegeneration ? "Generate a replacement Control key or disable Bluetooth before saving."
-    : wifiEdited && wifiOn && !state.status?.ssid && !state.wifiStage
-      ? "Test a network before enabling Wi-Fi."
-    : bleEdited && bleOn && !state.status?.ble_key_configured && !state.keyDirty
-      ? "Generate a Control key before enabling Bluetooth." : null;
+  const wifiOn = wirelessRadioOn(state, "wifi");
+  const bleOn = wirelessRadioOn(state, "ble");
+  if (state.configurationConflict)
+    return "Wireless configuration changed on the board. Discard wireless edits and reload its configuration "
+      + "before saving.";
+  if ((wifiEdited || bleEdited) && !state.status)
+    return "Waiting for fresh wireless configuration before saving radio changes.";
+  if (state.foreignStage)
+    return "Clear the temporary wireless credentials in Wi-Fi settings before saving; another client staged them.";
+  if (state.awaitingPair)
+    return "Waiting for status matching the tested pair. If it was replaced, test again or clear the test.";
+  if (state.busy) return "Finish the wireless operation before saving.";
+  if (state.wifiCanceling || state.wifiCancelError || state.cleanupRequired)
+    return "Clear the temporary Wi-Fi test before saving.";
+  if (state.wifiAttempt && !state.wifiStage)
+    return "Test the connection again or clear the temporary Wi-Fi test before saving.";
+  if (wifiOn && state.wifiEdited) return "Network details changed; test the connection again before saving.";
+  if (wirelessTestExpired(state)) return "Test credentials expired; test the connection again before saving.";
+  if (state.keyNeedsRegeneration) return "Generate a replacement Control key or disable Bluetooth before saving.";
+  if (wifiEdited && wifiOn && !state.status?.ssid && !state.wifiStage) return "Test a network before enabling Wi-Fi.";
+  if (bleEdited && bleOn && !state.status?.ble_key_configured && !state.keyDirty)
+    return "Generate a Control key before enabling Bluetooth.";
+  return null;
 }
 
 /** @param {WirelessPolicyState} state @param {number} saved */
