@@ -64,3 +64,11 @@ test("hidden unsaved-change indicator remains visually hidden", () => {
   const css = readFileSync(new URL("../../src/css/dashboard.css", import.meta.url), "utf8");
   assert.match(css, /\.settings-dirty\[hidden\]\s*\{\s*display:\s*none\s*;/);
 });
+
+test("recovery guidance uses the footer text column and small-screen radio controls stay compact", () => {
+  const css = readFileSync(new URL("../../src/css/dashboard.css", import.meta.url), "utf8");
+  assert.match(css, /#recovery-help\s*\{\s*grid-column:\s*2/);
+  assert.match(css, /\.control-help\s*\{[^}]*font-size:\s*13px/);
+  assert.match(css, /@media\s*\(max-width:\s*420px\)/);
+  assert.match(css, /\.radio-setting\s*\{\s*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+minmax\(112px,\s*\.9fr\)/);
+});

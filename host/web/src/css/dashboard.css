@@ -292,7 +292,7 @@ h2 { margin-bottom: 0; font-size: 18px; font-weight: 650; }
 .settings-controls select:disabled, .settings-controls input:disabled { opacity: .55; }
 .settings-note { grid-column: 2; margin: 0; color: var(--teal-dark); font-weight: 600; overflow-wrap: anywhere; }
 .settings-action-help { display: flex; flex-wrap: wrap; gap: 4px 16px; }
-.control-help { margin: 0; color: var(--teal-dark); font-size: 12px; overflow-wrap: anywhere; }
+.control-help { margin: 0; color: var(--teal-dark); font-size: 13px; overflow-wrap: anywhere; }
 .settings-action-help .control-help:empty { display: none; }
 .configuration-summary { display: grid; gap: 8px; margin: 0 0 12px; }
 .configuration-summary > div { display: grid; grid-template-columns: minmax(130px, .7fr) minmax(0, 1.3fr);
@@ -322,6 +322,7 @@ h2 { margin-bottom: 0; font-size: 18px; font-weight: 650; }
 .status-line[data-error="true"] .status-mark { background: var(--red); }
 .status-line[data-active="true"]:not([data-error="true"]) .status-mark { background: var(--green); }
 #command-resync { grid-column: 2; justify-self: start; }
+#recovery-help { grid-column: 2; max-width: 100%; }
 
 @media (max-width: 1200px) {
   .runtime[aria-labelledby="settings-title"] .settings-controls:has(> #wifi-settings:not([hidden])) { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-flow: row; }
@@ -359,6 +360,10 @@ h2 { margin-bottom: 0; font-size: 18px; font-weight: 650; }
   h1 { font-size: 26px; }
   .topbar { flex-wrap: wrap; gap: 4px 12px; padding-block: 8px; }
   .configuration-summary > div { grid-template-columns: minmax(0, 1fr); gap: 2px; padding-bottom: 4px; }
+  .radio-setting { grid-template-columns: minmax(0, 1fr) minmax(112px, .9fr); align-items: end; }
+  .radio-setting label { min-width: 0; }
+  .radio-setting .button { width: auto; min-width: 0; padding-inline: 8px; }
+  .radio-setting select { width: 100%; }
   .settings-controls, .runtime[aria-labelledby="settings-title"] .settings-controls,
   .runtime[aria-labelledby="settings-title"] .settings-controls:has(> #wifi-settings:not([hidden])) { grid-template-columns: minmax(0, 1fr); grid-auto-flow: row; }
 }

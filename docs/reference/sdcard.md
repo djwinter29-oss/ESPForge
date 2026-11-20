@@ -22,7 +22,7 @@ exact board and breakout before connecting them.
 | Data bit 1 | GPIO14 | DAT1 | Bidirectional |
 | Data bit 2 | GPIO15 | DAT2 | Bidirectional |
 | Data bit 3 | GPIO10 | DAT3 | Bidirectional |
-| Card detect | GPIO8 | Inserted-high, 3.3 V detection signal | Input with internal pull-down |
+| Card detect | GPIO8 | Inserted-low detection switch to GND | Input with internal pull-up |
 | Supply | 3V3 | 3.3 V supply input | Power |
 | Ground | GND | GND | Common ground |
 
@@ -33,11 +33,11 @@ CMD and DAT0-DAT3 require suitable **external pull-ups to 3.3 V** (typically 10 
 requirements and existing resistors). Do not add a pull-up to CLK. Pinctrl also requests internal command/data
 pull-ups, but these do not replace electrical qualification. Keep all six signal wires short.
 
-GPIO8 is **active-high**: 3.3 V means inserted, low means absent. Connect a suitable insertion switch between
-GPIO8 and 3V3, closing when a card is inserted; the internal pull-down holds an open/unwired input low.
-A socket whose detect contact instead shorts to ground on insertion needs polarity adaptation, not direct
-connection with this configuration. Never apply 5 V. Detection wiring is required for mounting: an unwired
-GPIO8 reports no card even when the SDMMC signals are connected. There is no power-control GPIO.
+GPIO8 is **active-low**: low means inserted, 3.3 V means absent. Connect the socket's insertion switch between
+GPIO8 and GND, closing when a card is inserted; the internal pull-up holds an open input high. A socket whose
+detect contact instead drives 3.3 V on insertion needs polarity adaptation, not direct connection with this
+configuration. Never apply 5 V. An unwired GPIO8 reads absent; a GPIO8 shorted to GND reads inserted even
+without a card, so firmware retries initialization until a card responds. There is no power-control GPIO.
 In the native image, GPIO10 is DAT3, **not a chip-select output**.
 When changing between native SDMMC and SPI images, disconnect card power before restarting:
 a board reset alone does not necessarily reset the card's selected bus mode.
@@ -50,9 +50,9 @@ a board reset alone does not necessarily reset the card's selected bus mode.
 | MOSI | GPIO11 | CMD / DI |
 | MISO | GPIO13 | DAT0 / DO |
 | CS, active-low | GPIO10 | DAT3 / CS |
-| Card detect | GPIO8 | Inserted-high, 3.3 V detection signal |
+| Card detect | GPIO8 | Inserted-low detection switch to GND |
 
-Supply, ground and the active-high detect switch use the same wiring and precautions as above.
+Supply, ground and the active-low detect switch use the same wiring and precautions as above.
 GPIO14 and GPIO15 are unused by the SPI image; DAT1/DAT2 do not carry SPI data.
 Use a 3.3 V-compatible SPI socket/module with appropriate SD pull-ups, including CS; internal data pull-ups do not
 replace external resistors. This is ordinary full-duplex SPI with one MOSI and one MISO line, not native one-bit SDMMC.

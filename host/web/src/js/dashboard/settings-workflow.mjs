@@ -111,16 +111,16 @@ export function createSettingsWorkflow({
       /** @param {boolean} current @param {boolean} proposed */
       const radioValue = (current, proposed) => current === proposed
         ? "unchanged" : `${current ? "Enabled" : "Disabled"} to ${proposed ? "Enabled" : "Disabled"}`;
-      const radioChanges = `Wi-Fi ${radioValue(Boolean(saved.radios & 1), Boolean(settings.radios & 1))}; `
-        + `Bluetooth ${radioValue(Boolean(saved.radios & 2), Boolean(settings.radios & 2))}.`;
-      const wifiAction = credentials.wifi === "preserve" ? "Preserve saved Wi-Fi credentials"
+      const radioChanges = `Wi-Fi radio: ${radioValue(Boolean(saved.radios & 1), Boolean(settings.radios & 1))}; `
+        + `Bluetooth radio: ${radioValue(Boolean(saved.radios & 2), Boolean(settings.radios & 2))}.`;
+      const wifiAction = credentials.wifi === "preserve" ? "unchanged"
         : credentials.wifi === "replace"
-          ? `Replace with tested network “${wireless.testedNetworkName() ?? ""}”`
-          : "Erase saved Wi-Fi credentials";
-      const bleAction = credentials.ble === "preserve" ? "Preserve saved Control key"
-        : credentials.ble === "replace" ? "Replace with the new Control key" : "Erase saved Control key";
+          ? `replace with tested network “${wireless.testedNetworkName() ?? ""}”`
+          : "erase saved credentials";
+      const bleAction = credentials.ble === "preserve" ? "unchanged"
+        : credentials.ble === "replace" ? "replace with the new key" : "erase saved key";
       element("configuration-dialog-wireless").textContent =
-        `${radioChanges} Wi-Fi credentials: ${wifiAction}; Bluetooth key: ${bleAction}.`;
+        `${radioChanges} Wi-Fi credentials: ${wifiAction}; Control key: ${bleAction}.`;
       const warnings = [];
       if (credentials.ble === "replace")
         warnings.push("Copy the new Control key before saving; the board cannot show it again.");
@@ -129,6 +129,10 @@ export function createSettingsWorkflow({
       wirelessWarning.textContent = warnings.join(" ");
       wirelessWarning.hidden = !warnings.length;
     }
+    const descriptions = ["configuration-dialog-summary", "configuration-warning"];
+    if (!wirelessWarning.hidden) descriptions.push("configuration-wireless-warning");
+    if (!element("configuration-draft-warning").hidden) descriptions.push("configuration-draft-warning");
+    dialog.setAttribute("aria-describedby", descriptions.join(" "));
     dialog.showModal();
   }
 

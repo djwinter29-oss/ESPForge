@@ -33,7 +33,7 @@ Wire with power disconnected. Do not apply 5 V to ESP32 GPIOs or a bare SD card.
 This is proposed wiring, not electrically qualified hardware.
 
 The alternate SD-over-SPI image supports a 3.3 V SPI socket/module without DAT1/DAT2 wiring.
-Follow the [SD pin allocation](../reference/sdcard.md#pin-allocation) for the selected image, GPIO8 active-high
+Follow the [SD pin allocation](../reference/sdcard.md#pin-allocation) for the selected image, GPIO8 active-low
 card detection, supply and ground. An unwired detection input reads absent and prevents mounting.
 
 GPIO assignments use explicit hardware pinctrl for native SDMMC slot 0 or SPI3.

@@ -6,10 +6,12 @@ import test from "node:test";
 import { hasUnknownOutcome } from "../../src/js/dashboard/command-lifecycle.mjs";
 import { createSettingsWorkflow } from "../../src/js/dashboard/settings-workflow.mjs";
 
-function setup(context, { wirelessDirty = false, reply } = {}) {
+function setup(context, { wirelessDirty = false, wirelessDraft = false, reply } = {}) {
   const closeListeners = [];
-  const dialog = { open: false, showModal() { this.open = true; },
+  const attributes = {};
+  const dialog = { open: false, attributes, showModal() { this.open = true; },
     close() { this.open = false; closeListeners.forEach(listener => listener()); },
+    setAttribute(name, value) { attributes[name] = String(value); },
     addEventListener: (type, listener) => { if (type === "close") closeListeners.push(listener); } };
   const elements = new Map([
     ["#configuration-dialog", dialog],
@@ -35,10 +37,10 @@ function setup(context, { wirelessDirty = false, reply } = {}) {
     getCurrentSnapshot: () => snapshot,
     getSelectedBoardLabel: () => "ESPForge / test-board",
     wireless: {
-      credentialActions: () => ({ wifi: "Keep", ble: "Keep" }),
+      credentialActions: () => ({ wifi: "preserve", ble: "preserve" }),
       testedNetworkName: () => null,
       dirty: () => wirelessDirty,
-      hasDraftEdits: () => wirelessDirty,
+      hasDraftEdits: () => wirelessDirty || wirelessDraft,
       finish: (saved, error) => finished.push({ saved, error }),
       request: () => ({ ssid: "lab" }),
       saveIdentity: () => "wireless",
@@ -65,6 +67,22 @@ function setup(context, { wirelessDirty = false, reply } = {}) {
   });
   return { calls, dialog, elements, finished, messages, published, snapshot, uncertain, workflow };
 }
+
+test("save confirmation only describes warnings that are visible and applicable", context => {
+  const plain = setup(context);
+  plain.workflow.setClock("160");
+  plain.workflow.confirm();
+  const plainDescription = plain.dialog.attributes["aria-describedby"].split(" ");
+  assert.deepEqual(plainDescription, ["configuration-dialog-summary", "configuration-warning"]);
+  assert.equal(plain.elements.get("#configuration-draft-warning").hidden, true);
+  plain.dialog.close();
+
+  const draft = setup(context, { wirelessDraft: true });
+  draft.workflow.setClock("160");
+  draft.workflow.confirm();
+  assert.ok(draft.dialog.attributes["aria-describedby"].includes("configuration-draft-warning"));
+  assert.equal(draft.elements.get("#configuration-draft-warning").hidden, false);
+});
 
 test("a confirmed plain save sends the draft, acknowledges reboot and clears the draft", async context => {
   const { calls, dialog, elements, published, snapshot, workflow } = setup(context);

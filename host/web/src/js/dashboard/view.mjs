@@ -275,14 +275,21 @@ function renderSettings(snapshot, operations) {
   const saveBlockReason = operations.saveBlockReason;
   button("#settings-save").disabled = !canSave;
   button("#settings-save").title = saveBlockReason ?? "";
-  const saveHelp = element("#settings-save-help");
-  updateText(saveHelp, saveBlockReason ?? "");
-  saveHelp.hidden = !saveBlockReason;
-  button("#reboot-control").disabled = !operations.canReboot;
-  const rebootHelp = element("#reboot-help");
+  const rebootControl = button("#reboot-control");
   const rebootReason = operations.rebootBlockReason ?? "";
+  const sharedBlocker = !canSave && !operations.canReboot
+    && (saveBlockReason === rebootReason || operations.busy)
+    ? operations.busy ? "Wait for the current operation or recovery to finish before saving or rebooting."
+      : saveBlockReason
+    : null;
+  const saveHelp = element("#settings-save-help");
+  updateText(saveHelp, sharedBlocker ?? saveBlockReason ?? "");
+  saveHelp.hidden = !(sharedBlocker ?? saveBlockReason);
+  rebootControl.disabled = !operations.canReboot;
+  rebootControl.setAttribute("aria-describedby", sharedBlocker ? "settings-save-help" : "reboot-help");
+  const rebootHelp = element("#reboot-help");
   updateText(rebootHelp, rebootReason);
-  rebootHelp.hidden = !rebootReason;
+  rebootHelp.hidden = Boolean(sharedBlocker) || !rebootReason;
   element("#settings-dirty-indicator").hidden =
     !snapshot.settings_dirty && !snapshot.wireless_dirty && !snapshot.wireless_draft_dirty;
   const settingsNote = snapshot.settings_message

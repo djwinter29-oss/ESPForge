@@ -658,7 +658,7 @@ await run("clock drafts preserve remotely updated radios and credentials", async
     check(el(`settings-${field}`).value === "80", "local edit was overwritten");
     check(!el("settings-save").disabled, "remote update manufactured a conflicting credential draft");
     el("settings-save").click();
-    check(el("configuration-dialog-wireless").textContent.includes("Preserve saved Control key"),
+    check(el("configuration-dialog-wireless").textContent.includes("Control key: unchanged"),
       "confirmation did not explain credential preservation");
     el("confirm-configuration").click();
     await waitFor(() => el("settings-note").textContent.includes("Settings saved"), "unrelated settings save failed");
@@ -705,7 +705,7 @@ await run("forced radio-disable events cannot bypass readiness; recovery explici
   await waitFor(() => !el("settings-save").disabled, "fresh wireless status did not release explicit radio intent");
   check(el("settings-wifi").value === "0", "baseline recovery overwrote the explicit disable");
   el("settings-save").click();
-  check(el("configuration-dialog-wireless").textContent.includes("Erase saved Wi-Fi credentials"),
+  check(el("configuration-dialog-wireless").textContent.includes("Wi-Fi credentials: erase saved credentials"),
     "confirmation did not explain erasure");
   el("confirm-configuration").click();
   await waitFor(() => el("settings-note").textContent.includes("Settings saved"), "explicit disable did not save");

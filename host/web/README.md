@@ -88,9 +88,9 @@ Both hosts remain loopback-only and require local request origins.
 Host-reported uncertainty is shown with its recovery action even after a dashboard reload. Switching boards with
 unsaved settings or wireless edits requires explicit discard confirmation; browser reload or close warns while those
 edits remain, including Wi-Fi names and passwords entered before connection testing. Untested credentials remain
-ineligible to save. Save confirmation identifies the target board, boot and radio changes, and whether Wi-Fi
-credentials or the Bluetooth key will be preserved, replaced or erased. A replacement Wi-Fi action names the tested
-network; credentials are never displayed. Safety warnings appear only when relevant. Failed status polls remain
+ineligible to save. Save confirmation identifies the target board, boot and radio changes, and summarizes whether
+Wi-Fi credentials or the Control key are unchanged, replaced or erased. A replacement Wi-Fi action names the tested
+network; credentials are never displayed. Safety warnings are included only when relevant. Failed status polls remain
 visible in open wireless dialogs, including guidance when a generated Bluetooth key is still locally available.
 Wi-Fi test progress is shown without repeatedly announcing its countdown. The dashboard reports the age of the last
 successful status fetch until a poll recovers.

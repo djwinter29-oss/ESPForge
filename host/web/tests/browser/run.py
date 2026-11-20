@@ -142,7 +142,7 @@ def check_native_transitions(page: Page, origin: str, host_name: str) -> None:
     page.wait_for_function("!document.querySelector('#settings-clock').disabled")
     page.select_option("#settings-clock", "80")
     page.locator("#settings-save").click()
-    assert "Bluetooth unchanged" in page.locator("#configuration-dialog-wireless").inner_text()
+    assert "Bluetooth radio: unchanged" in page.locator("#configuration-dialog-wireless").inner_text()
     page.evaluate("""() => {
         const state = window.sharedBrowserState.connected;
         state.board_configuration.radios = 2;
@@ -154,7 +154,7 @@ def check_native_transitions(page: Page, origin: str, host_name: str) -> None:
     assert page.evaluate("window.sharedBrowserState.settingsRequests.length") == 0
     assert "confirm again" in page.locator("#settings-note").inner_text()
     page.locator("#settings-save").click()
-    assert "Bluetooth unchanged" in page.locator("#configuration-dialog-wireless").inner_text()
+    assert "Bluetooth radio: unchanged" in page.locator("#configuration-dialog-wireless").inner_text()
     page.locator("#confirm-configuration").click()
     page.wait_for_function("window.sharedBrowserState.settingsRequests.length === 1")
     assert page.evaluate("window.sharedBrowserState.settingsRequests[0]") == {
@@ -367,6 +367,10 @@ def check_recovery_presentation(page: Page, origin: str, host_name: str) -> None
     expect(page.locator("#connection-label")).to_have_text("Connected")
     expect(page.locator("#settings-save")).to_be_disabled()
     expect(page.locator("#reboot-control")).to_be_disabled()
+    expect(page.locator("#settings-save-help")).to_have_text(
+        "Wait for the current operation or recovery to finish before saving or rebooting.")
+    expect(page.locator("#reboot-help")).to_be_hidden()
+    assert page.locator("#reboot-control").get_attribute("aria-describedby") == "settings-save-help"
     recovery = page.locator("#command-resync")
     expect(recovery).to_be_visible()
     bounds = recovery.evaluate("""node => {
@@ -379,6 +383,26 @@ def check_recovery_presentation(page: Page, origin: str, host_name: str) -> None
     }""")
     assert bounds["width"] >= 80 and bounds["scrollWidth"] <= bounds["clientWidth"], bounds
     assert bounds["gridColumn"] == "2" and bounds["right"] <= bounds["footerRight"], bounds
+
+    page.evaluate("""() => {
+        window.sharedBrowserState.statusFails = true;
+        document.dispatchEvent(new Event('visibilitychange'));
+    }""")
+    expect(page.locator("#status-message")).to_contain_text("Status unavailable")
+    expect(page.locator("#recovery-help")).to_be_visible()
+    for width in (1440, 320):
+        page.set_viewport_size({"width": width, "height": 900})
+        guidance = page.locator("#recovery-help").evaluate("""node => {
+            const rect = node.getBoundingClientRect();
+            return {width: rect.width, height: rect.height, column: getComputedStyle(node).gridColumnStart};
+        }""")
+        assert guidance["width"] > 180 and guidance["height"] < 160 and guidance["column"] == "2", guidance
+    page.evaluate("""() => {
+        window.sharedBrowserState.statusFails = false;
+        document.dispatchEvent(new Event('visibilitychange'));
+    }""")
+    expect(page.locator("#status-message")).not_to_contain_text("Status unavailable")
+    page.set_viewport_size({"width": 1440, "height": 900})
 
     def contrast(selector: str) -> float:
         return page.locator(selector).evaluate("""node => {
@@ -566,6 +590,27 @@ def check_active_wifi_progress(page: Page, origin: str, host_name: str) -> None:
     print(f"{host_name}: PASS active Wi-Fi progress does not repeatedly announce")
 
 
+def confirmation_description(page: Page) -> str:
+    """Read Chromium's computed dialog description; use referenced visible text in other engines."""
+    create_session = getattr(page.context, "new_cdp_session", None)
+    if create_session is not None:
+        session = create_session(page)
+        try:
+            nodes = session.send("Accessibility.getFullAXTree")["nodes"]
+            dialog = next(node for node in nodes
+                          if node.get("role", {}).get("value") == "dialog"
+                          and node.get("name", {}).get("value") == "Save and reboot?")
+            return dialog.get("description", {}).get("value", "")
+        finally:
+            session.detach()
+    return page.locator("#configuration-dialog").evaluate("""dialog =>
+        (dialog.getAttribute('aria-describedby') ?? '').split(/\\s+/)
+            .map(id => document.getElementById(id))
+            .filter(node => node && !node.hidden)
+            .map(node => node.innerText)
+            .join(' ')""")
+
+
 def check_hidden_display_and_responsive_confirmation(page: Page, origin: str, host_name: str) -> None:
     """Verify hidden optional controls stay hidden and confirmations remain reachable on narrow displays."""
     page.goto(origin)
@@ -592,10 +637,23 @@ def check_hidden_display_and_responsive_confirmation(page: Page, origin: str, ho
     page.set_viewport_size({"width": 320, "height": 600})
     page.goto(origin)
     page.wait_for_function("() => window.sharedBrowserState.statusReads > 0")
+    radio_controls = page.evaluate("""() => ['wifi', 'ble'].map(radio => {
+        const setting = document.querySelector('#' + radio + '-settings');
+        const select = setting.querySelector('select').getBoundingClientRect();
+        const button = setting.querySelector('button').getBoundingClientRect();
+        const bounds = setting.getBoundingClientRect();
+        return {height: bounds.height, right: button.right, viewport: innerWidth,
+            aligned: Math.abs(select.bottom - button.bottom) <= 1};
+    })""")
+    assert all(row["height"] < 100 and row["right"] <= row["viewport"] and row["aligned"]
+               for row in radio_controls), radio_controls
     page.locator("#settings-clock").select_option("80")
     page.locator("#settings-save").click()
     dialog = page.locator("#configuration-dialog")
     expect(dialog).to_be_visible()
+    description = confirmation_description(page)
+    assert "Untested Wi-Fi details" not in description, description
+    assert "not encrypted" not in description, description
     dimensions = dialog.evaluate("""dialog => {
         const rect = dialog.getBoundingClientRect();
         return {top: rect.top, bottom: rect.bottom, height: rect.height, scrollHeight: dialog.scrollHeight};
@@ -606,6 +664,22 @@ def check_hidden_display_and_responsive_confirmation(page: Page, origin: str, ho
         f"{host_name}: unchanged wireless details make the confirmation unnecessarily scroll: {dimensions}")
     page.locator("#confirm-configuration").scroll_into_view_if_needed()
     expect(page.locator("#confirm-configuration")).to_be_visible()
+    page.locator("#cancel-configuration").click()
+
+    page.goto(origin)
+    page.wait_for_function("() => window.sharedBrowserState.statusReads > 0")
+    page.locator("#wifi-configure").click()
+    page.locator("#wifi-other").click()
+    page.locator("#wifi-ssid").fill("review-network")
+    page.locator("#wifi-password").fill("review-passphrase")
+    page.locator("#wifi-connect").click()
+    expect(page.locator("#wifi-dialog")).not_to_be_visible()
+    page.locator("#settings-save").click()
+    description = confirmation_description(page)
+    assert "review-network" in description and "not encrypted" in description, description
+    assert "Untested Wi-Fi details" not in description, description
+    page.keyboard.press("Escape")
+
     page.set_viewport_size({"width": 1280, "height": 800})
     print(f"{host_name}: PASS hidden controls and narrow-screen confirmation")
 

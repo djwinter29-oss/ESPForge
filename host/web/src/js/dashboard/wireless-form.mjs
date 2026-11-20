@@ -332,9 +332,11 @@ export function bindWirelessForm({
     wifiDialog.showModal();
   };
   const openBle = () => {
-    el("ble-status").textContent = status?.ble_key_configured
-      ? "A Control key is saved. It cannot be read back; generate a replacement only if needed."
-      : "No Control key is saved. Bluetooth stays off until a key is saved.";
+    el("ble-status").textContent = bleKey
+      ? "A new Control key is ready but not saved. Copy it before Save&Reboot."
+      : status?.ble_key_configured
+        ? "A Control key is saved. It cannot be read back; generate a replacement only if needed."
+        : "No Control key is saved. Bluetooth stays off until a key is saved.";
     bleDialog.showModal();
   };
   /** @param {"wifi" | "ble"} radio */

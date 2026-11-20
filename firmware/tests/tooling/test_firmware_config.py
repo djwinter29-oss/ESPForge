@@ -42,9 +42,9 @@ class FirmwareConfigTests(unittest.TestCase):
                     dts.write_text(SPI_DTS.replace(old, new))
                     self.assertTrue(CHECK["sd_spi_failures"](build))
 
-    def test_card_detect_requires_inserted_high_gpio8_with_pulldown(self):
-        self.assertEqual(CHECK["card_detect_failures"]("sd-detect-gpios = < &gpio0 0x8 0x20 >;"), [])
-        for value in ("", "sd-detect-gpios = < &gpio0 8 0x21 >;", "sd-detect-gpios = < &gpio0 9 0x20 >;"):
+    def test_card_detect_requires_inserted_low_gpio8_with_pullup(self):
+        self.assertEqual(CHECK["card_detect_failures"]("sd-detect-gpios = < &gpio0 0x8 0x11 >;"), [])
+        for value in ("", "sd-detect-gpios = < &gpio0 8 0x20 >;", "sd-detect-gpios = < &gpio0 9 0x11 >;"):
             with self.subTest(value=value):
                 self.assertTrue(CHECK["card_detect_failures"](value))
 

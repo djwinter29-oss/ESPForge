@@ -31,6 +31,8 @@ test("server dashboard keeps radio dialogs and confirmation controls without dro
     assert.doesNotMatch(dashboard, /role="listbox"|role="option"/);
     assert.doesNotMatch(dashboard, /id="wireless-save"/);
     assert.match(dashboard, /id="configuration-wireless-warning" hidden/);
+    assert.match(dashboard,
+      /id="configuration-dialog"[^>]*aria-describedby="configuration-dialog-summary configuration-warning"/);
     assert.match(footer, /role="status" aria-live="polite"/);
     assert.doesNotMatch(footer, /<footer[^>]*role="status"/);
     assert.match(footer, /id="status-message" role="status" aria-live="polite"/);

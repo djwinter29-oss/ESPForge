@@ -151,6 +151,18 @@ test("open Bluetooth dialog explains status failures and keeps its generated key
   assert.equal(el("ble-readiness").hidden, true);
 });
 
+test("reopening Bluetooth configuration keeps local replacement-key guidance", async context => {
+  const { form, el } = formFixture(context);
+  await el("ble-configure").fire("click");
+  await el("ble-generate").fire("click");
+  const key = el("ble-secret").value;
+  await el("ble-cancel").fire("click");
+  await el("ble-configure").fire("click");
+  assert.equal(el("ble-secret").value, key);
+  assert.equal(el("ble-copy").disabled, false);
+  assert.match(el("ble-status").textContent, /new Control key is ready but not saved.*Copy it/i);
+});
+
 test("enabling a radio without saved or replacement credentials is blocked at serialization", async context => {
   const { form, el } = formFixture(context);
   form.initialize({ ssid: "", wifi_enabled: false, ble_enabled: false,

@@ -22,8 +22,8 @@ def settings_partition_failures(build: Path, config: dict[str, str]) -> list[str
 def card_detect_failures(dts: str) -> list[str]:
     detect = re.search(r"\bsd-detect-gpios\s*=\s*<\s*&gpio0\s+(0x[0-9a-f]+|\d+)\s+"
                        r"(0x[0-9a-f]+|\d+)\s*>;", dts)
-    if not detect or [int(value, 0) for value in detect.groups()] != [8, 0x20]:
-        return ["SD card detection must use GPIO8 active-high with a pull-down"]
+    if not detect or [int(value, 0) for value in detect.groups()] != [8, 0x11]:
+        return ["SD card detection must use GPIO8 active-low with a pull-up"]
     return []
 
 

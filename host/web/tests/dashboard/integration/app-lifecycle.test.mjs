@@ -226,8 +226,10 @@ test("Save requires renewed confirmation when remote settings change the reviewe
   await handlers.get("#settings-clock:change")();
   await handlers.get("#settings-save:click")();
   assert.match(elements.get("#configuration-dialog-profile").textContent, /240 MHz to 80 MHz/);
-  assert.match(elements.get("#configuration-dialog-wireless").textContent, /Wi-Fi unchanged; Bluetooth unchanged/);
-  assert.match(elements.get("#configuration-dialog-wireless").textContent, /Preserve saved Wi-Fi credentials/);
+  assert.match(elements.get("#configuration-dialog-wireless").textContent,
+    /Wi-Fi radio: unchanged; Bluetooth radio: unchanged/);
+  assert.match(elements.get("#configuration-dialog-wireless").textContent,
+    /Wi-Fi credentials: unchanged; Control key: unchanged/);
   assert.equal(elements.get("#configuration-wireless-row").hidden, false);
   assert.equal(elements.get("#configuration-wireless-warning").hidden, true);
   connected.settings.radios = 3;
@@ -237,7 +239,7 @@ test("Save requires renewed confirmation when remote settings change the reviewe
   assert.equal(savedSettings.length, 0);
   assert.match(elements.get("#settings-note").textContent, /changed.*confirm again/);
   await handlers.get("#settings-save:click")();
-  assert.match(elements.get("#configuration-dialog-wireless").textContent, /Bluetooth unchanged/);
+  assert.match(elements.get("#configuration-dialog-wireless").textContent, /Bluetooth radio: unchanged/);
   await handlers.get("#confirm-configuration:click")();
   assert.deepEqual(savedSettings[0], { system_clock_mhz: 80, sdcard_profile: 0, radios: 3 });
 });

@@ -566,6 +566,8 @@ test("wireless provisioning and cancellation preserve draft and uncertainty inva
   assert.match(elements.get("#ble-secret").value, /^[0-9a-f]{64}$/);
   handlers.get("#settings-save:click")();
   assert.equal(elements.get("#configuration-wireless-warning").hidden, false);
+  assert.ok(elements.get("#configuration-dialog").getAttribute("aria-describedby")
+    .includes("configuration-wireless-warning"));
   handlers.get("#cancel-configuration:click")();
   await handlers.get("#confirm-configuration:click")();
   assert.equal(wirelessSettings.length, 0);

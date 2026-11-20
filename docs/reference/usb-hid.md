@@ -208,7 +208,7 @@ Settings describe the next boot, while GPIOs describe configured board facts.
 | 13 | 1 | `board_flags` | Flags below |
 | 14 | 1 | `reset_cause` | Reset enum below |
 | 15 | 1 | `led_gpio` | Configured RGB data GPIO; `255` if unallocated |
-| 16 | 1 | `card_detect_gpio` | `8`, active-high card-detect input; `255` on older firmware without detection |
+| 16 | 1 | `card_detect_gpio` | `8`, active-low card-detect input; `255` on older firmware without detection |
 | **Total** | **17** | | **18 bytes including report ID** |
 
 | Board flag bit | Meaning | Current device |
