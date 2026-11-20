@@ -75,13 +75,13 @@ esac
 
 class WrapperTests(unittest.TestCase):
     def setUp(self):
-        temp = tempfile.TemporaryDirectory(prefix="espforge-wrappers-")
+        temp = tempfile.TemporaryDirectory(prefix="zephyrforge-wrappers-")
         self.addCleanup(temp.cleanup)
         self.workspace = Path(temp.name)
         # Confine mocked workspace discovery even when fixtures live beneath a real west workspace.
         (self.workspace / ".west").mkdir()
         (self.workspace / ".west/config").touch()
-        self.root = self.workspace / "ESPForge"
+        self.root = self.workspace / "ZephyrForge"
         shutil.copytree(TOOLS, self.root / "tools/firmware")
         shutil.copytree(TOOLS.parents[1] / "patches", self.root / "patches")
         self.bin = self.workspace / "mock-bin"
@@ -125,7 +125,7 @@ class WrapperTests(unittest.TestCase):
         self.assertIn("-m west blobs fetch hal_espressif", commands)
         self.assertIn("-b esp32s3_devkitc/esp32s3/procpu", commands)
         self.assertIn("-DDTC_OVERLAY_FILE=boards/esp32s3_devkitc_n16r8_sdmmc.overlay", commands)
-        self.assertIn("-DEF_ENABLE_STORAGE_BENCHMARK=ON", commands)
+        self.assertIn("-DZF_ENABLE_STORAGE_BENCHMARK=ON", commands)
 
     def test_dependency_patch_applies_once_accepts_reverse_match_and_rejects_conflict(self):
         self.assertEqual(self.run_script("build.sh").returncode, 0)

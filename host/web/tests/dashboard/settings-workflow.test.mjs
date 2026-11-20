@@ -35,7 +35,7 @@ function setup(context, { wirelessDirty = false, wirelessDraft = false, reply } 
   const messages = [];
   const workflow = createSettingsWorkflow({
     getCurrentSnapshot: () => snapshot,
-    getSelectedBoardLabel: () => "ESPForge / test-board",
+    getSelectedBoardLabel: () => "ZephyrForge / test-board",
     wireless: {
       credentialActions: () => ({ wifi: "preserve", ble: "preserve" }),
       testedNetworkName: () => null,
@@ -90,7 +90,7 @@ test("a confirmed plain save sends the draft, acknowledges reboot and clears the
   assert.equal(workflow.dirty(), true);
   workflow.confirm();
   assert.equal(dialog.open, true);
-  assert.equal(elements.get("#configuration-dialog-board").textContent, "ESPForge / test-board");
+  assert.equal(elements.get("#configuration-dialog-board").textContent, "ZephyrForge / test-board");
   await workflow.save();
   assert.deepEqual(calls, [{ url: "/api/settings", body: { system_clock_mhz: 160, sdcard_profile: 0, radios: 0 } }]);
   assert.deepEqual(published, [{ opcode: 5, status: "completed" }]);

@@ -9,7 +9,7 @@ expected="$(python -m west list zephyr -f '{abspath}')"
 	exit 1
 }
 [[ "$(git -C "$zephyr" rev-parse HEAD)" == 28af05ca658cbacf745fd5b099566311c58ccb1d ]] || {
-	printf 'Error: ESPForge SD patches require Zephyr v4.3.2.\n' >&2
+	printf 'Error: ZephyrForge SD patches require Zephyr v4.3.2.\n' >&2
 	exit 1
 }
 for patch in "$root"/patches/zephyr/v4.3.2/*.patch; do

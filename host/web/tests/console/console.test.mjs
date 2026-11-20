@@ -9,12 +9,12 @@ import { domFixture } from "../support/dom-fixture.mjs";
 
 test("native erase, insertion and cursor sequences render text safely and clear scrollback", () => {
   const terminal = new ConsoleTerminal();
-  terminal.write("ESPForge> help\r\nold output\r\nESPForge> hx");
+  terminal.write("ZephyrForge> help\r\nold output\r\nZephyrForge> hx");
   terminal.write("\x1b[D\x1b[Pelp\x1b[0");
   terminal.write("K\x1b[?25l\x1b[31m");
-  assert.equal(terminal.lines.at(-1), "ESPForge> help");
+  assert.equal(terminal.lines.at(-1), "ZephyrForge> help");
   terminal.write("\r\x1b[2K<script>");
-  assert.equal(terminal.display().join(""), "ESPForge> help\nold output\n<script> ");
+  assert.equal(terminal.display().join(""), "ZephyrForge> help\nold output\n<script> ");
   assert.equal(terminal.lines.at(-1), "<script>");
   terminal.write("\x1b[2J\x1b[Hnew prompt");
   assert.deepEqual(terminal.lines, ["new prompt"]);

@@ -9,17 +9,17 @@ Copyright (c) 2026 Ji Dong
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <title>ESPForge Dashboard | {{ dashboard_type }}</title>
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=3">
+  <title>ZephyrForge Dashboard | {{ dashboard_type }}</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=4">
   <link rel="stylesheet" href="/css/dashboard.css">
   <script type="module" src="/js/dashboard/app.mjs"></script>
 </head>
 <body>
   <header class="topbar">
     <div class="brand">
-      <span class="brand-mark">EF</span>
+      <span class="brand-mark">ZF</span>
       <span class="brand-copy">
-        <strong>ESPForge</strong><small>{{ dashboard_type }} · App v{{ app_version }}</small>
+        <strong>ZephyrForge</strong><small>{{ dashboard_type }} · App v{{ app_version }}</small>
       </span>
     </div>
     <div class="connection" id="connection" data-state="disconnected">
@@ -277,9 +277,9 @@ Copyright (c) 2026 Ji Dong
 
     <footer class="status-line">
       <span class="status-mark" aria-hidden="true"></span>
-      <span id="status-message" role="status" aria-live="polite">Waiting for ESPForge HID</span>
+      <span id="status-message" role="status" aria-live="polite">Waiting for ZephyrForge HID</span>
       <p class="settings-note" id="settings-note" role="status" aria-live="polite">
-        Waiting for an ESPForge connection.</p>
+        Waiting for a ZephyrForge connection.</p>
       <time class="status-freshness" id="status-freshness" aria-live="off" hidden></time>
       <p class="control-help" id="recovery-help" hidden></p>
       <button class="button button-secondary" id="command-resync" type="button"

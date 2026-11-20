@@ -5,7 +5,7 @@ usage() {
 	cat <<'EOF'
 Usage: bash tools/firmware/flash.sh [--storage sdmmc|sd-spi] [--port PORT] [--baud BAUD] [--dry-run]
 
-Flash ESPForge through the USB-to-UART connector; build first if artifacts are missing.
+Flash ZephyrForge through the USB-to-UART connector; build first if artifacts are missing.
 Missing workspace, Python dependencies and build tools are prepared automatically.
   --storage     Storage image: sdmmc (default) or sd-spi; power-cycle the card when changing buses
   --port PORT   Serial port, e.g. /dev/ttyUSB0 or COM4 (auto-detected if omitted)

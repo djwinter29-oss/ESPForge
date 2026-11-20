@@ -4,13 +4,13 @@
 set -euo pipefail
 if [[ "${1:-}" == --help || "${1:-}" == -h ]]; then
 	printf 'Usage: bash tools/host/run-python.sh [web|status|reboot] [OPTIONS]\n'
-	printf 'Refreshes the editable host/python install in build/espforge, then runs espforge (default: web).\n'
+	printf 'Refreshes the editable host/python install in build/zephyrforge, then runs zephyrforge (default: web).\n'
 	printf 'Examples: run-python.sh web | run-python.sh web --serial SERIAL | run-python.sh status --device-path HID_PATH\n'
-	printf 'Environment: PYTHON (base interpreter, default python3), VENV_DIR (default build/espforge).\n'
+	printf 'Environment: PYTHON (base interpreter, default python3), VENV_DIR (default build/zephyrforge).\n'
 	exit 0
 fi
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-venv="${VENV_DIR:-$root/build/espforge}"
+venv="${VENV_DIR:-$root/build/zephyrforge}"
 base="${PYTHON:-python3}"
 
 if ! command -v "$base" >/dev/null 2>&1; then
@@ -18,7 +18,7 @@ if ! command -v "$base" >/dev/null 2>&1; then
 	exit 1
 fi
 if ! "$base" -c 'import sys; raise SystemExit(sys.version_info < (3, 10))'; then
-	echo "ESPForge host tools require Python 3.10 or newer ($base)." >&2
+	echo "ZephyrForge host tools require Python 3.10 or newer ($base)." >&2
 	exit 1
 fi
 
@@ -41,4 +41,4 @@ if [[ $# -gt 0 ]]; then
 	shift
 fi
 sh "$root/tools/host/hid-permissions-check.sh"
-PYTHONPATH="$root/host/python/src${PYTHONPATH:+:$PYTHONPATH}" exec "$python" -m espforge "$command" "$@"
+PYTHONPATH="$root/host/python/src${PYTHONPATH:+:$PYTHONPATH}" exec "$python" -m zephyrforge "$command" "$@"

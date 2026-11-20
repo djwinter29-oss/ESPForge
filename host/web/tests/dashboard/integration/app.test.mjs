@@ -22,7 +22,7 @@ test("server dashboard presents expected USB reconnection without hiding real er
     assert.equal(element("#connection-label").textContent, "Reconnecting");
     assert.equal(element("#status-message").textContent, "Reconnecting...");
     assert.equal(element(".status-line").dataset.error, "false");
-    assert.equal(element("#settings-note").textContent, "Waiting for an ESPForge connection.");
+    assert.equal(element("#settings-note").textContent, "Waiting for a ZephyrForge connection.");
     assert.equal(element("#status-message").hidden, true);
     renderStatus({ connected: false, reconnecting: true, error: "read error" });
     assert.equal(element("#connection-label").textContent, "Reconnecting");
@@ -108,14 +108,14 @@ test("startup polling and drafts recover after status and scan failures", async 
 
 test("board identity warnings stay visible across status polls and clear on a clean rescan", async context => {
   const { state, handlers, elements } = await appFixture(context);
-  state.boardWarnings = ["Duplicate ESPForge board identity; disconnect boards with duplicate serials"];
+  state.boardWarnings = ["Duplicate ZephyrForge board identity; disconnect boards with duplicate serials"];
   await handlers.get("#rescan-boards:click")();
-  assert.match(elements.get("#status-message").textContent, /Duplicate ESPForge/);
+  assert.match(elements.get("#status-message").textContent, /Duplicate ZephyrForge/);
   await state.tick();
-  assert.match(elements.get("#status-message").textContent, /Duplicate ESPForge/);
+  assert.match(elements.get("#status-message").textContent, /Duplicate ZephyrForge/);
   state.boardWarnings = [];
   await handlers.get("#rescan-boards:click")();
-  assert.doesNotMatch(elements.get("#status-message").textContent, /Duplicate ESPForge/);
+  assert.doesNotMatch(elements.get("#status-message").textContent, /Duplicate ZephyrForge/);
 });
 
 test("settings presentation waits for fresh storage status", async context => {
@@ -135,7 +135,7 @@ test("settings presentation waits for fresh storage status", async context => {
     assert.equal(elements.get("#settings-note").hidden, false);
   }
   renderStatus(connected);
-  assert.equal(elements.get("#product-name").textContent, "ESPForge (SDMMC)");
+  assert.equal(elements.get("#product-name").textContent, "ZephyrForge (SDMMC)");
   assert.equal(elements.get("#settings-clock").disabled, false);
   assert.equal(Boolean(elements.get("#reboot-control").disabled), false);
   renderStatus({ ...connected, hardware: { ...connected.hardware, capabilities: 4 | 16 } });
@@ -308,9 +308,9 @@ test("settings and reboot recovery preserve per-board command ownership", async 
   } = await appFixture(context);
   assert.equal(elements.get("#board-select").value, "board-a");
   assert.equal(elements.get("#board-select").children.find(option => option.value === "board-a").textContent,
-    "ESPForge / board-A");
+    "ZephyrForge / board-A");
   assert.equal(elements.get("#board-select").children.find(option => option.value === "board-b").textContent,
-    "ESPForge / HID /hid/b");
+    "ZephyrForge / HID /hid/b");
   assert.ok(requestedUrls.includes("/api/status?board=board-a"));
   elements.get("#settings-clock").value = "80";
   handlers.get("#settings-clock:change")();
@@ -468,7 +468,7 @@ test("settings and reboot recovery preserve per-board command ownership", async 
   await reconnect();
   for (const name of ["#led-control:click", "#msc-control:click", "#self-test-start:click", "#confirm-share:click",
     "#confirm-return:click", "#settings-storage:change", "#settings-tcp-cli:change"]) {
-    assert.equal(handlers.get(name), undefined, `${name} is not bound on ESPForge`);
+    assert.equal(handlers.get(name), undefined, `${name} is not bound on ZephyrForge`);
   }
   assert.equal(requestedUrls.some(url => /^\/api\/(led|msc|self-test|console)/.test(url)), false);
   elements.get("#board-select").value = "board-b";

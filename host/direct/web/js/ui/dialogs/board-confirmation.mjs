@@ -32,7 +32,7 @@ export function captureBoardTarget(session) {
  */
 export function boardTargetDescription(session) {
   const hardware = session.state.hardware;
-  const name = hardware?.board_name ?? hardware?.board_model ?? hardware?.product_name ?? "ESPForge board";
+  const name = hardware?.board_name ?? hardware?.board_model ?? hardware?.product_name ?? "ZephyrForge board";
   return `Target: ${name}${hardware?.serial_number ? ` · serial ${hardware.serial_number}` : ""}`
     + ` over ${session.state.link === "ble" ? "Bluetooth LE" : "USB HID"}.`;
 }

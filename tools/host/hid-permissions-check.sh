@@ -19,7 +19,7 @@ for device_node in /dev/hidraw* /dev/bus/usb/*/*; do
     printf '%s\n' "$properties" | grep -Fqx 'ID_MODEL_ID=4021' || continue
 
     if [ ! -r "$device_node" ] || [ ! -w "$device_node" ]; then
-        echo "No read/write permission for ESPForge device node: $device_node" >&2
+        echo "No read/write permission for ZephyrForge device node: $device_node" >&2
         echo "Run tools/host/hid-permissions-setup.sh, then reconnect the board's USB connector." >&2
         exit 1
     fi

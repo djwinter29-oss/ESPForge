@@ -21,4 +21,4 @@ source "$(dirname "${BASH_SOURCE[0]}")/env.sh"
 python -m west build -b esp32s3_devkitc/esp32s3/procpu "$root/firmware" \
   -d "$root/build/$build" -- \
   -DDTC_OVERLAY_FILE="boards/$overlay" \
-  -DEF_ENABLE_STORAGE_BENCHMARK=ON
+  -DZF_ENABLE_STORAGE_BENCHMARK=ON

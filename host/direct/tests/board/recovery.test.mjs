@@ -51,7 +51,7 @@ test("pending control transactions survive a page reload and reconcile without r
     return receive(id);
   };
   await assert.rejects(client.command(OP.SCAN), says(/disconnect/));
-  const saved = JSON.parse(pendingStore.getItem("espforge.direct.pending-operation"));
+  const saved = JSON.parse(pendingStore.getItem("zephyrforge.direct.pending-operation"));
   assert.equal(saved.kind, "control");
   assert.equal(saved.uid, client.connection.reconnectUid);
 
@@ -61,7 +61,7 @@ test("pending control transactions survive a page reload and reconcile without r
   assert.equal(restored.state.outcome_uncertain, false);
   assert.match(describe(restored.state.recovery_message), /confirmed after reconnect/);
   assert.equal(restored.state.recovered_opcode, OP.SCAN, "the form keys recovery on the opcode, not the text");
-  assert.equal(pendingStore.getItem("espforge.direct.pending-operation"), null);
+  assert.equal(pendingStore.getItem("zephyrforge.direct.pending-operation"), null);
   assert.equal(sent.length, 1, "recovery reads the result and never resends the command");
   await restored.disconnect();
 });
@@ -111,7 +111,7 @@ test("uncertain command recovery stores no secrets, reads same UID+tx+opcode and
   };
   await assert.rejects(setup.client.testWireless({ ssid: "secret-network", password: "secret-password" }),
     says(/disconnected/));
-  const raw = setup.pendingStore.getItem("espforge.direct.pending-operation");
+  const raw = setup.pendingStore.getItem("zephyrforge.direct.pending-operation");
   assert.ok(raw);
   assert.equal(raw.includes("secret"), false);
   const record = JSON.parse(raw);
@@ -135,13 +135,13 @@ test("abandoning recovery requires an idle uncertain session and only clears the
   };
   await assert.rejects(client.command(OP.REBOOT, { flags: 1 }));
   assert.equal(client.state.outcome_uncertain, true);
-  assert.ok(pendingStore.getItem("espforge.direct.pending-operation"));
+  assert.ok(pendingStore.getItem("zephyrforge.direct.pending-operation"));
   const writes = sent.length;
   client.abandonRecovery();
   assert.equal(client.state.outcome_uncertain, false);
   assert.equal(client.state.pending_request, null);
   assert.match(describe(client.state.recovery_message), /outcome remains unknown/);
-  assert.equal(pendingStore.getItem("espforge.direct.pending-operation"), null);
+  assert.equal(pendingStore.getItem("zephyrforge.direct.pending-operation"), null);
   assert.equal(sent.length, writes, "abandonment never sends or replays a command");
   assert.throws(() => client.abandonRecovery(), /command-blocked/);
   await client.disconnect();
@@ -159,7 +159,7 @@ test("accepted test lifecycle survives reload, enforces generation and never sto
       return bytes;
     };
     await assert.rejects(setup.client.testWireless({ ssid: "home", password: "password" }), says(/Link lost/));
-    const raw = setup.pendingStore.getItem("espforge.direct.pending-operation");
+    const raw = setup.pendingStore.getItem("zephyrforge.direct.pending-operation");
     assert.equal(raw.includes("password"), false);
     assert.equal(JSON.parse(raw).kind, "wireless-lifecycle");
     interrupt = false;

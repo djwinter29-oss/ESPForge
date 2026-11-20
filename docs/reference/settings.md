@@ -21,7 +21,7 @@ API names describe the current implementation; internal source layout is not par
 
 | Setting | Values | Default | Applied when |
 | --- | --- | --- | --- |
-| CPU clock (`ef_sysclk_profile_t`) | Default (devicetree build clock, 240 MHz), 80, 160 or 240 MHz | Default | Early boot, before storage and radios |
+| CPU clock (`zf_sysclk_profile_t`) | Default (devicetree build clock, 240 MHz), 80, 160 or 240 MHz | Default | Early boot, before storage and radios |
 | Wi-Fi / Bluetooth switches | Enabled or disabled | Enabled | Radio initialization at boot |
 | Wi-Fi SSID, passphrase and auth state | See [record format](#record-format) | None | Saved-network connect at boot |
 | Control key | 32 raw bytes, see [record format](#record-format) | None | [BLE control](bluetooth.md) authentication; BLE does not start without a key |
@@ -47,9 +47,9 @@ flowchart LR
     Flash[("storage_partition, first sector")]
     HID -->|setters stage values| RAM
     BLE -->|setters stage values| RAM
-    RAM -->|ef_boot_config_save| Flash
-    Flash -->|ef_boot_config_load at boot| RAM
-    Flash -->|ef_boot_config_load at boot| Boot
+    RAM -->|zf_boot_config_save| Flash
+    Flash -->|zf_boot_config_load at boot| RAM
+    Flash -->|zf_boot_config_load at boot| Boot
     Boot -->|at boot| Clock["CPU clock"]
     Boot -->|at boot| Radio["Wi-Fi, BLE, saved network"]
     RAM -->|on request| Read["Feature report 2"]
@@ -61,8 +61,8 @@ The design rules are:
   is applied. This is not a power-loss-atomic transaction.
 - **Next boot only.** The clock is set and the radios start once at boot, so setters change only RAM and saved
   values apply after reboot. Feature report `2` reports the saved values, not the ones running now.
-- **One lock.** `ef_boot_config_load()` runs during early boot, before USB and BLE start. Afterwards every read
-  and save MUST be serialized under the application mutex (`ef_lock()`), whether the request
+- **One lock.** `zf_boot_config_load()` runs during early boot, before USB and BLE start. Afterwards every read
+  and save MUST be serialized under the application mutex (`zf_lock()`), whether the request
   arrived over USB HID or BLE. This is not a general thread-safe settings API.
 - **Boot never depends on flash.** Any missing, unreadable or invalid record loads complete defaults.
 - **No generic store.** The fixed record is read directly and written as one padded page through the
@@ -79,7 +79,7 @@ start. Later callers MUST hold the application lock.
 ```mermaid
 stateDiagram-v2
     [*] --> Defaults: static zero initialization
-    Defaults --> Loaded: ef_boot_config_load()
+    Defaults --> Loaded: zf_boot_config_load()
     Loaded --> Staged: setter accepts a value
     Staged --> Staged: further setters
     Staged --> Loaded: save verified, or record identical to saved copy
@@ -95,7 +95,7 @@ a failed save restores the last confirmed RAM values:
 
 - **Opcode `5`:** stages the clock and radio switches and, when the commit flag is set, the wireless values staged
   by opcodes `6`-`8` (SSID, passphrase with auth state `0`, try WPA2, and Control key).
-  Flash-save failure calls `ef_boot_config_discard()`. See [Host Dashboard Settings](#host-dashboard-settings).
+  Flash-save failure calls `zf_boot_config_discard()`. See [Host Dashboard Settings](#host-dashboard-settings).
 - Opcodes `6`-`8` hold separate wireless candidates, not settings-service state, until opcode `5`
   commits them. Opcode `9` tests staged credentials without saving them.
 
@@ -115,7 +115,7 @@ sequenceDiagram
     participant C as System clock
     participant W as Wireless
     participant S as Storage
-    M->>B: ef_boot_config_load()
+    M->>B: zf_boot_config_load()
     B->>F: Read 148-byte record
     F-->>B: Record
     B-->>M: Validated copy, or defaults
@@ -144,15 +144,15 @@ A record is valid only if all of these hold: magic `EFCF`, version `1`, size `14
 `0`–`3`, a zero byte 9, no unknown service bits, Wi-Fi auth state `0`–`3`, SSID length at most 32 with zero padding,
 an empty or 8–63 byte NUL-terminated passphrase with zero padding, zero reserved bits, and a zero key whenever the
 key-present flag is clear. Fields MUST NOT be applied partially. Loading MUST NOT write flash. An erased partition
-(`0xFF`) loads defaults. `ef_boot_config_source()` reports which case occurred.
+(`0xFF`) loads defaults. `zf_boot_config_source()` reports which case occurred.
 
 ## Saving
 
-`ef_boot_config_save()` is the only settings writer in ESPForge.
+`zf_boot_config_save()` is the only settings writer in ZephyrForge.
 
 ```mermaid
 flowchart TD
-    Start["ef_boot_config_save()"] --> Same{"Staged identical to saved copy?"}
+    Start["zf_boot_config_save()"] --> Same{"Staged identical to saved copy?"}
     Same -->|Yes| Ok["Return 0 - no erase"]
     Same -->|No| Build["Encode magic, version, size, fields and CRC"]
     Build --> Erase["Erase the first 4 KiB sector"]
@@ -290,15 +290,15 @@ validation. See the [SD storage reference](sdcard.md).
 ## Using the API
 
 The settings API provides explicit load, stage, save, discard and next-boot snapshot operations.
-Call `ef_boot_config_load()` once during boot before settings consumers start.
+Call `zf_boot_config_load()` once during boot before settings consumers start.
 Later callers MUST acquire the application lock, check each setter's boolean result, discard staged values on
 rejection and handle the save return value explicitly. Release the lock after the transaction.
 The low-level save API does not schedule reboot; the control dispatcher does so after successful saving.
 
 The header also exposes SSID (string and opaque bytes), passphrase, auth-state and Control-key accessors. Unprefixed
 getters return the staged copy, `boot_` getters return the policy loaded for this boot, and
-`ef_boot_config_wireless_restart_required()` ignores clock-only changes. The inline `ef_sysclk_profile_mhz()` (`0`
-for Default) and `ef_sysclk_profile_from_mhz()` convert between profile IDs and wire MHz.
+`zf_boot_config_wireless_restart_required()` ignores clock-only changes. The inline `zf_sysclk_profile_mhz()` (`0`
+for Default) and `zf_sysclk_profile_from_mhz()` convert between profile IDs and wire MHz.
 The MHz-to-profile conversion returns an out-of-range profile for unknown MHz; callers MUST reject it rather
 than convert it back into a default setting.
 

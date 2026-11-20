@@ -31,13 +31,13 @@ def main() -> None:
     assert commit == os.environ["SOURCE_SHA"], "Direct source commit differs from release"
     build_site(Path("host/direct/web"), direct / "web", version, commit, dirty)
     shutil.copyfile("host/direct/server.py", direct / "server.py")
-    shutil.copyfile("host/python/src/espforge/dashboard/console.py", direct / "console_bridge.py")
+    shutil.copyfile("host/python/src/zephyrforge/dashboard/console.py", direct / "console_bridge.py")
     shutil.copyfile("LICENSE", direct / "LICENSE")
     (direct / "RELEASE.txt").write_text(
-        f"ESPForge {version}\nSource: {os.environ['SOURCE_SHA']}\n"
+        f"ZephyrForge {version}\nSource: {os.environ['SOURCE_SHA']}\n"
         "Run: python3 server.py --port 8000\nOpen: http://127.0.0.1:8000/ in desktop Chrome or Edge\n"
         + footer, encoding="utf-8")
-    shutil.make_archive(f"build/packages/espforge-direct-v{version}", "zip", root_dir=direct)
+    shutil.make_archive(f"build/packages/zephyrforge-direct-v{version}", "zip", root_dir=direct)
 
     def free_port():
         with socket.socket() as listener:
@@ -58,7 +58,7 @@ def main() -> None:
                 for attempt in range(100):
                     assert process.poll() is None, f"{archive} server exited before readiness"
                     try:
-                        assert b"ESPForge" in fetch(f"{origin}/")[1]
+                        assert b"ZephyrForge" in fetch(f"{origin}/")[1]
                         break
                     except urllib.error.URLError:
                         time.sleep(0.1)
@@ -89,7 +89,7 @@ def main() -> None:
         assert fetch(f"{origin}/js/app.mjs")[0]["Content-Type"].startswith("text/javascript")
         assert json.loads(fetch(f"{origin}/api/console/capabilities")[1]) == {"available": True}
 
-    smoke(f"build/packages/espforge-direct-v{version}.zip", ["server.py"], "web", check_direct)
+    smoke(f"build/packages/zephyrforge-direct-v{version}.zip", ["server.py"], "web", check_direct)
 
 
 if __name__ == "__main__":

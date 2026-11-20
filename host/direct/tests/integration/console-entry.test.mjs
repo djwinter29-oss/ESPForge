@@ -80,7 +80,7 @@ test("console entry validates its owning dashboard target before opening the rel
   }
 
   assert.equal(channels.length, 1);
-  assert.equal(channels[0].name, "espforge-console-dashboard-1");
+  assert.equal(channels[0].name, "zephyrforge-console-dashboard-1");
   assert.ok(targetRequests.length >= 2);
   assert.ok(targetRequests.every(request => request.type === "console-target"
     && request.ipv4 === "192.168.1.9" && request.serial === "board-1"));

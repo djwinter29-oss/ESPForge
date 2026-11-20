@@ -1,6 +1,6 @@
-#include "app/espforge.h"
+#include "app/zephyrforge.h"
 #include "app/storage/storage.h"
-#include "platform/ef_platform.h"
+#include "platform/zf_platform.h"
 
 #include <errno.h>
 #include <ff.h>
@@ -11,18 +11,21 @@
 #include <zephyr/storage/disk_access.h>
 #include <zephyr/usb/class/usbd_msc.h>
 
-LOG_MODULE_REGISTER(ef_storage, LOG_LEVEL_INF);
+LOG_MODULE_REGISTER(zf_storage, LOG_LEVEL_INF);
 
 #define DISK_NAME "SD"
 #define USB_DISK_NAME "USB_SD"
-#if EF_STORAGE_SPI
-#define BUS_CLOCK_HZ DT_PROP(DT_ALIAS(espforge_sd), spi_max_frequency)
+#if ZF_STORAGE_SPI
+#define BUS_CLOCK_HZ DT_PROP(DT_ALIAS(zephyrforge_sd), spi_max_frequency)
 #else
-#define BUS_CLOCK_HZ DT_PROP(DT_ALIAS(espforge_sd), max_bus_freq)
+#define BUS_CLOCK_HZ DT_PROP(DT_ALIAS(zephyrforge_sd), max_bus_freq)
 #endif
 #define STORAGE_POLL_MS 50
+/* Far below the host's 30 s SCSI command timeout; the worker holds the lock only briefly while the card is exported. */
+#define USB_LOCK_WAIT_MS 1000
 
-USBD_DEFINE_MSC_LUN(espforge_sd, USB_DISK_NAME, "ESPForge", "SD card", "1.00");
+/* SCSI INQUIRY limits the vendor to eight bytes, so use the short project name. */
+USBD_DEFINE_MSC_LUN(zephyrforge_sd, USB_DISK_NAME, "ZForge", "SD card", "1.00");
 K_MUTEX_DEFINE(media_lock);
 K_MUTEX_DEFINE(snapshot_lock);
 K_MSGQ_DEFINE(requests, sizeof(int), 1, sizeof(int));
@@ -37,7 +40,7 @@ static struct fs_mount_t mount = {
 };
 static bool mounted;
 static bool media_started;
-static ef_storage_t snapshot;
+static zf_storage_t snapshot;
 static bool request_pending;
 static uint8_t request_transaction;
 static int64_t request_ready_at;
@@ -45,13 +48,13 @@ static uint32_t media_generation;
 static uint32_t request_generation;
 static bool last_presence;
 
-#if EF_ENABLE_STORAGE_BENCHMARK
+#if ZF_ENABLE_STORAGE_BENCHMARK
 /** Queue action reserved for the optional file benchmark. */
 #define BENCHMARK_REQUEST 2
 /** Reserved path is created exclusively and never overwrites an existing entry. */
 #define BENCHMARK_PATH DISK_NAME ":/EFTEST.BIN"
 static FIL benchmark_file;
-static ef_benchmark_t benchmark;
+static zf_benchmark_t benchmark;
 static bool benchmark_active;
 static bool benchmark_cancelled;
 static bool benchmark_media_lost;
@@ -85,7 +88,7 @@ static int benchmark_result(FRESULT result)
 	return result == FR_EXIST ? -EEXIST : result == FR_NOT_READY ? -ENOMEDIUM : -EIO;
 }
 
-int ef_platform_benchmark_preflight(uint32_t size_mib)
+int zf_platform_benchmark_preflight(uint32_t size_mib)
 {
 	FILINFO info;
 	FATFS *filesystem;
@@ -93,35 +96,35 @@ int ef_platform_benchmark_preflight(uint32_t size_mib)
 	FRESULT result;
 
 	if (!benchmark_media_ready()) {
-		return EF_BENCHMARK_ERROR_CARD;
+		return ZF_BENCHMARK_ERROR_CARD;
 	}
 	result = f_stat(BENCHMARK_PATH, &info);
 	if (result == FR_OK) {
-		return EF_BENCHMARK_ERROR_EXISTS;
+		return ZF_BENCHMARK_ERROR_EXISTS;
 	}
 	if (result != FR_NO_FILE) {
 		(void)benchmark_result(result);
-		return EF_BENCHMARK_ERROR_IO;
+		return ZF_BENCHMARK_ERROR_IO;
 	}
 	result = f_getfree(DISK_NAME ":", &free_clusters, &filesystem);
 	if (result != FR_OK) {
 		(void)benchmark_result(result);
-		return EF_BENCHMARK_ERROR_IO;
+		return ZF_BENCHMARK_ERROR_IO;
 	}
 	uint64_t free_bytes = (uint64_t)free_clusters * filesystem->csize * 512u;
 
-	return free_bytes < (uint64_t)size_mib * 1024u * 1024u + EF_BENCHMARK_CHUNK_SIZE
-		? EF_BENCHMARK_ERROR_SPACE : 0;
+	return free_bytes < (uint64_t)size_mib * 1024u * 1024u + ZF_BENCHMARK_CHUNK_SIZE
+		? ZF_BENCHMARK_ERROR_SPACE : 0;
 }
 
-int ef_platform_benchmark_open(bool writing)
+int zf_platform_benchmark_open(bool writing)
 {
 	return benchmark_media_ready()
 		? benchmark_result(f_open(&benchmark_file, BENCHMARK_PATH,
 					 writing ? FA_WRITE | FA_CREATE_NEW : FA_READ)) : -ENOMEDIUM;
 }
 
-int ef_platform_benchmark_transfer(bool writing, uint8_t *data, uint32_t size, uint32_t *transferred)
+int zf_platform_benchmark_transfer(bool writing, uint8_t *data, uint32_t size, uint32_t *transferred)
 {
 	UINT count = 0;
 	FRESULT result;
@@ -135,31 +138,31 @@ int ef_platform_benchmark_transfer(bool writing, uint8_t *data, uint32_t size, u
 	return benchmark_result(result);
 }
 
-int ef_platform_benchmark_close(void)
+int zf_platform_benchmark_close(void)
 {
 	return benchmark_media_ready() ? benchmark_result(f_close(&benchmark_file)) : -ENOMEDIUM;
 }
 
-int ef_platform_benchmark_remove(void)
+int zf_platform_benchmark_remove(void)
 {
 	return benchmark_media_ready() ? benchmark_result(f_unlink(BENCHMARK_PATH)) : -ENOMEDIUM;
 }
 
-uint32_t ef_platform_benchmark_time(void)
+uint32_t zf_platform_benchmark_time(void)
 {
 	return (uint32_t)k_uptime_get();
 }
 
-bool ef_platform_benchmark_update(const ef_benchmark_t *status)
+bool zf_platform_benchmark_update(const zf_benchmark_t *status)
 {
 	bool present = benchmark_media_ready();
 	bool proceed;
 
 	k_mutex_lock(&snapshot_lock, K_FOREVER);
 	benchmark = *status;
-	benchmark.flags |= mounted && present ? EF_BENCHMARK_MOUNTED : 0;
-	benchmark.filesystem_result = status->error == EF_BENCHMARK_ERROR_IO ||
-				     status->error == EF_BENCHMARK_ERROR_CLEANUP ? benchmark_filesystem_result : 0;
+	benchmark.flags |= mounted && present ? ZF_BENCHMARK_MOUNTED : 0;
+	benchmark.filesystem_result = status->error == ZF_BENCHMARK_ERROR_IO ||
+				     status->error == ZF_BENCHMARK_ERROR_CLEANUP ? benchmark_filesystem_result : 0;
 	proceed = !benchmark_cancelled;
 	k_mutex_unlock(&snapshot_lock);
 	/* Removal must be an error, not a successful user cancellation. The next I/O records ENOMEDIUM. */
@@ -167,29 +170,29 @@ bool ef_platform_benchmark_update(const ef_benchmark_t *status)
 }
 #endif
 
-int ef_platform_benchmark_request(bool start, uint32_t size_mib)
+int zf_platform_benchmark_request(bool start, uint32_t size_mib)
 {
-#if EF_ENABLE_STORAGE_BENCHMARK
+#if ZF_ENABLE_STORAGE_BENCHMARK
 	int action = BENCHMARK_REQUEST;
 	int detail = 0;
 
-	if (start ? size_mib == 0 || size_mib > EF_BENCHMARK_MAX_MIB : size_mib != 0) {
-		return EF_BENCHMARK_ERROR_SIZE;
+	if (start ? size_mib == 0 || size_mib > ZF_BENCHMARK_MAX_MIB : size_mib != 0) {
+		return ZF_BENCHMARK_ERROR_SIZE;
 	}
 	k_mutex_lock(&snapshot_lock, K_FOREVER);
 	if (!start) {
 		benchmark_cancelled = benchmark_active;
 	} else if (request_pending || snapshot.busy || benchmark_active) {
-		detail = EF_BENCHMARK_ERROR_BUSY;
+		detail = ZF_BENCHMARK_ERROR_BUSY;
 	} else if (snapshot.msc_enabled) {
-		detail = EF_BENCHMARK_ERROR_USB;
+		detail = ZF_BENCHMARK_ERROR_USB;
 	} else if (!snapshot.sample_valid || !snapshot.initialized || snapshot.filesystem_format == 0) {
-		detail = EF_BENCHMARK_ERROR_CARD;
+		detail = ZF_BENCHMARK_ERROR_CARD;
 	} else {
-		ef_storage_t previous = snapshot;
-		ef_benchmark_t previous_benchmark = benchmark;
+		zf_storage_t previous = snapshot;
+		zf_benchmark_t previous_benchmark = benchmark;
 
-		benchmark = (ef_benchmark_t){.state = EF_BENCHMARK_QUEUED,
+		benchmark = (zf_benchmark_t){.state = ZF_BENCHMARK_QUEUED,
 					    .target_bytes = size_mib * 1024u * 1024u};
 		benchmark_active = true;
 		benchmark_cancelled = false;
@@ -202,7 +205,7 @@ int ef_platform_benchmark_request(bool start, uint32_t size_mib)
 			benchmark_active = false;
 			benchmark = previous_benchmark;
 			snapshot = previous;
-			detail = EF_BENCHMARK_ERROR_BUSY;
+			detail = ZF_BENCHMARK_ERROR_BUSY;
 		}
 	}
 	k_mutex_unlock(&snapshot_lock);
@@ -214,20 +217,20 @@ int ef_platform_benchmark_request(bool start, uint32_t size_mib)
 #endif
 }
 
-void ef_benchmark_report(uint8_t sequence, uint8_t out[EF_BENCHMARK_SIZE])
+void zf_benchmark_report(uint8_t sequence, uint8_t out[ZF_BENCHMARK_SIZE])
 {
-	ef_benchmark_t status = {0};
+	zf_benchmark_t status = {0};
 
-#if EF_ENABLE_STORAGE_BENCHMARK
+#if ZF_ENABLE_STORAGE_BENCHMARK
 	k_mutex_lock(&snapshot_lock, K_FOREVER);
 	status = benchmark;
 	k_mutex_unlock(&snapshot_lock);
 #endif
 	status.sequence = sequence;
-	ef_report_benchmark(&status, out);
+	zf_report_benchmark(&status, out);
 }
 
-void ef_storage_publish(const ef_storage_t *storage)
+void zf_storage_publish(const zf_storage_t *storage)
 {
 	k_mutex_lock(&snapshot_lock, K_FOREVER);
 	snapshot = *storage;
@@ -239,7 +242,7 @@ void ef_storage_publish(const ef_storage_t *storage)
 	k_mutex_unlock(&snapshot_lock);
 }
 
-int ef_storage_media_close(void)
+int zf_storage_media_close(void)
 {
 	int err;
 
@@ -265,15 +268,15 @@ int ef_storage_media_close(void)
 	return 0;
 }
 
-int64_t ef_storage_media_time(void)
+int64_t zf_storage_media_time(void)
 {
 	return k_uptime_get();
 }
 
-int ef_storage_media_open(bool usb, ef_storage_t *storage)
+int zf_storage_media_open(bool usb, zf_storage_t *storage)
 {
 	uint32_t sector_size = 0;
-	int err = ef_storage_media_close();
+	int err = zf_storage_media_close();
 
 	storage->initialized = false;
 	storage->capacity_valid = false;
@@ -299,7 +302,7 @@ int ef_storage_media_open(bool usb, ef_storage_t *storage)
 	if (err != 0) {
 		LOG_ERR("SD hardware initialization failed: %d", err);
 		storage->block_count = 0;
-		(void)ef_storage_media_close();
+		(void)zf_storage_media_close();
 		return err;
 	}
 	storage->initialized = true;
@@ -332,7 +335,7 @@ int ef_storage_media_open(bool usb, ef_storage_t *storage)
 }
 
 /** Snapshot-only admission; SD I/O is never performed under the application lock. */
-int ef_platform_storage_request(bool usb, uint8_t transaction)
+int zf_platform_storage_request(bool usb, uint8_t transaction)
 {
 	int action = usb ? 1 : 0;
 	int err = 0;
@@ -346,11 +349,11 @@ int ef_platform_storage_request(bool usb, uint8_t transaction)
 	} else if (usb && (!snapshot.sample_valid || !snapshot.initialized || !snapshot.block_count)) {
 		err = -ENOMEDIUM;
 	} else {
-		ef_storage_t previous = snapshot;
+		zf_storage_t previous = snapshot;
 
 		request_generation = media_generation;
 		request_transaction = transaction;
-		request_ready_at = k_uptime_get() + EF_REBOOT_DELAY_MS;
+		request_ready_at = k_uptime_get() + ZF_REBOOT_DELAY_MS;
 		request_pending = true;
 		snapshot.busy = true;
 		snapshot.sample_valid = false;
@@ -366,7 +369,7 @@ int ef_platform_storage_request(bool usb, uint8_t transaction)
 	return err;
 }
 
-void ef_storage_result_read(uint8_t transaction)
+void zf_storage_result_read(uint8_t transaction)
 {
 	k_mutex_lock(&snapshot_lock, K_FOREVER);
 	if (request_pending && request_transaction == transaction) {
@@ -379,7 +382,7 @@ void ef_storage_result_read(uint8_t transaction)
 	k_mutex_unlock(&snapshot_lock);
 }
 
-bool ef_platform_storage_busy(void)
+bool zf_platform_storage_busy(void)
 {
 	bool busy;
 
@@ -389,18 +392,17 @@ bool ef_platform_storage_busy(void)
 	return busy;
 }
 
-void ef_storage_report(uint8_t sequence, uint8_t out[EF_STORAGE_SIZE])
+void zf_storage_report(uint8_t sequence, uint8_t out[ZF_STORAGE_SIZE])
 {
-	ef_storage_t storage;
+	zf_storage_t storage;
 
 	k_mutex_lock(&snapshot_lock, K_FOREVER);
 	storage = snapshot;
 	k_mutex_unlock(&snapshot_lock);
 	storage.sequence = sequence;
-	ef_report_storage(&storage, out);
+	zf_report_storage(&storage, out);
 }
 
-/** The MSC thread holds media_lock for the entire batch and checks ownership again after acquiring it. */
 static bool usb_ready(uint32_t *blocks)
 {
 	bool ready;
@@ -431,16 +433,37 @@ static int usb_init(struct disk_info *disk)
 	return usb_ready(NULL) ? 0 : -ENOMEDIUM;
 }
 
+/**
+ * @brief Lock the exported card for one MSC batch and check ownership again under the lock.
+ *
+ * Fails instead of waiting while the storage worker owns the card. An MSC command parked behind a benchmark or
+ * remount makes the host time out and reset the device, which can eventually leave it unable to enumerate.
+ *
+ * @param blocks Receives the exported block count when not NULL.
+ * @return true with media_lock held, or false without it.
+ */
+static bool usb_lock(uint32_t *blocks)
+{
+	if (!usb_ready(NULL) || k_mutex_lock(&media_lock, K_MSEC(USB_LOCK_WAIT_MS)) != 0) {
+		return false;
+	}
+	if (usb_ready(blocks)) {
+		return true;
+	}
+	k_mutex_unlock(&media_lock);
+	return false;
+}
+
 static int usb_read(struct disk_info *disk, uint8_t *buffer, uint32_t sector, uint32_t count)
 {
 	int err;
 	uint32_t blocks;
 
 	ARG_UNUSED(disk);
-	k_mutex_lock(&media_lock, K_FOREVER);
-	if (!usb_ready(&blocks)) {
-		err = -ENOMEDIUM;
-	} else if (buffer == NULL || count == 0 || sector >= blocks || count > blocks - sector) {
+	if (!usb_lock(&blocks)) {
+		return -ENOMEDIUM;
+	}
+	if (buffer == NULL || count == 0 || sector >= blocks || count > blocks - sector) {
 		err = -EINVAL;
 	} else {
 		err = disk_access_read(DISK_NAME, buffer, sector, count);
@@ -458,10 +481,10 @@ static int usb_write(struct disk_info *disk, const uint8_t *buffer, uint32_t sec
 	uint32_t blocks;
 
 	ARG_UNUSED(disk);
-	k_mutex_lock(&media_lock, K_FOREVER);
-	if (!usb_ready(&blocks)) {
-		err = -ENOMEDIUM;
-	} else if (buffer == NULL || count == 0 || sector >= blocks || count > blocks - sector) {
+	if (!usb_lock(&blocks)) {
+		return -ENOMEDIUM;
+	}
+	if (buffer == NULL || count == 0 || sector >= blocks || count > blocks - sector) {
 		err = -EINVAL;
 	} else {
 		err = disk_access_write(DISK_NAME, buffer, sector, count);
@@ -478,13 +501,14 @@ static int usb_ioctl(struct disk_info *disk, uint8_t command, void *buffer)
 	int err;
 
 	ARG_UNUSED(disk);
-	k_mutex_lock(&media_lock, K_FOREVER);
 	if (command == DISK_IOCTL_CTRL_DEINIT) {
 		/* Releasing proxy references must not deinitialize the storage worker's medium. */
-		err = 0;
-	} else if (!usb_ready(NULL)) {
-		err = -ENOMEDIUM;
-	} else if (command == DISK_IOCTL_CTRL_INIT) {
+		return 0;
+	}
+	if (!usb_lock(NULL)) {
+		return -ENOMEDIUM;
+	}
+	if (command == DISK_IOCTL_CTRL_INIT) {
 		err = 0;
 	} else if (command == DISK_IOCTL_CTRL_SYNC) {
 		err = disk_access_ioctl(DISK_NAME, command, buffer);
@@ -517,9 +541,9 @@ static void storage_worker(void *a, void *b, void *c)
 	ARG_UNUSED(c);
 	while (true) {
 		int present = gpio_pin_get_dt(&detect);
-		int action = EF_STORAGE_NO_REQUEST;
+		int action = ZF_STORAGE_NO_REQUEST;
 		int64_t now = k_uptime_get();
-#if EF_ENABLE_STORAGE_BENCHMARK
+#if ZF_ENABLE_STORAGE_BENCHMARK
 		uint32_t benchmark_mib = 0;
 #endif
 
@@ -533,42 +557,42 @@ static void storage_worker(void *a, void *b, void *c)
 		}
 		if (request_pending && now >= request_ready_at && k_msgq_get(&requests, &action, K_NO_WAIT) == 0) {
 			if (request_generation != media_generation) {
-				action = EF_STORAGE_CANCEL_REQUEST;
+				action = ZF_STORAGE_CANCEL_REQUEST;
 				LOG_WRN("SD ownership request cancelled: card changed");
 			}
 			request_pending = false;
 		}
-#if EF_ENABLE_STORAGE_BENCHMARK
+#if ZF_ENABLE_STORAGE_BENCHMARK
 		if (benchmark_active && k_msgq_get(&requests, &action, K_NO_WAIT) == 0) {
 			benchmark_mib = benchmark.target_bytes / (1024u * 1024u);
 		}
 #endif
 		k_mutex_unlock(&snapshot_lock);
 		k_mutex_lock(&media_lock, K_FOREVER);
-#if EF_ENABLE_STORAGE_BENCHMARK
+#if ZF_ENABLE_STORAGE_BENCHMARK
 		if (benchmark_mib != 0) {
-			ef_benchmark_run(benchmark_mib);
+			zf_benchmark_run(benchmark_mib);
 			k_mutex_lock(&snapshot_lock, K_FOREVER);
 			benchmark_active = false;
 			k_mutex_unlock(&snapshot_lock);
 			if (benchmark_media_lost) {
-				ef_storage_policy_poll(0, k_uptime_get(), EF_STORAGE_NO_REQUEST);
+				zf_storage_policy_poll(0, k_uptime_get(), ZF_STORAGE_NO_REQUEST);
 			}
 			present = gpio_pin_get_dt(&detect);
 			now = k_uptime_get();
-			action = EF_STORAGE_NO_REQUEST;
+			action = ZF_STORAGE_NO_REQUEST;
 		}
 #endif
-		ef_storage_policy_poll(present, now, action);
+		zf_storage_policy_poll(present, now, action);
 		k_mutex_unlock(&media_lock);
-		k_sleep(K_MSEC(present < 0 ? EF_STORAGE_RETRY_MS : STORAGE_POLL_MS));
+		k_sleep(K_MSEC(present < 0 ? ZF_STORAGE_RETRY_MS : STORAGE_POLL_MS));
 	}
 }
 
 K_THREAD_STACK_DEFINE(storage_stack, 4096);
 static struct k_thread storage_thread;
 
-void ef_storage_init(void)
+void zf_storage_init(void)
 {
 	int err = gpio_is_ready_dt(&detect) ? gpio_pin_configure_dt(&detect, GPIO_INPUT) : -ENODEV;
 	int present = err == 0 ? gpio_pin_get_dt(&detect) : err;
@@ -578,12 +602,12 @@ void ef_storage_init(void)
 	}
 	if (err != 0) {
 		LOG_ERR("SD service setup failed: %d", err);
-		ef_storage_policy_init(false, false, k_uptime_get());
+		zf_storage_policy_init(false, false, k_uptime_get());
 		return;
 	}
 	last_presence = present != 0;
-	ef_storage_policy_init(true, last_presence, k_uptime_get());
-	ef_storage_policy_poll(last_presence, k_uptime_get(), EF_STORAGE_NO_REQUEST);
+	zf_storage_policy_init(true, last_presence, k_uptime_get());
+	zf_storage_policy_poll(last_presence, k_uptime_get(), ZF_STORAGE_NO_REQUEST);
 	k_thread_create(&storage_thread, storage_stack, K_THREAD_STACK_SIZEOF(storage_stack),
 			storage_worker, NULL, NULL, NULL, 5, 0, K_NO_WAIT);
 	k_thread_name_set(&storage_thread, "sd-storage");

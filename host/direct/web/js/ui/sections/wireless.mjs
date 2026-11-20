@@ -13,7 +13,7 @@ import { consoleTarget } from "../console/console-target.mjs";
 export function deriveWirelessViewModel(state) {
   const wireless = state.wireless;
   const unavailable = !state.connected ? "--" : state.wireless_error ? "Unavailable" : !wireless ? "--" : null;
-  const name = state.hardware?.serial_number ? `ESPForge-${state.hardware.serial_number}` : "ESPForge";
+  const name = state.hardware?.serial_number ? `ZephyrForge-${state.hardware.serial_number}` : "ZephyrForge";
   const wifi = unavailable ?? (!wireless.wifi_enabled || !wireless.ssid ? "Disabled"
     : wireless.wifi_state === "connected" ? `${wireless.ssid} (${wireless.ipv4})`
       : `${wireless.ssid} (${wireless.wifi_state === "connecting" ? "connecting" : "disconnected"})`);

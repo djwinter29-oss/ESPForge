@@ -23,7 +23,7 @@ function withDocument(run) {
 
 function snapshot() {
   return { connected: true,
-    hardware: { product_name: "ESPForge", board_model: 1, mcu: "ESP32-S3", capabilities: 0x96,
+    hardware: { product_name: "ZephyrForge", board_model: 1, mcu: "ESP32-S3", capabilities: 0x96,
       serial_number: "0102030405060708", ram_total_bytes: 524288, ram_reserved_bytes: 65536 },
     settings: { system_clock_mhz: 160, sdcard_profile: 0, storage_gpios: [12, 11, 13, 14, 15, 10],
       monitor_uart_index: 0, monitor_uart_tx_gpio: 43, monitor_uart_rx_gpio: 44, card_detect_gpio: 255 },
@@ -62,7 +62,7 @@ test("SPI boards show four bus signals and retain card detection", () => withDoc
   state.settings.storage_gpios = [12, 11, 13, 10, 255, 255];
   state.settings.card_detect_gpio = 8;
   renderServerStatus({ ...state, settings_supported: true, board_configuration: state.settings });
-  assert.equal(el("#product-name").textContent, "ESPForge (SPI)");
+  assert.equal(el("#product-name").textContent, "ZephyrForge (SPI)");
   assert.equal(el("#board-storage-title").textContent, "Storage (SPI)");
   assert.deepEqual(el("#board-storage-pins").children.map(row => row.children.map(cell => cell.textContent)),
     [["SCK", "MOSI", "MISO", "CS", "Card detect"], ["GPIO12", "GPIO11", "GPIO13", "GPIO10", "GPIO8"]]);
@@ -119,13 +119,15 @@ test("server dashboard shows live Wi-Fi and Bluetooth state without treating una
     for (const [wireless, expected] of [
       [{ ble_enabled: false, ble_key_configured: true, ble_state: "advertising" }, "Disabled"],
       [{ ble_enabled: true, ble_key_configured: false, ble_state: "off" }, "Off (no control key)"],
-      [{ ble_enabled: true, ble_key_configured: true, ble_state: "off" }, "ESPForge-892BA313F9BB56E1 (starting)"],
+      [{ ble_enabled: true, ble_key_configured: true, ble_state: "off" }, "ZephyrForge-892BA313F9BB56E1 (starting)"],
       [{ ble_enabled: true, ble_key_configured: true, ble_state: "advertising" },
-        "ESPForge-892BA313F9BB56E1 (advertising)"],
-      [{ ble_enabled: true, ble_key_configured: true, ble_state: "connected" }, "ESPForge-892BA313F9BB56E1 (connected)"],
-      [{ ble_enabled: true, ble_key_configured: false, ble_state: "connected" }, "ESPForge-892BA313F9BB56E1 (connected)"],
+        "ZephyrForge-892BA313F9BB56E1 (advertising)"],
+      [{ ble_enabled: true, ble_key_configured: true, ble_state: "connected" },
+        "ZephyrForge-892BA313F9BB56E1 (connected)"],
+      [{ ble_enabled: true, ble_key_configured: false, ble_state: "connected" },
+        "ZephyrForge-892BA313F9BB56E1 (connected)"],
       [{ ble_enabled: true, ble_key_configured: false, ble_state: "advertising" },
-        "ESPForge-892BA313F9BB56E1 (advertising)"],
+        "ZephyrForge-892BA313F9BB56E1 (advertising)"],
       [null, "--"],
     ]) {
       render({ ...state, wireless });
@@ -134,7 +136,7 @@ test("server dashboard shows live Wi-Fi and Bluetooth state without treating una
     }
     render({ ...state, hardware: { capabilities: 128 },
       wireless: { ble_enabled: true, ble_state: "connected" } });
-    assert.equal(el("#ble-state").textContent, "ESPForge (connected)");
+    assert.equal(el("#ble-state").textContent, "ZephyrForge (connected)");
     render({ ...state, wireless_error: "Wi-Fi status read failed: disconnected" });
     assert.equal(el("#ble-state").textContent, "Unavailable");
     assert.equal(el("#wifi-state").textContent, "Unavailable");
@@ -217,7 +219,7 @@ test("status normalization reads only the shared nested shape", () => {
 test("diagnostic rendering distinguishes missing facts, explicit false and reported unassigned sentinels", () =>
   withDocument(el => {
     for (const cdc_open of [undefined, "bad", false, true]) {
-      // ESPForge has no CDC console, so even a reported CDC state is never displayed.
+      // ZephyrForge has no CDC console, so even a reported CDC state is never displayed.
       const result = statusResponse({
         connected: true, reboot_pending: false, command_outcome_uncertain: false, settings_supported: true,
         telemetry_stale: false, storage_stale: false, self_test_stale: false,
@@ -254,7 +256,7 @@ test("diagnostic rendering distinguishes missing facts, explicit false and repor
     assert.equal(el("#board-model").textContent, "ESP32-S3-DevKitC-1");
     assert.equal(el("#board-mcu").textContent, "ESP32-S3");
     assert.equal(el("#board-reset-cause").textContent, "Power-on");
-    assert.equal(el("#product-name").textContent, "ESPForge (SDMMC)");
+    assert.equal(el("#product-name").textContent, "ZephyrForge (SDMMC)");
     assert.equal(el("#board-storage-title").textContent, "Storage (SDMMC)");
     assert.deepEqual(el("#board-storage-pins").children[0].children.map(cell => cell.textContent),
       ["CLK", "CMD", "DAT0", "DAT1", "DAT2", "DAT3", "Card detect"]);

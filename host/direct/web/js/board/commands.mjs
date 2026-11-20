@@ -13,7 +13,7 @@ import { BoardError, errorValue, REASON } from "../state/errors.mjs";
 import { commandBlocked, commandPending } from "../state/selectors.mjs";
 import { withTimeout } from "../timers.mjs";
 
-const PENDING_OPERATION_KEY = "espforge.direct.pending-operation";
+const PENDING_OPERATION_KEY = "zephyrforge.direct.pending-operation";
 /**
  * @typedef {{flags?: number, args?: ArrayLike<number>, signal?: AbortSignal,
  *   lifecycle?: import("../state/reducer.mjs").WirelessLifecycle,

@@ -41,7 +41,7 @@ export function deriveDashboardViewModel(state, formBusy = false) {
     status_message: state.error ?? state.action_error ?? (state.reconnecting ? reconnecting
       : state.recovery_message ?? (state.reboot_pending ? rebooting
         : state.runtime ? `${bluetooth ? "Bluetooth" : "USB"} status is live`
-          : connected ? "Waiting for first status report" : "Select an ESPForge device")),
+          : connected ? "Waiting for first status report" : "Select a ZephyrForge device")),
     status_error: Boolean(state.error || state.action_error),
   };
 }

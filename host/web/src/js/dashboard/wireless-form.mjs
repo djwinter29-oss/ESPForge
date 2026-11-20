@@ -23,7 +23,7 @@ import {
 
 /**
  * Show live radio state: Wi-Fi as "SSID (IP)" when connected or "SSID (state)" otherwise; Bluetooth as
- * "ESPForge-<USB serial> (state)". Either shows Disabled when switched off or unconfigured.
+ * "ZephyrForge-<USB serial> (state)". Either shows Disabled when switched off or unconfigured.
  * @param {{wireless?: WirelessStatus | null, connected?: boolean, wireless_error?: string | null,
  * wireless_cleanup_required?: boolean, hardware?: {capabilities?: number,
  * serial_number?: string} | null}} snapshot
@@ -59,7 +59,7 @@ export function renderWirelessStatus(snapshot, consoleUrl = null) {
   render("ble", () => {
     if (!wireless?.ble_enabled) return "Disabled";
     if (!wireless.ble_key_configured && wireless.ble_state === "off") return "Off (no control key)";
-    const name = snapshot.hardware?.serial_number ? `ESPForge-${snapshot.hardware.serial_number}` : "ESPForge";
+    const name = snapshot.hardware?.serial_number ? `ZephyrForge-${snapshot.hardware.serial_number}` : "ZephyrForge";
     const state = wireless.ble_state === "connected" ? "connected"
       : wireless.ble_state === "advertising" ? "advertising" : "starting";
     return `${name} (${state})`;

@@ -64,7 +64,7 @@ test("SPI boards show four bus signals and retain card detection", () => withDoc
   state.settings = { ...state.settings, storage_gpios: [12, 11, 13, 10, 255, 255],
     board_flags: 0x45, card_detect_gpio: 8 };
   renderStatus(state);
-  assert.equal(el("#product-name").textContent, "ESPForge (SPI)");
+  assert.equal(el("#product-name").textContent, "ZephyrForge (SPI)");
   assert.equal(el("#board-storage-title").textContent, "Storage (SPI)");
   assert.deepEqual(el("#board-storage-pins").children.map(row => row.children.map(cell => cell.textContent)),
     [["SCK", "MOSI", "MISO", "CS", "Card detect"], ["GPIO12", "GPIO11", "GPIO13", "GPIO10", "GPIO8"]]);
@@ -79,7 +79,7 @@ test("identity RAM stays build accounting while stale inputs show no current val
   assert.equal(el("#ram-usage").textContent, "64.0 / 512 KiB (12.5%)");
   assert.equal(el("#board-model").textContent, "ESP32-S3-DevKitC-1");
   assert.equal(el("#board-mcu").textContent, "ESP32-S3");
-  assert.equal(el("#product-name").textContent, "ESPForge (SDMMC)");
+  assert.equal(el("#product-name").textContent, "ZephyrForge (SDMMC)");
   assert.equal(el("#identity-clock").textContent, "240 MHz");
   assert.equal(el("#cpu-usage-core0").textContent, "12.3% / --");
   assert.match(el("#uptime").textContent, /104249991d/);

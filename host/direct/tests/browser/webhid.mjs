@@ -8,7 +8,7 @@ const requests = [];
 const sent = [];
 const device = new EventTarget();
 Object.assign(device, {
-  vendorId: 0xcafe, productId: 0x4021, productName: "ESPForge",
+  vendorId: 0xcafe, productId: 0x4021, productName: "ZephyrForge",
   collections: [{ usagePage: 0xff00, usage: 1 }], opened: false,
   async open() { this.opened = true; },
   async close() { this.opened = false; },

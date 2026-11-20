@@ -181,7 +181,7 @@ def check_history(browser: Browser, origin: str, errors: list[str]) -> None:
         page.goto(f"{origin}/web/index.html")
         page.wait_for_selector("#settings-clock")
         page.evaluate("""() => {
-            sessionStorage.setItem('espforge.direct.pending-operation', JSON.stringify({
+            sessionStorage.setItem('zephyrforge.direct.pending-operation', JSON.stringify({
                 version: 2, kind: 'control', uid: '0102030405060708',
                 request: {transaction_id: 1, opcode: 2}
             }));
@@ -199,7 +199,7 @@ def check_history(browser: Browser, origin: str, errors: list[str]) -> None:
             raise AssertionError(f"Navigation did not exercise history-cache restoration followed by reload: "
                                  f"{reasons}")
         retained = page.evaluate("""() => {
-            const record = JSON.parse(sessionStorage.getItem('espforge.direct.pending-operation'));
+            const record = JSON.parse(sessionStorage.getItem('zephyrforge.direct.pending-operation'));
             return record?.uid === '0102030405060708' && record.version === 2
                 && record.request.transaction_id === 1 && record.request.opcode === 2;
         }""")

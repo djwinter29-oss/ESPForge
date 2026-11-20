@@ -24,8 +24,8 @@ def main() -> None:
     assets = {path.relative_to(web).as_posix(): path.read_bytes() for path in web.rglob("*")
               if path.is_file() and "__pycache__" not in path.parts}
     assert assets, "Shared dashboard assets are missing"
-    libraries = json.loads((root / "ESPForge.deps.json").read_text())["libraries"]
-    assert f"ESPForge/{version}" in libraries, "Package version does not match release"
+    libraries = json.loads((root / "ZephyrForge.deps.json").read_text())["libraries"]
+    assert f"ZephyrForge/{version}" in libraries, "Package version does not match release"
     shutil.copyfile("LICENSE", root / "LICENSE")
     notices = [path for path in Path("build/nuget").rglob("*")
                if path.is_file() and ("license" in path.name.lower()
@@ -36,14 +36,14 @@ def main() -> None:
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(path, destination)
     (root / "RELEASE.txt").write_text(
-        f"ESPForge {version} ({rid})\nSource: {source_sha}\n"
-        "Run ESPForge, optionally with --serial SERIAL or --device-path HID_PATH.\n"
-        "On Windows use ESPForge.exe. Open http://127.0.0.1:8002/.\n"
+        f"ZephyrForge {version} ({rid})\nSource: {source_sha}\n"
+        "Run ZephyrForge, optionally with --serial SERIAL or --device-path HID_PATH.\n"
+        "On Windows use ZephyrForge.exe. Open http://127.0.0.1:8002/.\n"
         "No .NET installation is required. Only loopback hosting is supported.\n"
         "Software checks do not qualify physical USB HID, Wi-Fi, BLE or SD behavior.\n",
         encoding="utf-8")
     Path("build/packages").mkdir(parents=True, exist_ok=True)
-    archive = shutil.make_archive(f"build/packages/espforge-host-v{version}-{rid}",
+    archive = shutil.make_archive(f"build/packages/zephyrforge-host-v{version}-{rid}",
                                   "zip" if rid.startswith("win-") else "gztar", root_dir=root)
     with tempfile.TemporaryDirectory() as directory:
         shutil.unpack_archive(archive, directory)
@@ -51,7 +51,7 @@ def main() -> None:
         deployed = {path.relative_to(wwwroot).as_posix(): path.read_bytes()
                     for path in wwwroot.rglob("*") if path.is_file() and path.suffix not in (".gz", ".br")}
         assert deployed == assets, "Published shared dashboard assets differ from source"
-        executable = Path(directory) / ("ESPForge.exe" if rid.startswith("win-") else "ESPForge")
+        executable = Path(directory) / ("ZephyrForge.exe" if rid.startswith("win-") else "ZephyrForge")
         with socket.socket() as listener:
             listener.bind(("127.0.0.1", 0))
             port = listener.getsockname()[1]
@@ -62,7 +62,7 @@ def main() -> None:
                 try:
                     with urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=1) as response:
                         page = response.read()
-                        assert b"ESPForge Dashboard | .NET" in page
+                        assert b"ZephyrForge Dashboard | .NET" in page
                         assert f"App v{version}<".encode() in page, "Dashboard version does not match release"
                     break
                 except urllib.error.URLError:

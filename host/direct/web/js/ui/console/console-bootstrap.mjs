@@ -35,7 +35,7 @@ export function createConsoleBootstrap({ localServer, fetchCapabilities, createC
       }
       if (disposed) return false;
       source = createSource();
-      channel = createChannel(`espforge-console-${source}`);
+      channel = createChannel(`zephyrforge-console-${source}`);
       serveConsoleTarget(channel, getState);
       return true;
     },

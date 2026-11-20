@@ -56,7 +56,7 @@ class DirectServerTests(unittest.TestCase):
     def test_index_is_served_with_hardening_headers(self):
         status, headers, body = self.fetch("/")
         self.assertEqual(status, 200)
-        self.assertIn(b"ESPForge", body)
+        self.assertIn(b"ZephyrForge", body)
         self.assertEqual(headers["Content-Security-Policy"], CONTENT_SECURITY_POLICY)
         class PolicyParser(HTMLParser):
             policy = None
@@ -159,7 +159,7 @@ class DirectServerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             shutil.copyfile(source / "server.py", root / "server.py")
-            shutil.copyfile(source.parent / "python/src/espforge/dashboard/console.py", root / "console_bridge.py")
+            shutil.copyfile(source.parent / "python/src/zephyrforge/dashboard/console.py", root / "console_bridge.py")
             shutil.copytree(source / "web", root / "web")
             script = """
 import json, runpy, threading, urllib.request

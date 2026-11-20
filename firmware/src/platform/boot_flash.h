@@ -3,8 +3,8 @@
  * @brief Settings record backend: the first page of the `storage_partition` flash area.
  */
 
-#ifndef ESPFORGE_BOOT_FLASH_H
-#define ESPFORGE_BOOT_FLASH_H
+#ifndef ZEPHYRFORGE_BOOT_FLASH_H
+#define ZEPHYRFORGE_BOOT_FLASH_H
 
 #include <stddef.h>
 #include <stdint.h>

@@ -298,7 +298,7 @@ test("credential requests use draft values rather than later DOM changes", async
   const key = el("ble-secret").value;
   el("ble-secret").value = "dom-only";
   assert.equal(form.request().ble_key, key);
-  assert.equal(Object.hasOwn(form.request(), "tcp_cli_enabled"), false, "ESPForge has no TCP CLI switch");
+  assert.equal(Object.hasOwn(form.request(), "tcp_cli_enabled"), false, "ZephyrForge has no TCP CLI switch");
 });
 
 test("native input then change disables a tested pair with one cleanup and preserves the disable", async context => {
@@ -642,7 +642,7 @@ test("keyless Bluetooth reports that a control key is needed; unavailable report
     assert.equal(elements.get("#ble-state").textContent, "Off (no control key)");
     assert.doesNotMatch(elements.get("#wifi-state").textContent, /key/);
     renderWirelessStatus({ ...snapshot, wireless: { ...snapshot.wireless, ble_key_configured: true } });
-    assert.equal(elements.get("#ble-state").textContent, "ESPForge-AB (starting)");
+    assert.equal(elements.get("#ble-state").textContent, "ZephyrForge-AB (starting)");
     renderWirelessStatus({ ...snapshot, connected: false });
     assert.equal(elements.get("#wifi-state").textContent, "--");
     renderWirelessStatus({ ...snapshot, wireless_error: "Read failed" });

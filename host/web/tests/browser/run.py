@@ -20,8 +20,8 @@ from werkzeug.serving import make_server
 
 ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT / "host/python/src"))
-from espforge.dashboard.boards import DashboardBoards
-from espforge.dashboard.server import create_app
+from zephyrforge.dashboard.boards import DashboardBoards
+from zephyrforge.dashboard.server import create_app
 
 CHECKS = Path(__file__).with_name("checks.mjs").read_text()
 MOCK = re.search(r"const mock = `<script>\n(.*?)</script>", CHECKS, re.DOTALL).group(1)
@@ -50,7 +50,7 @@ def dotnet_host():
         reserved.bind(("127.0.0.1", 0))
         port = reserved.getsockname()[1]
     origin = f"http://127.0.0.1:{port}"
-    dll = ROOT / "host/dotnet/ESPForge/bin/Debug/net10.0/ESPForge.dll"
+    dll = ROOT / "host/dotnet/ZephyrForge/bin/Debug/net10.0/ZephyrForge.dll"
     with tempfile.TemporaryFile(mode="w+") as output:
         process = subprocess.Popen(["dotnet", str(dll), "--port", str(port)], stdout=output, stderr=output)
         try:
@@ -853,7 +853,7 @@ def check_msc_handoff(page: Page, origin: str, host_name: str) -> None:
 def check_identity_details(browser: Browser, page: Page, origin: str, host_name: str) -> None:
     """Align the identity values and expose product/memory details by mouse, keyboard and touch."""
     page.goto(origin)
-    page.wait_for_function("document.querySelector('#product-name').textContent.includes('ESPForge')")
+    page.wait_for_function("document.querySelector('#product-name').textContent.includes('ZephyrForge')")
     assert page.locator(".identity > .metric").count() == 5
     page.set_viewport_size({"width": 1440, "height": 900})
     tops = page.locator(".identity strong").evaluate_all(
@@ -910,7 +910,7 @@ def check_identity_details(browser: Browser, page: Page, origin: str, host_name:
         touch = context.new_page()
         touch.add_init_script(MOCK)
         touch.goto(origin)
-        touch.wait_for_function("document.querySelector('#product-name').textContent.includes('ESPForge')")
+        touch.wait_for_function("document.querySelector('#product-name').textContent.includes('ZephyrForge')")
         for identity in ("product-information", "module-memory"):
             touch.locator(f"#{identity} > summary").tap()
             expect(touch.locator(f"#{identity} .identity-popover")).to_be_visible()
@@ -924,7 +924,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--browser", nargs="+", choices=("chromium", "firefox", "webkit"), default=["chromium"])
     args = parser.parse_args()
-    subprocess.run(["dotnet", "build", str(ROOT / "host/dotnet/ESPForge/ESPForge.csproj"), "--nologo"],
+    subprocess.run(["dotnet", "build", str(ROOT / "host/dotnet/ZephyrForge/ZephyrForge.csproj"), "--nologo"],
                    check=True)
     with sync_playwright() as playwright:
         for engine in args.browser:

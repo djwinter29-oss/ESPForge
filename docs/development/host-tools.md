@@ -12,7 +12,7 @@ python3 -m pip install --editable host/python -r host/python/tests/requirements.
 python3 -m unittest discover -s host/python/tests -v
 (cd host/python && pyright)
 node host/web/tests/run-tests.mjs
-dotnet test host/dotnet/ESPForge.Tests
+dotnet test host/dotnet/ZephyrForge.Tests
 python3 tools/check_docs.py
 ```
 
@@ -36,16 +36,16 @@ call [hid-permissions-check.sh](../../tools/host/hid-permissions-check.sh) befor
 ## Python host design
 
 The Python host is an installable package with pinned dependencies and separate test tooling.
-Run `espforge`, `python -m espforge`, or the checkout launch script.
+Run `zephyrforge`, `python -m zephyrforge`, or the checkout launch script.
 
 | Layer | Responsibility |
 |---|---|
 | Package identity | Version from the installed distribution, with a development fallback |
 | CLI | `status`, `web` and `reboot` commands with `--serial` / `--device-path` selection |
-| Reports | Pure USB HID report codecs and ESPForge-specific validation; see the [USB HID contract](../reference/usb-hid.md) |
+| Reports | Pure USB HID report codecs and ZephyrForge-specific validation; see the [USB HID contract](../reference/usb-hid.md) |
 | HID transport | Device discovery, Feature/Input reads and Control writes |
 | Dashboard services | Loopback Flask app, board discovery, one serialized monitor per board and the HTTP API |
-| Tests | Domain-grouped suites and shared fixtures live under `tests/espforge_tests/` |
+| Tests | Domain-grouped suites and shared fixtures live under `tests/zephyrforge_tests/` |
 
 Package builds require an explicit copy of the shared dashboard assets; there is no custom build hook.
 The staged copy is ignored by Git and included in both wheels and source distributions.
@@ -57,9 +57,9 @@ Editable installs use the same distribution metadata as wheels; reinstall after 
 To stage the current assets and check a wheel locally on Linux/macOS, from the repository root:
 
 ```sh
-rm -rf host/python/src/espforge/web
-mkdir -p host/python/src/espforge/web
-cp -R host/web/src/. host/python/src/espforge/web/
+rm -rf host/python/src/zephyrforge/web
+mkdir -p host/python/src/zephyrforge/web
+cp -R host/web/src/. host/python/src/zephyrforge/web/
 python3 -m pip wheel --no-deps host/python --wheel-dir build/wheels
 python3 -m venv build/wheel-check
 build/wheel-check/bin/python -m pip install build/wheels/*.whl
@@ -67,7 +67,7 @@ build/wheel-check/bin/python -I tools/check_python_wheel.py
 ```
 
 Repeat staging before every checkout package build so deleted or changed assets do not leave stale copies.
-After packaging, remove `host/python/src/espforge/web` to resume serving the shared checkout assets directly.
+After packaging, remove `host/python/src/zephyrforge/web` to resume serving the shared checkout assets directly.
 A source distribution built after staging already contains the assets and needs no external copy when building its wheel.
 
 ## Shared dashboard
@@ -75,7 +75,7 @@ A source distribution built after staging already contains the assets and needs 
 The .NET host uses MinVer with `vMAJOR.MINOR.PATCH` Git tags, patch increments and `dev` prerelease identifiers.
 Builds need Git history and tags to calculate development versions. The dashboard displays the assembly's
 informational version without an SDK-appended commit hash. After a commit, tag or version override change, use
-`dotnet build host/dotnet/ESPForge/ESPForge.csproj --no-incremental` to refresh both the assembly version and
+`dotnet build host/dotnet/ZephyrForge/ZephyrForge.csproj --no-incremental` to refresh both the assembly version and
 cached dependency metadata.
 For an explicit package version, pass `-p:MinVerVersionOverride=1.2.3` to `dotnet publish`.
 

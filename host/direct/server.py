@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 # Copyright (c) 2026 Ji Dong
 
-"""Serve the standalone ESPForge Direct dashboard on a local secure context (localhost)."""
+"""Serve the standalone ZephyrForge Direct dashboard on a local secure context (localhost)."""
 
 from __future__ import annotations
 
@@ -28,8 +28,8 @@ _SOURCE_ROOT = Path(__file__).resolve().parent
 _DEFAULT_WEB_ROOT = _SOURCE_ROOT / "web"
 _CONSOLE_SOURCE = _SOURCE_ROOT / "console_bridge.py"
 if not _CONSOLE_SOURCE.is_file():
-    _CONSOLE_SOURCE = _SOURCE_ROOT.parent / "python/src/espforge/dashboard/console.py"
-_CONSOLE_SPEC = importlib.util.spec_from_file_location("espforge_console_bridge", _CONSOLE_SOURCE)
+    _CONSOLE_SOURCE = _SOURCE_ROOT.parent / "python/src/zephyrforge/dashboard/console.py"
+_CONSOLE_SPEC = importlib.util.spec_from_file_location("zephyrforge_console_bridge", _CONSOLE_SOURCE)
 if _CONSOLE_SPEC is None or _CONSOLE_SPEC.loader is None:
     raise RuntimeError("Console bridge module is unavailable")
 _CONSOLE_MODULE = importlib.util.module_from_spec(_CONSOLE_SPEC)
@@ -278,7 +278,7 @@ def main(argv: list[str] | None = None) -> None:
         parser.error("--bind must be 127.0.0.1")
     if not args.directory.is_dir() or not (args.directory / "index.html").is_file():
         parser.error(f"dashboard directory must contain index.html: {args.directory}")
-    with TemporaryDirectory(prefix="espforge-direct-") as directory:
+    with TemporaryDirectory(prefix="zephyrforge-direct-") as directory:
         web = args.directory
         if (web / "build.json").is_file():
             verify_site(web)

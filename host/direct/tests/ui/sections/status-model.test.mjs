@@ -17,7 +17,7 @@ test("dashboard view model derives connection messaging and readiness without a 
   const disconnected = deriveDashboardViewModel({});
   assert.equal(disconnected.connection_state, "disconnected");
   assert.equal(disconnected.connection_label, "Disconnected");
-  assert.equal(disconnected.status_message, "Select an ESPForge device");
+  assert.equal(disconnected.status_message, "Select a ZephyrForge device");
   assert.equal(Object.hasOwn(disconnected, "console_url"), false);
 
   const connected = deriveDashboardViewModel({

@@ -48,7 +48,7 @@ export function createBoardSession({
 
   /** @param {{serial_number?: string | null, device_path: string}} board */
   function boardLabel(board) {
-    return board.serial_number ? `ESPForge / ${board.serial_number}` : `ESPForge / HID ${board.device_path}`;
+    return board.serial_number ? `ZephyrForge / ${board.serial_number}` : `ZephyrForge / HID ${board.device_path}`;
   }
 
   function state() {

@@ -319,7 +319,7 @@ test("Bluetooth dialog takes the control key, then scans, and preserves transpor
     }
     this.transport.bleKey = {};
     this.transport.device = Object.assign(new EventTarget(), {
-      name: "ESPForge-0102", gatt: { connected: true, disconnect() {} },
+      name: "ZephyrForge-0102", gatt: { connected: true, disconnect() {} },
     });
     const hardware = decodeIdentityReport(identity());
     const wirelessReport = new Uint8Array(53);
@@ -402,11 +402,11 @@ test("Bluetooth dialog takes the control key, then scans, and preserves transpor
     await sync({ reboot_pending: false });
     await sync({ wireless: { wifi_enabled: true, wifi_state: "connected", ssid: "HomeDev", ipv4: "192.168.66.87" } });
     assert.equal(el("#direct-wifi-state").textContent, "HomeDev (192.168.66.87)");
-    assert.equal(el("#direct-wifi-state").children.length, 0, "ESPForge has no TCP console link");
+    assert.equal(el("#direct-wifi-state").children.length, 0, "ZephyrForge has no TCP console link");
     await sync({ pending_request: { opcode: 2, transaction_id: 1 }, outcome_uncertain: true });
     assert.equal(el("#usb-open").disabled, true);
     await fire("#bluetooth-open", "click"); await null;
-    assert.match(el("#bluetooth-connection-status").textContent, /Connected to ESPForge-0102/);
+    assert.match(el("#bluetooth-connection-status").textContent, /Connected to ZephyrForge-0102/);
     assert.equal(el("#direct-ble-control-key").disabled, true);
     assert.equal(el("#bluetooth-scan").textContent, "Disconnect", "one button toggles while connected");
     assert.equal(el("#bluetooth-scan").disabled, false);

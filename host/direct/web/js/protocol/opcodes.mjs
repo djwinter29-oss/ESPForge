@@ -18,7 +18,7 @@ export const SAVE_SETTINGS_COMMIT = 2;
  */
 
 /**
- * @brief Whether settings are savable. `radios` holds RADIOS bits. ESPForge has one SD-card profile
+ * @brief Whether settings are savable. `radios` holds RADIOS bits. ZephyrForge has one SD-card profile
  * (0, Standard) and no TCP CLI switch.
  */
 /** @param {Settings | null | undefined} settings */
@@ -68,7 +68,7 @@ export const hasExactKeys = (value, keys) => value !== null && typeof value === 
  *   boolean}} [facts] Request facts journalled with the transaction and used to confirm its result.
  * @property {(result: ControlResult, request: OpcodeFacts) => boolean} [confirms] Whether a completed result proves the
  *   requested effect; a mismatch leaves the outcome uncertain.
- * @property {boolean} [unsupported] ESPForge never runs this opcode; its only result is Unsupported/error 4 and the
+ * @property {boolean} [unsupported] ZephyrForge never runs this opcode; its only result is Unsupported/error 4 and the
  *   dashboard never sends it.
  * @property {{generationMax: number, timeoutMs: number}} [lifecycle] Accepted long-running operation tracked through
  *   Feature 12 after its result.

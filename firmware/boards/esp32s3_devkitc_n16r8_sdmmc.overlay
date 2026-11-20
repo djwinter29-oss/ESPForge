@@ -4,7 +4,7 @@
 
 / {
 	aliases {
-		espforge-sd = &sdhc0;
+		zephyrforge-sd = &sdhc0;
 	};
 	zephyr,user {
 		sd-detect-gpios = <&gpio0 8 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
@@ -29,9 +29,9 @@
 /* Native USB OTG on the DevKitC USB connector (GPIO19 D-, GPIO20 D+). */
 &usb_otg {
 	status = "okay";
-	espforge_hid: hid_dev_0 {
+	zephyrforge_hid: hid_dev_0 {
 		compatible = "zephyr,hid-device";
-		label = "ESPForge";
+		label = "ZephyrForge";
 		protocol-code = "none";
 		in-report-size = <64>;
 		in-polling-period-us = <4000>;
@@ -43,20 +43,23 @@
 };
 
 &pinctrl {
-	espforge_led_default: espforge_led_default {
+	zephyrforge_led_default: zephyrforge_led_default {
 		mosi {
 			pinmux = <SPIM2_MOSI_GPIO48>;
 			bias-pull-down;
 		};
 	};
-	espforge_sd_default: espforge_sd_default {
+	/* The 20 mA reset-default pad drive caused SD write CRC errors on tested hand wiring; 10 mA passed. */
+	zephyrforge_sd_default: zephyrforge_sd_default {
 		clock {
 			pinmux = <SDHC0_CLKOUT_GPIO12>;
+			drive-strength = <10>;
 		};
 		command_data {
 			pinmux = <SDHC0_CMD_GPIO11>, <SDHC0_DATA0_GPIO13>,
 				 <SDHC0_DATA1_GPIO14>, <SDHC0_DATA2_GPIO15>, <SDHC0_DATA3_GPIO10>;
 			bias-pull-up;
+			drive-strength = <10>;
 		};
 	};
 };
@@ -65,9 +68,9 @@
 	status = "okay";
 };
 
-espforge_sd: &sdhc0 {
+zephyrforge_sd: &sdhc0 {
 	status = "okay";
-	pinctrl-0 = <&espforge_sd_default>;
+	pinctrl-0 = <&zephyrforge_sd_default>;
 	pinctrl-names = "default";
 	bus-width = <4>;
 	max-bus-freq = <25000000>;
@@ -81,9 +84,9 @@ espforge_sd: &sdhc0 {
 &spi2 {
 	status = "okay";
 	line-idle-low;
-	pinctrl-0 = <&espforge_led_default>;
+	pinctrl-0 = <&zephyrforge_led_default>;
 	pinctrl-names = "default";
-	espforge_led: led-strip@0 {
+	zephyrforge_led: led-strip@0 {
 		compatible = "worldsemi,ws2812-spi";
 		reg = <0>;
 		spi-max-frequency = <6400000>;

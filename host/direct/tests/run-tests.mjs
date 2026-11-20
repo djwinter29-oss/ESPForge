@@ -20,7 +20,7 @@ if (!files.length) throw new Error("No Direct JavaScript tests found");
 
 const coverage = ["--experimental-test-coverage", "--test-coverage-lines=90", "--test-coverage-branches=80",
   "--test-coverage-functions=85", "--test-coverage-include=**/host/direct/web/js/**/*.mjs"];
-const temp = mkdtempSync(join(tmpdir(), "espforge-direct-coverage-"));
+const temp = mkdtempSync(join(tmpdir(), "zephyrforge-direct-coverage-"));
 try {
   const lcovPath = join(temp, "coverage.info");
   const args = ["--test", ...coverage, "--test-reporter=spec", "--test-reporter-destination=stdout",

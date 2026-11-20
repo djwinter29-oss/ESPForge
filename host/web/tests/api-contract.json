@@ -31,7 +31,7 @@
       "confirm_data_loss": true
     },
     "status": 409,
-    "error": "Forced save is unavailable on ESPForge firmware"
+    "error": "Forced save is unavailable on ZephyrForge firmware"
   },
   "settings_save": {
     "route": "/api/settings",

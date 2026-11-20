@@ -27,13 +27,13 @@ Install Zephyr's [host prerequisites](https://docs.zephyrproject.org/4.3.0/devel
 From a directory **outside** this repository, create a workspace containing the source checkout:
 
 ```sh
-mkdir espforge-workspace
-cd espforge-workspace
-git clone https://github.com/djwinter29-oss/ESPForge espforge
+mkdir zephyrforge-workspace
+cd zephyrforge-workspace
+git clone https://github.com/djwinter29-oss/ZephyrForge zephyrforge
 python3.12 -m venv .venv
 . .venv/bin/activate
 python -m pip install west
-west init -l espforge
+west init -l zephyrforge
 west update --narrow -o=--depth=1
 python -m pip install -r zephyr/scripts/requirements-base.txt -r modules/hal/espressif/zephyr/requirements.txt
 west blobs fetch hal_espressif
@@ -44,8 +44,8 @@ The repository's `west.yml` pins Zephyr and imports only its Espressif, FatFs an
 Espressif radio blobs are required and have their own licenses. If SDK discovery fails, set
 `ZEPHYR_SDK_INSTALL_DIR` to the installed SDK directory.
 
-For an existing checkout, put it at `espforge-workspace/espforge` (or use a Linux symlink),
-then run `west init -l espforge` in a new, otherwise uninitialized workspace. Do not initialize
+For an existing checkout, put it at `zephyrforge-workspace/zephyrforge` (or use a Linux symlink),
+then run `west init -l zephyrforge` in a new, otherwise uninitialized workspace. Do not initialize
 a second workspace inside an existing Zephyr workspace.
 
 ## 2. Build now; flash later
@@ -53,10 +53,10 @@ a second workspace inside an existing Zephyr workspace.
 Run from the workspace created above; missing build prerequisites are prepared automatically:
 
 ```sh
-bash espforge/tools/firmware/build.sh
+bash zephyrforge/tools/firmware/build.sh
 ```
 
-Outputs are in `espforge/build/firmware/zephyr/`: `zephyr.elf` and `zephyr.bin`.
+Outputs are in `zephyrforge/build/firmware/zephyr/`: `zephyr.elf` and `zephyr.bin`.
 Both radios and native four-bit SDMMC support are enabled in the default build; no card is needed to compile.
 For the alternate SD-over-SPI image, add `--storage sd-spi` to both build and flash commands.
 See [image selection](../development/firmware.md#zephyr-target-build)
@@ -67,10 +67,10 @@ When hardware arrives, attach the board's **UART** (USB-to-UART bridge) connecto
 
 ```sh
 # Preview an upload command; the likely USB-UART port is detected automatically
-bash espforge/tools/firmware/flash.sh --dry-run
+bash zephyrforge/tools/firmware/flash.sh --dry-run
 
 # Upload the existing build and reset the board
-bash espforge/tools/firmware/flash.sh
+bash zephyrforge/tools/firmware/flash.sh
 ```
 
 The [flash script](../../tools/firmware/flash.sh) detects a likely USB-UART port when `--port`
@@ -85,7 +85,7 @@ uploads. No SD-card access is performed.
 
 Replace the port with the real device, for example `COM4` on Windows with a Bash-capable
 Zephyr environment. From a native Windows shell, use the equivalent
-`west flash -d espforge/build/firmware --skip-rebuild -r esp32 --esp-device COM4 --esp-baud-rate 460800 --no-erase`.
+`west flash -d zephyrforge/build/firmware --skip-rebuild -r esp32 --esp-device COM4 --esp-baud-rate 460800 --no-erase`.
 Use a data-capable USB cable and confirm your board is the matching N16R8 variant.
 On Linux, identify the bridge using `python -m serial.tools.list_ports` from the Zephyr venv (pyserial is installed
 with Zephyr's requirements); check serial permissions rather than running the flasher as root.
@@ -100,25 +100,25 @@ example with `python -m serial.tools.miniterm /dev/ttyUSB0 115200`.
 
 ## 3. Choose a dashboard
 
-Run from the repository root (`cd espforge`):
+Run from the repository root (`cd zephyrforge`):
 
 | Dashboard | Launch | Open |
 | --- | --- | --- |
 | Direct | `bash tools/host/run-direct.sh --port 8000` | `http://127.0.0.1:8000/` |
-| Python | `bash tools/host/run-python.sh web`, or `espforge web` after `pip install espforge` | `http://127.0.0.1:8001/` |
+| Python | `bash tools/host/run-python.sh web`, or `zephyrforge web` after `pip install zephyrforge` | `http://127.0.0.1:8001/` |
 | .NET | `bash tools/host/run-dotnet.sh` | `http://127.0.0.1:8002/` |
 
 Direct needs supported desktop Chrome/Edge for WebHID or Web Bluetooth.
 Its static server uses Python only as a convenience; HTTPS static hosting needs nothing installed.
 Python uses Python 3.10+ with Flask and `hidapi`; .NET uses the .NET 10 SDK/runtime with HidSharp.
-Python and .NET select the first ESPForge board, or the one given by `--serial SERIAL` (the 16 hex-digit UID) or
+Python and .NET select the first ZephyrForge board, or the one given by `--serial SERIAL` (the 16 hex-digit UID) or
 `--device-path HID_PATH`. On Linux, run `bash tools/host/hid-permissions-setup.sh` once, then reconnect the board;
 do not run the dashboards as root. Without a board the hosts show an empty board list; there is no simulated mode.
 
 ## 4. First connection
 
-Connect the board's **USB** connector. In Direct, click **USB** and choose the ESPForge HID device; in Python or .NET,
-select the board in the list. Confirm product `ESPForge`, the board, firmware version and serial number.
+Connect the board's **USB** connector. In Direct, click **USB** and choose the ZephyrForge HID device; in Python or
+.NET, select the board in the list. Confirm product `ZephyrForge`, the board, firmware version and serial number.
 An SD mount failure is expected without a card and does not prevent dashboard operation.
 Test and save a 2.4 GHz network, and optionally create a Bluetooth Control key, using [wireless setup](wireless.md).
 Run one host per board at a time, so Control commands do not interleave. A command whose outcome is uncertain is

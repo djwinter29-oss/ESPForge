@@ -25,7 +25,7 @@ No workflow flashes hardware, tests an SD card or runs a dedicated manual-tool t
 
 Workflows call the scripts in [tools/release](../../tools/release) for packaging, archive smoke checks and release
 downloads. Run them from the repository root with the same prerequisites and environment as the corresponding
-workflow; firmware collection instead runs from the Zephyr workspace root with the checkout named `espforge`.
+workflow; firmware collection instead runs from the Zephyr workspace root with the checkout named `zephyrforge`.
 The workflows retain triggers, permissions, tool installation, build commands, artifact transfer and publication actions.
 
 | Script | Required environment and inputs |
@@ -34,7 +34,7 @@ The workflows retain triggers, permissions, tool installation, build commands, a
 | [check-wheel.sh](../../tools/release/check-wheel.sh) | `VERSION`; wheel in `dist/`. Installs into `build/wheel-check` and runs the installed-wheel check. |
 | [package-direct.py](../../tools/release/package-direct.py) | `VERSION`, `SOURCE_SHA`; Git checkout. Builds and checks the extracted Direct ZIP. |
 | [package-dotnet.py](../../tools/release/package-dotnet.py) | `VERSION`, `RID`; self-contained publish in `build/host-release` and restored packages in `build/nuget`. |
-| [package-firmware.sh](../../tools/release/package-firmware.sh) | `STORAGE`, `FIRMWARE_BUILD`; completed firmware build and frozen manifest. `ESPFORGE_VERSION` optionally overrides the source version. |
+| [package-firmware.sh](../../tools/release/package-firmware.sh) | `STORAGE`, `FIRMWARE_BUILD`; completed firmware build and frozen manifest. `ZEPHYRFORGE_VERSION` optionally overrides the source version. |
 | [archive.sh](../../tools/release/archive.sh) | `VERSION`; downloaded firmware artifacts in `build/firmware-packages` and host packages in `build/packages`. |
 | [download-direct.sh](../../tools/release/download-direct.sh) | `RELEASE_TAG`, `SOURCE_SHA`, `GH_TOKEN`, `GH_REPO`; fetches and verifies the released site for Pages. |
 | [download-wheel.sh](../../tools/release/download-wheel.sh) | `RELEASE_TAG`, `SOURCE_SHA`, `GH_TOKEN`; fetches and verifies the released wheel for PyPI. |
@@ -46,8 +46,8 @@ The download helpers do not publish anything themselves. Package smoke checks st
 ## Package identities
 
 Python uses Hatchling and hatch-vcs: [pyproject.toml](../../host/python/pyproject.toml) builds the
-`espforge` wheel. CI explicitly copies `host/web/src` into the package before building; the wheel bundles it as
-`espforge/web` without a custom build hook. For local builds, follow the
+`zephyrforge` wheel. CI explicitly copies `host/web/src` into the package before building; the wheel bundles it as
+`zephyrforge/web` without a custom build hook. For local builds, follow the
 [asset-staging procedure](../development/host-tools.md#python-host-design). Git tags determine ordinary package versions;
 release builds explicitly supply the validated version through `SETUPTOOLS_SCM_PRETEND_VERSION`.
 The release installs the wheel in a clean environment and runs
@@ -75,7 +75,7 @@ See [Direct startup](../../host/direct/README.md#choose-how-to-run-it) for check
 4. Inspect the artifacts, licensing and [qualification limits](../validation/qualification-gaps.md).
    Local validation is not evidence that GitHub-hosted Linux/macOS/Windows jobs have run.
 5. On PyPI, configure a Trusted Publisher (or a pending publisher for a new project) for project
-   `espforge`, owner `djwinter29-oss`, repository `ESPForge`, workflow `publish-pypi.yml` and
+   `zephyrforge`, owner `djwinter29-oss`, repository `ZephyrForge`, workflow `publish-pypi.yml` and
    environment `pypi`. Confirm the project name is available to this owner first.
 6. Create the GitHub `pypi` environment, restrict it to the default branch, and configure any
    required reviewer approval. No PyPI token is stored in the repository.
@@ -91,23 +91,23 @@ git push origin v0.1.0
 
 Only exact `vMAJOR.MINOR.PATCH` tags with no leading zeros are accepted by the shared
 [version helper](../../tools/firmware/release-version.sh). Prerelease tags are not published.
-Tagged builds inject the validated firmware version through `ESPFORGE_VERSION`; ordinary
+Tagged builds inject the validated firmware version through `ZEPHYRFORGE_VERSION`; ordinary
 builds keep the source default. .NET package versions and the Python wheel version match the release tag.
 
 The release publishes:
 
 | Asset | Contents/use |
 | --- | --- |
-| `espforge-firmware-vVERSION-esp32s3-devkitc-sdmmc.zip` | Native four-bit SDMMC simple-boot image, ELF, hidden `.config`, DTS, runner provenance, frozen west manifest, dependency licenses, docs and flashing instructions |
-| `espforge-firmware-vVERSION-esp32s3-devkitc-sd-spi.zip` | SD-over-SPI image with the same package contents, card detection, FAT and USB drive handoff |
-| `espforge-direct-vVERSION.zip` | Independent Direct `web/` app, `server.py`, project license and `RELEASE.txt` source metadata; run `python3 server.py` |
-| `espforge-VERSION-py3-none-any.whl` | Python host package with the `espforge` command, bundled `host/web/src` bridge dashboard and license; also published to PyPI |
-| `espforge-host-vVERSION-linux-x64.tar.gz` | Self-contained Linux .NET host, dashboard assets and dependency notices |
-| `espforge-host-vVERSION-win-x64.zip` | Self-contained Windows .NET host |
-| `espforge-host-vVERSION-osx-arm64.tar.gz` | Self-contained Apple Silicon .NET host |
+| `zephyrforge-firmware-vVERSION-esp32s3-devkitc-sdmmc.zip` | Native four-bit SDMMC simple-boot image, ELF, hidden `.config`, DTS, runner provenance, frozen west manifest, dependency licenses, docs and flashing instructions |
+| `zephyrforge-firmware-vVERSION-esp32s3-devkitc-sd-spi.zip` | SD-over-SPI image with the same package contents, card detection, FAT and USB drive handoff |
+| `zephyrforge-direct-vVERSION.zip` | Independent Direct `web/` app, `server.py`, project license and `RELEASE.txt` source metadata; run `python3 server.py` |
+| `zephyrforge-VERSION-py3-none-any.whl` | Python host package with the `zephyrforge` command, bundled `host/web/src` bridge dashboard and license; also published to PyPI |
+| `zephyrforge-host-vVERSION-linux-x64.tar.gz` | Self-contained Linux .NET host, dashboard assets and dependency notices |
+| `zephyrforge-host-vVERSION-win-x64.zip` | Self-contained Windows .NET host |
+| `zephyrforge-host-vVERSION-osx-arm64.tar.gz` | Self-contained Apple Silicon .NET host |
 | `SHA256SUMS.txt` | SHA-256 of all seven packages |
 
-Install the wheel with `python -m pip install espforge-VERSION-py3-none-any.whl` and run `espforge web`.
+Install the wheel with `python -m pip install zephyrforge-VERSION-py3-none-any.whl` and run `zephyrforge web`.
 Standalone .NET hosts do not require an installed .NET runtime. Their smoke tests start the extracted host without
 hardware, verify every deployed dashboard asset and confirm that `/api/boards` answers with a board list.
 HTML templates are checked through their rendered routes (`/` and `/console`), not their blocked raw-file URLs.

@@ -4,6 +4,6 @@
 set -euo pipefail
 
 cp LICENSE host/python/LICENSE
-mkdir -p host/python/src/espforge/web
-cp -R host/web/src/. host/python/src/espforge/web/
+mkdir -p host/python/src/zephyrforge/web
+cp -R host/web/src/. host/python/src/zephyrforge/web/
 python -m pip wheel --disable-pip-version-check --no-deps host/python --wheel-dir dist

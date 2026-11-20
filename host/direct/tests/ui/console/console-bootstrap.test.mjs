@@ -50,7 +50,7 @@ test("console bootstrap exposes only the fresh board target and closes its chann
     createSource: () => "session-1", getState: state,
   });
   assert.equal(await bootstrap.start(), true);
-  assert.deepEqual(names, ["espforge-console-session-1"]);
+  assert.deepEqual(names, ["zephyrforge-console-session-1"]);
   const url = new URL(bootstrap.consoleUrl(state()), "http://localhost");
   assert.equal(url.pathname, "/console.html");
   assert.equal(url.searchParams.get("source"), "session-1");

@@ -32,7 +32,7 @@ There is no CDC ACM interface. Hosts identify HID by its usage collection, not a
 | HID usage page | `0xFF00` |
 | HID usage | `0x01` |
 | Manufacturer string | `djwinter29` |
-| Product string | `ESPForge` |
+| Product string | `ZephyrForge` |
 | Serial string | Report `1` UID as 16 uppercase hexadecimal digits, in byte order |
 
 Management uses the board's native **USB** connector. The **UART** connector is for a diagnostic shell/log output and
@@ -114,7 +114,7 @@ Read after connection. Identity and capabilities remain stable for that boot.
 | Offset | Size | Field | Meaning |
 | -----: | ---: | ----- | ------- |
 | 0 | 1 | `version` | Layout version, `1` |
-| 1 | 2 | `product_id` | Product-family ID, `0x0003` for ESPForge |
+| 1 | 2 | `product_id` | Product-family ID, `0x0003` for ZephyrForge |
 | 3 | 8 | `device_uid` | Opaque identity bytes in USB serial-string order |
 | 11 | 1 | `firmware_major` | Firmware semantic-version major |
 | 12 | 1 | `firmware_minor` | Firmware semantic-version minor |
@@ -143,7 +143,7 @@ Board model `1` requires MCU `3`; model `0` makes no board claim.
 | Product ID | Meaning |
 | ---------: | ------- |
 | `0x0000` | Reserved / unspecified |
-| `0x0003` | ESPForge |
+| `0x0003` | ZephyrForge |
 | Other | Not a supported project identity |
 
 | Capability bit | Meaning | Current device |
@@ -258,10 +258,10 @@ failed submissions can therefore leave gaps. Sequences are not delivery acknowle
 | 14 | 2 | `core1_service_load_basis_points` | `65535`; second core not running this application |
 | 16 | 4 | `system_clock_hz` | Current CPU clock, nonzero |
 | 20 | 1 | `sequence` | Publication sequence, modulo 256 |
-| 21 | 1 | `espforge_flags` | USB and sensor-valid flags below |
+| 21 | 1 | `zephyrforge_flags` | USB and sensor-valid flags below |
 | **Total** | **22** | | **23 bytes including report ID** |
 
-`espforge_flags`: bit 0 USB configured; bit 1 reserved CDC-open indication, always clear; bit 2 temperature valid;
+`zephyrforge_flags`: bit 0 USB configured; bit 1 reserved CDC-open indication, always clear; bit 2 temperature valid;
 bit 3 LED driver available; bits 4-7 zero. Unavailable LEDs transmit a zero colour mask.
 Masks 0-7 mean Off, Red, Green, Yellow, Blue, Purple, Cyan and White. Driver availability and successful transmission
 do not prove an LED is fitted, the selected data GPIO is correct, or the physical colour.

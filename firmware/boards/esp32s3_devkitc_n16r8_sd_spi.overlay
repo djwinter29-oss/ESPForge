@@ -2,7 +2,7 @@
 
 / {
 	aliases {
-		espforge-sd = &espforge_sd_spi;
+		zephyrforge-sd = &zephyrforge_sd_spi;
 	};
 };
 
@@ -18,7 +18,7 @@
 };
 
 &pinctrl {
-	espforge_sd_spi_default: espforge_sd_spi_default {
+	zephyrforge_sd_spi_default: zephyrforge_sd_spi_default {
 		clock {
 			pinmux = <SPIM3_SCLK_GPIO12>;
 		};
@@ -32,10 +32,10 @@
 /* Override all default SPI3 pins to avoid the module's internal flash/PSRAM signals. */
 &spi3 {
 	status = "okay";
-	pinctrl-0 = <&espforge_sd_spi_default>;
+	pinctrl-0 = <&zephyrforge_sd_spi_default>;
 	pinctrl-names = "default";
 	cs-gpios = <&gpio0 10 GPIO_ACTIVE_LOW>;
-	espforge_sd_spi: sdhc@0 {
+	zephyrforge_sd_spi: sdhc@0 {
 		compatible = "zephyr,sdhc-spi-slot";
 		reg = <0>;
 		spi-max-frequency = <25000000>;

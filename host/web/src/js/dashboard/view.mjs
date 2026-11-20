@@ -186,7 +186,7 @@ export function renderStatus(snapshot, operations = operationState(snapshot, {
     : runtime ? "HID telemetry is live"
     : connected && snapshot.telemetry_stale ? "Telemetry report is stale"
     : connected ? "Waiting for first status report"
-      : snapshot.no_board_selected ? "Select an ESPForge board" : "Connect an ESPForge board");
+      : snapshot.no_board_selected ? "Select a ZephyrForge board" : "Connect a ZephyrForge board");
   const statusLine = element(".status-line");
   statusLine.dataset.error = String(Boolean(snapshot.error || snapshot.diagnostic_error));
   statusLine.dataset.active = String(Boolean(connected && runtime));
@@ -296,7 +296,7 @@ function renderSettings(snapshot, operations) {
     || ((snapshot.settings_dirty || snapshot.wireless_dirty) ? saveBlockReason : null)
     || (snapshot.wireless_draft_dirty && !snapshot.wireless_dirty
       ? "Untested Wi-Fi details are a local draft; test them before saving or rebooting." : null)
-    || (!snapshot.connected ? "Waiting for an ESPForge connection."
+    || (!snapshot.connected ? "Waiting for a ZephyrForge connection."
       : !snapshot.settings_supported ? "Boot settings unavailable; update device firmware."
         : operations.storageBlockReason ?? operations.wirelessBlockReason ?? "");
   updateText(element("#settings-note"), settingsNote);

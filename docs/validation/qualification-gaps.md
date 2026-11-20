@@ -12,10 +12,10 @@ details. This is functional evidence, not production qualification.
 | BLE | Monitoring and authenticated control reported working; MTU variation, reconnect stress and radio coexistence remain unqualified |
 | Wi-Fi | Provisioning and connection reported working; failure recovery, lease renewal, coexistence and long-duration behavior remain unqualified |
 | Boot settings | Save and reboot reported working; interrupted erase/program, endurance and individual CPU-clock profiles not documented in the report |
-| SD card | Native four-bit SDMMC, SPI, detection and replacement reported working; card/wiring matrix, sustained I/O and fault recovery remain unqualified |
+| SD card | Native four-bit SDMMC, SPI, detection and replacement reported working; one card's write failures and 10 mA pad-drive fix are [recorded](records/2026-11-20-sd-write-reliability.md); card/wiring matrix, sustained I/O and fault recovery remain unqualified |
 | USB MSC | Handoff and return reported working; no OS/card matrix, repeated-cycle data or interrupted-handoff results recorded; see [SD ownership](../reference/sdcard.md#usb-drive-handoff) |
 | Diagnostic shells | UART and Wi-Fi TCP shells reported working; admission/reconnect stress and concurrent HID/BLE responsiveness remain unqualified |
-| Storage benchmark | Portable safety and host codecs tested; physical benchmark figures, removal-during-write and cleanup results not supplied |
+| Storage benchmark | Portable safety and host codecs tested; one card's runs up to 256 MiB recorded; 1024 MiB, removal-during-write and cleanup results not supplied |
 | Onboard RGB LED | LED controls reported working; exact board revision/pin, waveform timing and optical measurements not recorded |
 | Module memory inventory | Live board diagnostics reported working; raw PSRAM/flash inventory values, reservations and memory-accounting checks not supplied |
 | Dashboards | Live USB HID connection and diagnostics reported working; no per-dashboard/OS/browser hardware matrix or raw measurements recorded |

@@ -1,33 +1,37 @@
-# ESPForge
+# ZephyrForge
 
-[![PR Check](https://github.com/djwinter29-oss/ESPForge/actions/workflows/pr-check.yml/badge.svg?branch=main)](https://github.com/djwinter29-oss/ESPForge/actions/workflows/pr-check.yml)
-[![Release](https://github.com/djwinter29-oss/ESPForge/actions/workflows/release.yml/badge.svg)](https://github.com/djwinter29-oss/ESPForge/actions/workflows/release.yml)
+[![PR Check](https://github.com/djwinter29-oss/ZephyrForge/actions/workflows/pr-check.yml/badge.svg?branch=main)](https://github.com/djwinter29-oss/ZephyrForge/actions/workflows/pr-check.yml)
+[![Release](https://github.com/djwinter29-oss/ZephyrForge/actions/workflows/release.yml/badge.svg)](https://github.com/djwinter29-oss/ZephyrForge/actions/workflows/release.yml)
 [![License: BSD 3-Clause](https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)](LICENSE)
-![Target: ESP32-S3](https://img.shields.io/badge/Target-ESP32--S3-2674b8)
+![First target: ESP32-S3](https://img.shields.io/badge/First%20target-ESP32--S3-2674b8)
 
-**A Zephyr foundation for your ESP32-S3 product, with board management already in place.**
+**A Zephyr foundation for MCU products, with board management already in place. ESP32-S3 is the first target.**
 
-ESPForge provides board identity, diagnostics, persistent settings, wireless provisioning, optional SD storage
+ZephyrForge provides board identity, diagnostics, persistent settings, wireless provisioning, optional SD storage
 and host tools, so you can focus on your application's hardware and behavior. Its Direct, Python and .NET
 dashboards help you bring up the board and keep management separate from product-specific work.
 
 It shares [PicoForge](https://github.com/djwinter29-oss/PicoForge)'s intent: provide the supporting firmware and
-host tooling that downstream products would otherwise rebuild. ESPForge applies that approach to **ESP32-S3 and Zephyr**,
-rather than PicoForge's RP2040/RP2350 platform. It is not a compatible firmware port.
+host tooling that downstream products would otherwise rebuild. ZephyrForge applies that approach to **Zephyr** across
+a range of MCUs, rather than PicoForge's RP2040/RP2350 platform. It is not a compatible firmware port.
 
-The initial target is **ESP32-S3-DevKitC-1 N16R8**: **16 MB flash** and **8 MB octal PSRAM**.
+The first and currently only supported target is **ESP32-S3-DevKitC-1 N16R8**: **16 MB flash** and
+**8 MB octal PSRAM**. Other MCUs are planned, not yet supported.
 Choose native **four-bit SDMMC** or a separate **SD-over-SPI** firmware image.
 
-**Start here:** [Firmware releases (choose SD transport)](https://github.com/djwinter29-oss/ESPForge/releases/latest) ·
-[Direct dashboard (firmware required)](https://djwinter29-oss.github.io/ESPForge/) ·
-[Python host app on PyPI (firmware required)](https://pypi.org/project/espforge/) ·
-[Build with ESPForge](#build-on-espforge)
+> **Formerly ESPForge.** Releases up to v0.0.2 use the `espforge` PyPI package, `ESPForge` USB/BLE names and
+> `espforge-*` release assets. Install `zephyrforge` and reflash the firmware together; the wire protocol is unchanged.
+
+**Start here:** [Firmware releases (choose SD transport)](https://github.com/djwinter29-oss/ZephyrForge/releases/latest) ·
+[Direct dashboard (firmware required)](https://djwinter29-oss.github.io/ZephyrForge/) ·
+[Python host app on PyPI (firmware required)](https://pypi.org/project/zephyrforge/) ·
+[Build with ZephyrForge](#build-on-zephyrforge)
 
 > **Project status:** software-tested, with functional hardware tests reported on the target N16R8 board.
 > No issues were reported. See the [hardware test report](docs/validation/records/2026-11-14-hardware-tests.md)
 > for coverage and remaining qualification limits.
 
-## What ESPForge provides
+## What ZephyrForge provides
 
 | Foundation | Included |
 | --- | --- |
@@ -65,7 +69,7 @@ Wi-Fi is provisioned by the dashboards and also exposes the [raw TCP diagnostic 
 | --- | --- | --- | --- |
 | **Direct** | Browser-native management without a USB bridge service | WebHID or Web Bluetooth | [Direct guide](host/direct/README.md) |
 | **Python** | A local web dashboard backed by Python | USB HID via `hidapi` | [Python guide](host/python/README.md) |
-| **.NET** | A local web dashboard backed by .NET 10 | USB HID via HidSharp | [.NET guide](host/dotnet/ESPForge/README.md) |
+| **.NET** | A local web dashboard backed by .NET 10 | USB HID via HidSharp | [.NET guide](host/dotnet/ZephyrForge/README.md) |
 
 From the repository root, choose **one**:
 
@@ -82,13 +86,13 @@ bash tools/host/run-dotnet.sh
 
 Direct needs a supported desktop browser and localhost or HTTPS. Its local static server uses Python;
 it does not bridge USB or Bluetooth traffic.
-Python and .NET select the first ESPForge board, or one chosen with `--serial SERIAL` or
+Python and .NET select the first ZephyrForge board, or one chosen with `--serial SERIAL` or
 `--device-path HID_PATH`. Without hardware, the board list is empty; there is no simulated mode.
 
 **Linux:** run `bash tools/host/hid-permissions-setup.sh` once, then reconnect the board.
 Keep bridge hosts on loopback and use one management client per board at a time.
 
-## Try ESPForge
+## Try ZephyrForge
 
 1. **Prepare the workspace.** Follow [getting started](docs/guides/getting-started.md) for the pinned
    Zephyr/SDK environment and Espressif dependencies.
@@ -96,8 +100,8 @@ Keep bridge hosts on loopback and use one management client per board at a time.
    from the initialized Zephyr workspace with its virtual environment active:
 
    ```sh
-   bash espforge/tools/firmware/build.sh
-   bash espforge/tools/firmware/flash.sh --port /dev/ttyUSB0
+   bash zephyrforge/tools/firmware/build.sh
+   bash zephyrforge/tools/firmware/flash.sh --port /dev/ttyUSB0
    ```
 
    Flash only the matching N16R8 module through its UART connector; replace the port with yours.
@@ -106,13 +110,13 @@ Keep bridge hosts on loopback and use one management client per board at a time.
 3. **Connect and configure.** Attach the USB connector, open a dashboard, then follow
    [wireless setup](docs/guides/wireless.md) to test a network or provision BLE.
 
-## Build on ESPForge
+## Build on ZephyrForge
 
-| ESPForge provides | Your application adds |
+| ZephyrForge provides | Your application adds |
 | --- | --- |
 | Board management, settings, connectivity, optional storage and host tools | Product-specific peripherals, processing, commands and user interface |
 
-Use ESPForge as a source-based starting point: fork the repository and pin the source revision and dependencies
+Use ZephyrForge as a source-based starting point: fork the repository and pin the source revision and dependencies
 you have validated. Add your application in separate services, keeping pin assignments in board overlays and
 blocking work out of management paths and the shared application lock.
 

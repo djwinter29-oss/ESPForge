@@ -215,11 +215,11 @@ await run("fake WebHID board connects, reports and saves through the production 
     await waitFor(() => page.querySelector("#connection").dataset.state === "connected", "board did not connect");
     check(JSON.stringify(hid.requests.map(request => request.filters)) === JSON.stringify(
       [[{ vendorId: 0xcafe, usagePage: 0xff00, usage: 1, productId: 0x4021 }]]), "chooser filter is not 0xCAFE:0x4021");
-    check(page.querySelector("#product-name").textContent.includes("ESPForge"), "product name is not ESPForge");
+    check(page.querySelector("#product-name").textContent.includes("ZephyrForge"), "product name is not ZephyrForge");
     check(page.querySelector("#board-model").textContent.includes("ESP32-S3"), "board model is not ESP32-S3");
     const clock = page.querySelector("#settings-clock");
     check(JSON.stringify([...clock.options].map(option => option.value)) === '["0","80","160","240"]',
-      "clock choices do not match the ESPForge profile");
+      "clock choices do not match the ZephyrForge profile");
     hid.reports();
     await waitFor(() => page.querySelector("#uptime").textContent !== "--", "telemetry input report was not shown");
     await waitFor(() => page.querySelector("#memory-filesystem").textContent === "FAT32",

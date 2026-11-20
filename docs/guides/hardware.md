@@ -3,7 +3,7 @@
 ## Initial target
 
 The starter targets `esp32s3_devkitc/esp32s3/procpu` in Zephyr 4.3.2.
-ESPForge builds for the ESP32-S3-DevKitC-1 **N16R8** (ESP32-S3-WROOM-1-N16R8 module): 16 MB quad flash and
+ZephyrForge builds for the ESP32-S3-DevKitC-1 **N16R8** (ESP32-S3-WROOM-1-N16R8 module): 16 MB quad flash and
 8 MB octal PSRAM. The project configuration selects the N16R8 memory sizes and partition layout
 (settings in `storage_partition` at `0xFB0000`), with octal PSRAM at 40 MHz and a boot-time memory test.
 PSRAM provides a separate 1 MB shared multi-heap; the kernel heap, Wi-Fi and BLE buffers stay in internal RAM.
@@ -13,7 +13,7 @@ Check the module marking. An image for N16R8 does not suit N4/N8 modules (smalle
 or N32R16V/N16R16VA modules (octal flash). Other boards need their own DTS/flash configuration and validation;
 do not assume compatibility from the ESP32-S3 chip name alone.
 
-The DevKitC has two USB-C connectors, and ESPForge uses both:
+The DevKitC has two USB-C connectors, and ZephyrForge uses both:
 
 | Connector | ESP32-S3 interface | Used for |
 | --- | --- | --- |

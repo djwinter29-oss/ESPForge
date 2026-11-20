@@ -40,15 +40,15 @@ test("Direct dashboard shows live Wi-Fi and Bluetooth state without treating una
     for (const [wireless, expected] of [
       [{ ble_enabled: false, ble_key_configured: true, ble_state: "advertising" }, "Disabled"],
       [{ ble_enabled: true, ble_key_configured: false, ble_state: "off" }, "Off (no control key)"],
-      [{ ble_enabled: true, ble_key_configured: true, ble_state: "off" }, "ESPForge-892BA313F9BB56E1 (starting)"],
+      [{ ble_enabled: true, ble_key_configured: true, ble_state: "off" }, "ZephyrForge-892BA313F9BB56E1 (starting)"],
       [{ ble_enabled: true, ble_key_configured: true, ble_state: "advertising" },
-        "ESPForge-892BA313F9BB56E1 (advertising)"],
+        "ZephyrForge-892BA313F9BB56E1 (advertising)"],
       [{ ble_enabled: true, ble_key_configured: true, ble_state: "connected" },
-        "ESPForge-892BA313F9BB56E1 (connected)"],
+        "ZephyrForge-892BA313F9BB56E1 (connected)"],
       [{ ble_enabled: true, ble_key_configured: false, ble_state: "connected" },
-        "ESPForge-892BA313F9BB56E1 (connected)"],
+        "ZephyrForge-892BA313F9BB56E1 (connected)"],
       [{ ble_enabled: true, ble_key_configured: false, ble_state: "advertising" },
-        "ESPForge-892BA313F9BB56E1 (advertising)"],
+        "ZephyrForge-892BA313F9BB56E1 (advertising)"],
       [null, "--"],
     ]) {
       render({ ...state, wireless });
@@ -57,7 +57,7 @@ test("Direct dashboard shows live Wi-Fi and Bluetooth state without treating una
     }
     render({ ...state, hardware: { capabilities: 128 },
       wireless: { ble_enabled: true, ble_state: "connected" } });
-    assert.equal(el("#direct-ble-state").textContent, "ESPForge (connected)");
+    assert.equal(el("#direct-ble-state").textContent, "ZephyrForge (connected)");
     render({ ...state, wireless_error: "Wi-Fi status read failed: disconnected" });
     assert.equal(el("#direct-ble-state").textContent, "Unavailable");
     assert.equal(el("#direct-wifi-state").textContent, "Unavailable");
@@ -83,7 +83,7 @@ test("keyless Bluetooth reports that a control key is needed; unavailable report
     assert.equal(element("#direct-ble-state").textContent, "Off (no control key)");
     assert.doesNotMatch(element("#direct-wifi-state").textContent, /key/);
     renderWirelessStatus({ ...snapshot, wireless: { ...snapshot.wireless, ble_key_configured: true } });
-    assert.equal(element("#direct-ble-state").textContent, "ESPForge-AB (starting)");
+    assert.equal(element("#direct-ble-state").textContent, "ZephyrForge-AB (starting)");
     renderWirelessStatus({ ...snapshot, connected: false });
     assert.equal(element("#direct-wifi-state").textContent, "--");
     renderWirelessStatus({ ...snapshot, wireless_error: "Read failed" });

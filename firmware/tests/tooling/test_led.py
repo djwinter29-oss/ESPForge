@@ -58,28 +58,28 @@ int main(void)
 {
     bool available;
     uint8_t colour;
-    ef_platform_led_init();
-    ef_platform_led_status(&colour, &available);
+    zf_platform_led_init();
+    zf_platform_led_status(&colour, &available);
     assert(available && colour == 0);
     assert(latched.r == 0 && latched.g == 0 && latched.b == 0);
-    assert(ef_platform_led_request(4) == 0);
-    ef_platform_led_status(&colour, &available);
+    assert(zf_platform_led_request(4) == 0);
+    zf_platform_led_status(&colour, &available);
     assert(available && colour == 4 && latched.b == 16);
 
     for (unsigned failure = 1; failure <= 2; ++failure) {
         reset();
         fail_at = failure;
-        ef_platform_led_init();
-        ef_platform_led_status(&colour, &available);
+        zf_platform_led_init();
+        zf_platform_led_status(&colour, &available);
         assert(!available && colour == 0 && logs == 1);
         assert(transfers == failure);
-        assert(ef_platform_led_request(4) == -ENODEV);
+        assert(zf_platform_led_request(4) == -ENODEV);
     }
 
     reset();
     ready = false;
-    ef_platform_led_init();
-    ef_platform_led_status(&colour, &available);
+    zf_platform_led_init();
+    zf_platform_led_status(&colour, &available);
     assert(!available && colour == 0 && transfers == 0 && logs == 1);
     return 0;
 }
@@ -88,7 +88,7 @@ int main(void)
 
 class LedStartupTests(unittest.TestCase):
     def test_startup_clears_first_transfer_colour_and_reports_failures(self):
-        with tempfile.TemporaryDirectory(prefix="espforge-led-") as directory:
+        with tempfile.TemporaryDirectory(prefix="zephyrforge-led-") as directory:
             temp = Path(directory)
             for name in ("device.h", "drivers/led_strip.h", "kernel.h", "logging/log.h"):
                 header = temp / "zephyr" / name

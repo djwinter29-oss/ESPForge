@@ -48,7 +48,7 @@
  * @typedef {Recovery & {message: string}} UncertainCommand
  */
 
-/** Capability bits from Report 1 that the ESPForge dashboard acts on. */
+/** Capability bits from Report 1 that the ZephyrForge dashboard acts on. */
 export const CAPABILITY_REBOOT = 2;
 export const CAPABILITY_SETTINGS = 4;
 export const CAPABILITY_SPI = 8;
@@ -165,7 +165,7 @@ export function operationState(snapshot, activity = {}) {
     && wirelessStatusReady && !busy && !storageCommandPending && snapshot?.storage_stale === false);
   const settingsBusy = Boolean(activity.resyncing || activity.saving || activity.wirelessInFlight || rebootPending
     || outcomeUncertain || cleanupRequired || activity.statusFailed);
-  const saveBlockReason = !snapshot?.connected ? "Waiting for an ESPForge connection."
+  const saveBlockReason = !snapshot?.connected ? "Waiting for a ZephyrForge connection."
     : !snapshot.settings_supported || !snapshot.settings
       ? snapshot.settings_message || "Boot settings unavailable; update device firmware."
       : !(capabilities & CAPABILITY_SETTINGS) ? "Firmware does not support saving boot settings."
@@ -191,12 +191,12 @@ export function operationState(snapshot, activity = {}) {
   const canEnableMsc = canManageMsc && !snapshot?.msc?.enabled && snapshot?.memory?.initialized === true;
   const canReturnMsc = canManageMsc && snapshot?.msc?.enabled === true;
   const rebootBlockReason = canReboot ? null : !snapshot?.connected
-    ? "Connect to an ESPForge board before rebooting."
+    ? "Connect to a ZephyrForge board before rebooting."
     : !(capabilities & CAPABILITY_REBOOT) ? "Firmware does not support rebooting."
       : settingsBusy ? "Finish the pending operation or recovery before rebooting."
         : storageBlockReason ?? "Wait for storage to become idle before rebooting.";
   const ledBlockReason = canSetLed ? null : !snapshot?.connected
-    ? "Connect to an ESPForge board to control its LED."
+    ? "Connect to a ZephyrForge board to control its LED."
     : !(capabilities & 1) ? "Firmware does not support board LED control."
       : snapshot.telemetry_stale !== false ? "Waiting for fresh status before controlling the LED."
         : !snapshot.runtime?.led_available || !Number.isInteger(snapshot.runtime.led_colour)

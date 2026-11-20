@@ -46,7 +46,7 @@ test("BLE maps normalized68byte control to restricted9byte wire form and HMACs t
           } };
         }
         assert.equal(uuid, BLE_SERVICE);
-        discoveryOrder.push("espforge_service_discovery");
+        discoveryOrder.push("zephyrforge_service_discovery");
         return { async getCharacteristic(uuid) {
           assert.match(uuid, /^ef5c[0-9a-f]{4}-7c91-4d70-8b32-6e856443f502$/);
           const id = parseInt(uuid.slice(4, 8), 16); requested.push(id);
@@ -75,10 +75,10 @@ test("BLE maps normalized68byte control to restricted9byte wire form and HMACs t
     await client.connect(new Uint8Array(32).fill(0xab));
     assert.equal(client.state.connected, true);
     assert.equal(BLE_SERVICE, "ef5c0000-7c91-4d70-8b32-6e856443f502");
-    assert.deepEqual(filters, [{ services: [BLE_SERVICE] }, { namePrefix: "ESPForge-" }]);
+    assert.deepEqual(filters, [{ services: [BLE_SERVICE] }, { namePrefix: "ZephyrForge-" }]);
     assert.ok(requestedServices.includes(0x1801));
     assert.equal(notificationStarts, 1);
-    assert.deepEqual(discoveryOrder.slice(0, 2), ["service_changed_subscription", "espforge_service_discovery"]);
+    assert.deepEqual(discoveryOrder.slice(0, 2), ["service_changed_subscription", "zephyrforge_service_discovery"]);
     assert.deepEqual(requested, [1, 2, 3, 10, 12, 20, 256, 257, 13]);
     assert.equal(client.state.freshness[11], "unavailable");
     assert.equal(client.state.hardware.psram_total_bytes, 8 << 20);

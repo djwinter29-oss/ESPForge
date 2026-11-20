@@ -48,7 +48,7 @@ const mock = `<script>
     command_outcome_uncertain: false, reboot_pending: false, telemetry_stale: false,
     command_resync_supported: true,
     runtime: { led_available: false, led_on: false },
-    hardware: { product_name: "ESPForge", board_model: "ESP32-S3-DevKitC-1", mcu: "ESP32-S3",
+    hardware: { product_name: "ZephyrForge", board_model: "ESP32-S3-DevKitC-1", mcu: "ESP32-S3",
       capabilities: 128 | 16 | 4 | 2, ram_reserved_bytes: 121008, ram_total_bytes: 524288 },
     settings_supported: true,
     board_configuration: { system_clock_mhz: 160, sdcard_profile: 0, radios: 0,

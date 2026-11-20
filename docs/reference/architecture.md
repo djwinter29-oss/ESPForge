@@ -31,7 +31,7 @@ flowchart LR
     TCP["Raw TCP diagnostic client"] -->|Wi-Fi| Console
 ```
 
-USB HID and BLE share ESPForge report payloads and Control semantics, defined by the
+USB HID and BLE share ZephyrForge report payloads and Control semantics, defined by the
 [USB HID](usb-hid.md) and [Bluetooth LE](bluetooth.md) specifications.
 
 ## Repository responsibilities

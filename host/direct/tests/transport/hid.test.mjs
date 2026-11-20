@@ -3,7 +3,7 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { matchesEspForge } from "../../web/js/protocol/codec.mjs";
+import { matchesZephyrForge } from "../../web/js/protocol/codec.mjs";
 import { describe } from "../../web/js/ui/messages.mjs";
 import { fakeConnection } from "../support/fixtures.mjs";
 
@@ -42,9 +42,9 @@ test("cancelled or denied selection never opens a previously authorized device",
   }
 });
 
-test("development HID filter uses the ESPForge VID:PID and the authorized vendor collection", () => {
+test("development HID filter uses the ZephyrForge VID:PID and the authorized vendor collection", () => {
   const { device } = fakeConnection();
-  assert.equal(matchesEspForge(device), true);
-  device.productId = 0x4011; assert.equal(matchesEspForge(device), false);
-  device.productId = 0x4021; device.collections[0].usage = 2; assert.equal(matchesEspForge(device), false);
+  assert.equal(matchesZephyrForge(device), true);
+  device.productId = 0x4011; assert.equal(matchesZephyrForge(device), false);
+  device.productId = 0x4021; device.collections[0].usage = 2; assert.equal(matchesZephyrForge(device), false);
 });

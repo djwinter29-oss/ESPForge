@@ -78,7 +78,7 @@ test("re-enumeration reconnects by Feature 1 UID, not a non-standard serialNumbe
   device.receiveFeatureReport = id => id === 1 ? otherIdentity : receive(id);
   hid.dispatchEvent(Object.assign(new Event("connect"), { device }));
   await new Promise(resolve => setImmediate(resolve));
-  assert.equal(client.state.connected, false, "another ESPForge device must not be attached");
+  assert.equal(client.state.connected, false, "another ZephyrForge device must not be attached");
   assert.equal(client.state.reconnecting, true);
 
   device.receiveFeatureReport = receive;

@@ -17,12 +17,12 @@ for expected in --esp-app-address=0x0 --esp-flash-mode=dio \
     exit 1
   fi
 done
-package=espforge/build/firmware-package
+package=zephyrforge/build/firmware-package
 mkdir -p "$package/licenses"
-cp espforge/LICENSE "$package/LICENSE"
+cp zephyrforge/LICENSE "$package/LICENSE"
 cp "$FIRMWARE_BUILD"/zephyr/{zephyr.bin,zephyr.elf,.config,zephyr.dts,runners.yaml} "$package/"
 cp "$FIRMWARE_BUILD/west-manifest.yml" "$package/"
-cp -R espforge/docs "$package/docs"
+cp -R zephyrforge/docs "$package/docs"
 for component in zephyr modules/hal/espressif modules/crypto/mbedtls; do
   find "$component" -name .git -prune -o -type f \
     \( -iname 'license*' -o -iname 'copying*' -o -iname 'notice*' \
@@ -34,10 +34,10 @@ for component in zephyr modules/hal/espressif modules/crypto/mbedtls; do
   done
 done
 sed -n '1,/\*\//p' modules/fs/fatfs/ff.c > "$package/licenses/fatfs-LICENSE"
-source_version=$(sed -n 's/^#define ESPFORGE_VERSION "\(.*\)"/\1/p' espforge/firmware/src/app/espforge.h)
+source_version=$(sed -n 's/^#define ZEPHYRFORGE_VERSION "\(.*\)"/\1/p' zephyrforge/firmware/src/app/zephyrforge.h)
 {
-  printf 'Firmware version: %s\n' "${ESPFORGE_VERSION:-$source_version}"
-  printf 'Source commit: %s\n' "$(git -C espforge rev-parse HEAD)"
+  printf 'Firmware version: %s\n' "${ZEPHYRFORGE_VERSION:-$source_version}"
+  printf 'Source commit: %s\n' "$(git -C zephyrforge rev-parse HEAD)"
   printf 'Storage image: %s\n' "$STORAGE"
   printf 'Board: esp32s3_devkitc/esp32s3/procpu\nModule: ESP32-S3-WROOM-1-N16R8\nZephyr SDK: 0.17.4\n'
   printf 'Software build only; not flashed or hardware-qualified. SD testing is deferred.\n'
@@ -50,7 +50,7 @@ BUILD-INFO.txt identifies the storage variant. Use only its matching SD wiring.
 Disconnect card power before changing between native SDMMC and SD-over-SPI images.
 
 Close all serial clients. Flash through the UART (USB-to-UART) connector;
-the USB connector carries the ESPForge HID management interface after boot.
+the USB connector carries the ZephyrForge HID management interface after boot.
 Create/activate a Python virtual environment, then install esptool 5:
   python -m pip install "esptool>=5,<6"
 Replace PORT below with the actual serial port:

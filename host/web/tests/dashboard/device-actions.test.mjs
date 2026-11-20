@@ -35,7 +35,7 @@ function setup(context, fetchReply = async () => ({ ok: true, status: 200, json:
   const actions = createDeviceActions({
     getCurrentSnapshot: () => snapshot,
     getSelectedBoard: () => selectedBoard,
-    getSelectedBoardLabel: () => `ESPForge / ${selectedBoard}`,
+    getSelectedBoardLabel: () => `ZephyrForge / ${selectedBoard}`,
     getConnectionGeneration: () => connectionGeneration,
     operationState: () => operations,
     runCommandLifecycle: async (_options, run, failed) => {

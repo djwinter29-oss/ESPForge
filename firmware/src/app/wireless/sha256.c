@@ -18,7 +18,7 @@ static uint32_t rotr(uint32_t value, unsigned bits)
 	return (value >> bits) | (value << (32u - bits));
 }
 
-static void compress(ef_sha256_t *ctx, const uint8_t block[EF_SHA256_BLOCK_SIZE])
+static void compress(zf_sha256_t *ctx, const uint8_t block[ZF_SHA256_BLOCK_SIZE])
 {
 	uint32_t w[64];
 	uint32_t v[8];
@@ -51,7 +51,7 @@ static void compress(ef_sha256_t *ctx, const uint8_t block[EF_SHA256_BLOCK_SIZE]
 	memset(w, 0, sizeof(w));
 }
 
-void ef_sha256_init(ef_sha256_t *ctx)
+void zf_sha256_init(zf_sha256_t *ctx)
 {
 	static const uint32_t initial[8] = {
 		0x6a09e667u, 0xbb67ae85u, 0x3c6ef372u, 0xa54ff53au,
@@ -63,11 +63,11 @@ void ef_sha256_init(ef_sha256_t *ctx)
 	ctx->used = 0;
 }
 
-void ef_sha256_update(ef_sha256_t *ctx, const uint8_t *data, size_t size)
+void zf_sha256_update(zf_sha256_t *ctx, const uint8_t *data, size_t size)
 {
 	ctx->length += size;
 	while (size) {
-		size_t take = EF_SHA256_BLOCK_SIZE - ctx->used;
+		size_t take = ZF_SHA256_BLOCK_SIZE - ctx->used;
 
 		if (take > size) {
 			take = size;
@@ -76,22 +76,22 @@ void ef_sha256_update(ef_sha256_t *ctx, const uint8_t *data, size_t size)
 		ctx->used += take;
 		data += take;
 		size -= take;
-		if (ctx->used == EF_SHA256_BLOCK_SIZE) {
+		if (ctx->used == ZF_SHA256_BLOCK_SIZE) {
 			compress(ctx, ctx->block);
 			ctx->used = 0;
 		}
 	}
 }
 
-void ef_sha256_final(ef_sha256_t *ctx, uint8_t digest[EF_SHA256_SIZE])
+void zf_sha256_final(zf_sha256_t *ctx, uint8_t digest[ZF_SHA256_SIZE])
 {
 	uint64_t bits = ctx->length * 8u;
 	uint8_t pad = 0x80;
 
-	ef_sha256_update(ctx, &pad, 1);
+	zf_sha256_update(ctx, &pad, 1);
 	pad = 0;
-	while (ctx->used != EF_SHA256_BLOCK_SIZE - 8u) {
-		ef_sha256_update(ctx, &pad, 1);
+	while (ctx->used != ZF_SHA256_BLOCK_SIZE - 8u) {
+		zf_sha256_update(ctx, &pad, 1);
 	}
 	for (int shift = 56; shift >= 0; shift -= 8) {
 		ctx->block[ctx->used++] = (uint8_t)(bits >> shift);
@@ -106,36 +106,36 @@ void ef_sha256_final(ef_sha256_t *ctx, uint8_t digest[EF_SHA256_SIZE])
 	memset(ctx, 0, sizeof(*ctx));
 }
 
-void ef_hmac_sha256(const uint8_t *key, size_t key_size, const ef_hmac_part_t *parts, size_t count,
-		    uint8_t mac[EF_SHA256_SIZE])
+void zf_hmac_sha256(const uint8_t *key, size_t key_size, const zf_hmac_part_t *parts, size_t count,
+		    uint8_t mac[ZF_SHA256_SIZE])
 {
-	uint8_t pad[EF_SHA256_BLOCK_SIZE] = {0};
-	uint8_t inner[EF_SHA256_SIZE];
-	ef_sha256_t ctx;
+	uint8_t pad[ZF_SHA256_BLOCK_SIZE] = {0};
+	uint8_t inner[ZF_SHA256_SIZE];
+	zf_sha256_t ctx;
 
-	if (key_size > EF_SHA256_BLOCK_SIZE) {
-		ef_sha256_init(&ctx);
-		ef_sha256_update(&ctx, key, key_size);
-		ef_sha256_final(&ctx, pad);
+	if (key_size > ZF_SHA256_BLOCK_SIZE) {
+		zf_sha256_init(&ctx);
+		zf_sha256_update(&ctx, key, key_size);
+		zf_sha256_final(&ctx, pad);
 	} else if (key_size) {
 		memcpy(pad, key, key_size);
 	}
 	for (unsigned i = 0; i < sizeof(pad); ++i) {
 		pad[i] ^= 0x36u;
 	}
-	ef_sha256_init(&ctx);
-	ef_sha256_update(&ctx, pad, sizeof(pad));
+	zf_sha256_init(&ctx);
+	zf_sha256_update(&ctx, pad, sizeof(pad));
 	for (size_t i = 0; i < count; ++i) {
-		ef_sha256_update(&ctx, parts[i].data, parts[i].size);
+		zf_sha256_update(&ctx, parts[i].data, parts[i].size);
 	}
-	ef_sha256_final(&ctx, inner);
+	zf_sha256_final(&ctx, inner);
 	for (unsigned i = 0; i < sizeof(pad); ++i) {
 		pad[i] ^= 0x36u ^ 0x5cu;
 	}
-	ef_sha256_init(&ctx);
-	ef_sha256_update(&ctx, pad, sizeof(pad));
-	ef_sha256_update(&ctx, inner, sizeof(inner));
-	ef_sha256_final(&ctx, mac);
+	zf_sha256_init(&ctx);
+	zf_sha256_update(&ctx, pad, sizeof(pad));
+	zf_sha256_update(&ctx, inner, sizeof(inner));
+	zf_sha256_final(&ctx, mac);
 	memset(pad, 0, sizeof(pad));
 	memset(inner, 0, sizeof(inner));
 }

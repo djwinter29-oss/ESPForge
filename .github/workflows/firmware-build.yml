@@ -31,15 +31,15 @@ jobs:
           - storage: sd-spi
             build: firmware-sd-spi
     env:
-      ESPFORGE_VERSION: ${{ inputs.version }}
+      ZEPHYRFORGE_VERSION: ${{ inputs.version }}
       CMAKE_BUILD_PARALLEL_LEVEL: 2
       STORAGE: ${{ matrix.storage }}
-      FIRMWARE_BUILD: espforge/build/${{ matrix.build }}
+      FIRMWARE_BUILD: zephyrforge/build/${{ matrix.build }}
     steps:
       - name: Checkout manifest repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          path: espforge
+          path: zephyrforge
           persist-credentials: false
 
       - name: Setup Python
@@ -48,7 +48,7 @@ jobs:
           python-version: "3.12"
 
       - name: Use source commit timestamp for build dates
-        run: echo "SOURCE_DATE_EPOCH=$(git -C espforge show -s --format=%ct HEAD)" >> "$GITHUB_ENV"
+        run: echo "SOURCE_DATE_EPOCH=$(git -C zephyrforge show -s --format=%ct HEAD)" >> "$GITHUB_ENV"
 
       - name: Install build tools
         run: |
@@ -60,7 +60,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           python -m pip install --disable-pip-version-check --no-input west
-          west init -l espforge
+          west init -l zephyrforge
           west update --narrow -o=--depth=1
           python -m pip install --disable-pip-version-check --no-input -r zephyr/scripts/requirements-base.txt \
             -r modules/hal/espressif/zephyr/requirements.txt
@@ -70,16 +70,16 @@ jobs:
 
       - name: Build firmware
         run: |
-          bash espforge/tools/firmware/build.sh --storage "$STORAGE"
+          bash zephyrforge/tools/firmware/build.sh --storage "$STORAGE"
           west manifest --freeze > "$FIRMWARE_BUILD/west-manifest.yml"
 
       - name: Collect firmware, provenance and dependency licenses
-        run: bash espforge/tools/release/package-firmware.sh
+        run: bash zephyrforge/tools/release/package-firmware.sh
 
       - name: Attach software build
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: espforge-esp32s3-${{ matrix.storage }}-software-build
-          path: espforge/build/firmware-package/
+          name: zephyrforge-esp32s3-${{ matrix.storage }}-software-build
+          path: zephyrforge/build/firmware-package/
           include-hidden-files: true
           if-no-files-found: error

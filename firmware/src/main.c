@@ -1,7 +1,7 @@
-#include "app/espforge.h"
+#include "app/zephyrforge.h"
 #include "platform/boot_config.h"
 #include "app/control/control.h"
-#include "platform/ef_platform.h"
+#include "platform/zf_platform.h"
 
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
@@ -13,34 +13,34 @@ int main(void)
 	uint8_t radios;
 	int err;
 
-	ef_board_init();
-	ef_lock();
-	ef_boot_config_load();
-	ef_control_init();
-	radios = ef_boot_config_boot_radios();
-	ef_unlock();
-	printk("ESPForge %s (%s)\n", ESPFORGE_VERSION, ef_board_serial());
+	zf_board_init();
+	zf_lock();
+	zf_boot_config_load();
+	zf_control_init();
+	radios = zf_boot_config_boot_radios();
+	zf_unlock();
+	printk("ZephyrForge %s (%s)\n", ZEPHYRFORGE_VERSION, zf_board_serial());
 
-	err = ef_system_clock_apply(ef_sysclk_profile_mhz(ef_boot_config_boot_sysclk()));
+	err = zf_system_clock_apply(zf_sysclk_profile_mhz(zf_boot_config_boot_sysclk()));
 	if (err) {
 		printk("CPU clock change failed: %d\n", err);
 	}
-	ef_telemetry_init();
-	ef_platform_led_init();
-	ef_storage_init();
-	ef_wifi_init((radios & EF_WIRELESS_WIFI) != 0);
-	ef_ble_init((radios & EF_WIRELESS_BLE) != 0);
-	if (ef_usb_init() != 0) {
+	zf_telemetry_init();
+	zf_platform_led_init();
+	zf_storage_init();
+	zf_wifi_init((radios & ZF_WIRELESS_WIFI) != 0);
+	zf_ble_init((radios & ZF_WIRELESS_BLE) != 0);
+	if (zf_usb_init() != 0) {
 		printk("USB HID unavailable\n");
 	}
 
 	while (true) {
-		ef_lock();
-		ef_control_tick(k_uptime_get());
-		ef_unlock();
-		ef_wifi_poll();
-		ef_telemetry_poll();
-		ef_usb_poll();
+		zf_lock();
+		zf_control_tick(k_uptime_get());
+		zf_unlock();
+		zf_wifi_poll();
+		zf_telemetry_poll();
+		zf_usb_poll();
 		k_sleep(K_MSEC(POLL_PERIOD_MS));
 	}
 	return 0;

@@ -199,5 +199,6 @@ test("Direct stays self-contained: browser management and local console, no host
     }
     assert.match(html, /<link rel="icon" type="image\/svg\+xml" href="favicon.svg">/);
   }
-  assert.match(readFileSync(new URL("favicon.svg", web), "utf8"), /<title>ESPForge<\/title>/, "the ESPForge favicon");
+  assert.match(readFileSync(new URL("favicon.svg", web), "utf8"), /<title>ZephyrForge<\/title>/,
+    "the ZephyrForge favicon");
 });

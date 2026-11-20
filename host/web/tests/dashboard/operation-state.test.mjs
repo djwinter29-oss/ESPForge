@@ -84,7 +84,7 @@ test("disabled operation guidance comes from the same policy as action eligibili
   assert.match(benchmark.benchmarkCancelBlockReason, /does not support storage benchmarks/);
 });
 
-test("capability bits match the ESPForge profile", () => {
+test("capability bits match the ZephyrForge profile", () => {
   assert.deepEqual([CAPABILITY_REBOOT, CAPABILITY_SETTINGS, CAPABILITY_SDMMC, CAPABILITY_WIRELESS], [2, 4, 16, 128]);
   assert.equal(CAPABILITY_REBOOT | CAPABILITY_SETTINGS | CAPABILITY_SDMMC | CAPABILITY_WIRELESS, 0x96);
 });
@@ -96,7 +96,7 @@ test("one Save projection supplies eligibility and the same reason for all draft
   assert.equal(operationState(facts, draft).canSaveSettings, true);
   assert.equal(operationState(facts, draft).saveBlockReason, null);
   for (const [changes, activity, reason] of [
-    [{ connected: false }, {}, /Waiting for an ESPForge connection/],
+    [{ connected: false }, {}, /Waiting for a ZephyrForge connection/],
     [{ settings_supported: false }, {}, /Boot settings unavailable/],
     [{ settings_supported: false, settings_message: "Settings report invalid." }, {}, /Settings report invalid/],
     [{ hardware: { capabilities: 0x96 & ~CAPABILITY_SETTINGS } }, {}, /does not support/],

@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Ji Dong
 
 import { DEVICE_FILTER, PRODUCT_IDS } from "../protocol/constants.mjs";
-import { matchesEspForge, requireValid } from "../protocol/codec.mjs";
+import { matchesZephyrForge, requireValid } from "../protocol/codec.mjs";
 import { BoardError, errorValue, REASON } from "../state/errors.mjs";
 
 /** @typedef {import("./transport.mjs").Transport} Transport */
@@ -45,7 +45,7 @@ const isHidInputReportEvent = event => isHidDeviceEvent(event)
   && "reportId" in event && typeof event.reportId === "number"
   && "data" in event && event.data instanceof DataView;
 /**
- * @brief WebHID byte pipe for one opened ESPForge device: Feature reports by ID and Input report events.
+ * @brief WebHID byte pipe for one opened ZephyrForge device: Feature reports by ID and Input report events.
  * @implements {Transport}
  */
 export class HidTransport extends EventTarget {
@@ -78,7 +78,7 @@ export class HidTransport extends EventTarget {
     };
     /** @param {Event} event */
     this.onConnect = event => {
-      if (this.device || !isHidDeviceEvent(event) || !matchesEspForge(event.device)) return;
+      if (this.device || !isHidDeviceEvent(event) || !matchesZephyrForge(event.device)) return;
       this.candidate = event.device;
       this.dispatchEvent(new Event("available"));
     };
@@ -92,7 +92,7 @@ export class HidTransport extends EventTarget {
     hid?.addEventListener("suspend", this.onSuspend);
   }
 
-  /** @brief Prompt for one ESPForge device and open it; @return false when the user selects none. */
+  /** @brief Prompt for one ZephyrForge device and open it; @return false when the user selects none. */
   /** @param {Uint8Array | undefined} _options @param {AbortSignal} signal */
   async connect(_options, signal) {
     signal.throwIfAborted();
@@ -102,7 +102,7 @@ export class HidTransport extends EventTarget {
     });
     signal.throwIfAborted();
     if (!devices.length) return false;
-    requireValid(devices.length === 1 && matchesEspForge(devices[0]), "device-selection");
+    requireValid(devices.length === 1 && matchesZephyrForge(devices[0]), "device-selection");
     await this.openDevice(devices[0], signal);
     return true;
   }

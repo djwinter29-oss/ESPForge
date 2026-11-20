@@ -8,7 +8,7 @@ Development guides keep the source-layout and command details needed to build, t
 
 - **Connect a board:** [Getting started](guides/getting-started.md).
 - **Use a dashboard:** [Direct](../host/direct/README.md), [Python](../host/python/README.md) or
-  [.NET](../host/dotnet/ESPForge/README.md).
+  [.NET](../host/dotnet/ZephyrForge/README.md).
 - **Check a contract or maintain the project:** choose its owner below. No sequential reading is required.
 
 ## Authoritative ownership
@@ -23,9 +23,9 @@ Keep each topic in one document; other documents link rather than duplicate its 
 | UART and raw TCP diagnostic shells, commands and network exposure | [Console](guides/console.md) |
 | Layer responsibilities and service lifecycle | [Architecture](reference/architecture.md) |
 | Project overview and entry points | [Repository README](../README.md) |
-| Platform integration and measurement limits | [ESPForge implementation](reference/espforge-implementation.md) |
+| Platform integration and measurement limits | [ZephyrForge implementation](reference/zephyrforge-implementation.md) |
 | Shared report layouts, identity values, capabilities, USB control and validation | [USB HID](reference/usb-hid.md) |
-| ESPForge BLE advertising, GATT, authentication and control contract | [Bluetooth LE](reference/bluetooth.md) |
+| ZephyrForge BLE advertising, GATT, authentication and control contract | [Bluetooth LE](reference/bluetooth.md) |
 | Saved next-boot settings: record format, flash partition, clock and radio application | [Boot settings](reference/settings.md) |
 | SD pin allocation, driver configuration, mount behavior, status and data safety | [SD storage](reference/sdcard.md) |
 | Shared dashboard HTTP routes and request rules | [Shared dashboard API](../host/web/README.md) |

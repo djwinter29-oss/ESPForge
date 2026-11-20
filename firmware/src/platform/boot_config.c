@@ -7,7 +7,7 @@
 #define RECORD_MAGIC 0x46434645u /* "EFCF" little-endian */
 #define RECORD_VERSION 1u
 #define CRC_OFFSET 144u
-#define SERVICE_BITS (EF_WIRELESS_WIFI | EF_WIRELESS_BLE)
+#define SERVICE_BITS (ZF_WIRELESS_WIFI | ZF_WIRELESS_BLE)
 #define KEY_PRESENT 1u
 
 struct boot_config {
@@ -15,9 +15,9 @@ struct boot_config {
 	uint8_t disabled;
 	uint8_t auth;
 	uint8_t ssid_length;
-	uint8_t ssid[EF_SSID_MAX_BYTES];
-	char password[EF_WIFI_PASSWORD_SIZE];
-	uint8_t key[EF_BLE_KEY_SIZE];
+	uint8_t ssid[ZF_SSID_MAX_BYTES];
+	char password[ZF_WIFI_PASSWORD_SIZE];
+	uint8_t key[ZF_BLE_KEY_SIZE];
 	uint8_t flags;
 };
 
@@ -25,9 +25,9 @@ struct boot_config {
 static struct boot_config staged;
 static struct boot_config saved;
 static struct boot_config boot;
-static ef_boot_config_source_t source;
+static zf_boot_config_source_t source;
 
-uint32_t ef_boot_config_crc32(const uint8_t *data, size_t size)
+uint32_t zf_boot_config_crc32(const uint8_t *data, size_t size)
 {
 	uint32_t crc = 0xFFFFFFFFu;
 
@@ -77,12 +77,12 @@ static bool password_valid(const char *password, size_t capacity)
 	return length < capacity && (length == 0 || (length >= 8 && length <= 63));
 }
 
-static void encode(const struct boot_config *config, uint8_t record[EF_BOOT_CONFIG_RECORD_SIZE])
+static void encode(const struct boot_config *config, uint8_t record[ZF_BOOT_CONFIG_RECORD_SIZE])
 {
-	memset(record, 0, EF_BOOT_CONFIG_RECORD_SIZE);
+	memset(record, 0, ZF_BOOT_CONFIG_RECORD_SIZE);
 	put_u32(record, RECORD_MAGIC);
 	put_u16(record + 4, RECORD_VERSION);
-	put_u16(record + 6, EF_BOOT_CONFIG_RECORD_SIZE);
+	put_u16(record + 6, ZF_BOOT_CONFIG_RECORD_SIZE);
 	record[8] = config->sysclk;
 	record[10] = config->disabled;
 	record[11] = config->auth;
@@ -91,28 +91,28 @@ static void encode(const struct boot_config *config, uint8_t record[EF_BOOT_CONF
 	memcpy(record + 45, config->password, sizeof(config->password));
 	memcpy(record + 109, config->key, sizeof(config->key));
 	record[141] = config->flags;
-	put_u32(record + CRC_OFFSET, ef_boot_config_crc32(record, CRC_OFFSET));
+	put_u32(record + CRC_OFFSET, zf_boot_config_crc32(record, CRC_OFFSET));
 }
 
-static bool decode(const uint8_t record[EF_BOOT_CONFIG_RECORD_SIZE], struct boot_config *config)
+static bool decode(const uint8_t record[ZF_BOOT_CONFIG_RECORD_SIZE], struct boot_config *config)
 {
 	const char *password = (const char *)record + 45;
 	size_t password_length;
 
 	if (get_u32(record) != RECORD_MAGIC || record[4] != RECORD_VERSION || record[5] != 0 ||
-	    record[6] != EF_BOOT_CONFIG_RECORD_SIZE || record[7] != 0 ||
-	    get_u32(record + CRC_OFFSET) != ef_boot_config_crc32(record, CRC_OFFSET)) {
+	    record[6] != ZF_BOOT_CONFIG_RECORD_SIZE || record[7] != 0 ||
+	    get_u32(record + CRC_OFFSET) != zf_boot_config_crc32(record, CRC_OFFSET)) {
 		return false;
 	}
-	if (record[8] > EF_SYSCLK_240MHZ || record[9] != 0 || (record[10] & ~SERVICE_BITS) ||
-	    record[11] > EF_WIFI_AUTH_SAE || record[12] > EF_SSID_MAX_BYTES ||
-	    !zero(record + 13 + record[12], EF_SSID_MAX_BYTES - record[12]) ||
-	    !password_valid(password, EF_WIFI_PASSWORD_SIZE) || (record[141] & ~KEY_PRESENT) ||
-	    (!(record[141] & KEY_PRESENT) && !zero(record + 109, EF_BLE_KEY_SIZE)) || record[142] || record[143]) {
+	if (record[8] > ZF_SYSCLK_240MHZ || record[9] != 0 || (record[10] & ~SERVICE_BITS) ||
+	    record[11] > ZF_WIFI_AUTH_SAE || record[12] > ZF_SSID_MAX_BYTES ||
+	    !zero(record + 13 + record[12], ZF_SSID_MAX_BYTES - record[12]) ||
+	    !password_valid(password, ZF_WIFI_PASSWORD_SIZE) || (record[141] & ~KEY_PRESENT) ||
+	    (!(record[141] & KEY_PRESENT) && !zero(record + 109, ZF_BLE_KEY_SIZE)) || record[142] || record[143]) {
 		return false;
 	}
 	password_length = strlen(password);
-	if (!zero(record + 45 + password_length, EF_WIFI_PASSWORD_SIZE - password_length)) {
+	if (!zero(record + 45 + password_length, ZF_WIFI_PASSWORD_SIZE - password_length)) {
 		return false;
 	}
 	memset(config, 0, sizeof(*config));
@@ -127,18 +127,18 @@ static bool decode(const uint8_t record[EF_BOOT_CONFIG_RECORD_SIZE], struct boot
 	return true;
 }
 
-void ef_boot_config_load(void)
+void zf_boot_config_load(void)
 {
-	uint8_t record[EF_BOOT_CONFIG_RECORD_SIZE];
+	uint8_t record[ZF_BOOT_CONFIG_RECORD_SIZE];
 	struct boot_config loaded = {0};
 
 	if (boot_flash_read(record, sizeof(record)) != 0) {
-		source = EF_BOOT_CONFIG_READ_ERROR;
+		source = ZF_BOOT_CONFIG_READ_ERROR;
 	} else if (decode(record, &loaded)) {
-		source = EF_BOOT_CONFIG_SAVED;
+		source = ZF_BOOT_CONFIG_SAVED;
 	} else {
 		memset(&loaded, 0, sizeof(loaded));
-		source = EF_BOOT_CONFIG_DEFAULTS;
+		source = ZF_BOOT_CONFIG_DEFAULTS;
 	}
 	saved = loaded;
 	staged = loaded;
@@ -147,36 +147,36 @@ void ef_boot_config_load(void)
 	memset(&loaded, 0, sizeof(loaded));
 }
 
-ef_boot_config_source_t ef_boot_config_source(void)
+zf_boot_config_source_t zf_boot_config_source(void)
 {
 	return source;
 }
 
-ef_sysclk_profile_t ef_boot_config_sysclk(void)
+zf_sysclk_profile_t zf_boot_config_sysclk(void)
 {
-	return (ef_sysclk_profile_t)staged.sysclk;
+	return (zf_sysclk_profile_t)staged.sysclk;
 }
 
-bool ef_boot_config_set_sysclk(ef_sysclk_profile_t profile)
+bool zf_boot_config_set_sysclk(zf_sysclk_profile_t profile)
 {
-	if ((unsigned)profile > EF_SYSCLK_240MHZ) {
+	if ((unsigned)profile > ZF_SYSCLK_240MHZ) {
 		return false;
 	}
 	staged.sysclk = (uint8_t)profile;
 	return true;
 }
 
-ef_sysclk_profile_t ef_boot_config_boot_sysclk(void)
+zf_sysclk_profile_t zf_boot_config_boot_sysclk(void)
 {
-	return (ef_sysclk_profile_t)boot.sysclk;
+	return (zf_sysclk_profile_t)boot.sysclk;
 }
 
-uint8_t ef_boot_config_radios(void)
+uint8_t zf_boot_config_radios(void)
 {
 	return (uint8_t)(~staged.disabled & SERVICE_BITS);
 }
 
-bool ef_boot_config_set_radios(uint8_t radios)
+bool zf_boot_config_set_radios(uint8_t radios)
 {
 	if (radios & ~SERVICE_BITS) {
 		return false;
@@ -185,38 +185,38 @@ bool ef_boot_config_set_radios(uint8_t radios)
 	return true;
 }
 
-uint8_t ef_boot_config_boot_radios(void)
+uint8_t zf_boot_config_boot_radios(void)
 {
 	return (uint8_t)(~boot.disabled & SERVICE_BITS);
 }
 
-void ef_boot_config_wifi_ssid(char ssid[EF_SSID_BUFFER_SIZE])
+void zf_boot_config_wifi_ssid(char ssid[ZF_SSID_BUFFER_SIZE])
 {
 	memcpy(ssid, staged.ssid, sizeof(staged.ssid));
-	ssid[EF_SSID_BUFFER_SIZE - 1] = '\0';
+	ssid[ZF_SSID_BUFFER_SIZE - 1] = '\0';
 }
 
-bool ef_boot_config_set_wifi_ssid(const char *ssid)
+bool zf_boot_config_set_wifi_ssid(const char *ssid)
 {
 	if (!ssid) {
 		return false;
 	}
 	size_t length = 0;
 
-	while (length < EF_SSID_BUFFER_SIZE && ssid[length]) {
+	while (length < ZF_SSID_BUFFER_SIZE && ssid[length]) {
 		++length;
 	}
-	return length < EF_SSID_BUFFER_SIZE &&
-	       ef_boot_config_set_wifi_ssid_bytes((const uint8_t *)ssid, (uint8_t)length);
+	return length < ZF_SSID_BUFFER_SIZE &&
+	       zf_boot_config_set_wifi_ssid_bytes((const uint8_t *)ssid, (uint8_t)length);
 }
 
-uint8_t ef_boot_config_wifi_ssid_bytes(uint8_t ssid[EF_SSID_MAX_BYTES])
+uint8_t zf_boot_config_wifi_ssid_bytes(uint8_t ssid[ZF_SSID_MAX_BYTES])
 {
 	memcpy(ssid, staged.ssid, sizeof(staged.ssid));
 	return staged.ssid_length;
 }
 
-bool ef_boot_config_set_wifi_ssid_bytes(const uint8_t *ssid, uint8_t length)
+bool zf_boot_config_set_wifi_ssid_bytes(const uint8_t *ssid, uint8_t length)
 {
 	if (length > sizeof(staged.ssid) || (!ssid && length)) {
 		return false;
@@ -229,14 +229,14 @@ bool ef_boot_config_set_wifi_ssid_bytes(const uint8_t *ssid, uint8_t length)
 	return true;
 }
 
-void ef_boot_config_wifi_password(char password[EF_WIFI_PASSWORD_SIZE])
+void zf_boot_config_wifi_password(char password[ZF_WIFI_PASSWORD_SIZE])
 {
 	memcpy(password, staged.password, sizeof(staged.password));
 }
 
-bool ef_boot_config_set_wifi_password(const char *password)
+bool zf_boot_config_set_wifi_password(const char *password)
 {
-	if (!password || !password_valid(password, EF_WIFI_PASSWORD_SIZE)) {
+	if (!password || !password_valid(password, ZF_WIFI_PASSWORD_SIZE)) {
 		return false;
 	}
 	memset(staged.password, 0, sizeof(staged.password));
@@ -244,31 +244,31 @@ bool ef_boot_config_set_wifi_password(const char *password)
 	return true;
 }
 
-bool ef_boot_config_wifi_password_configured(void)
+bool zf_boot_config_wifi_password_configured(void)
 {
 	return staged.password[0] != '\0';
 }
 
-ef_wifi_auth_state_t ef_boot_config_wifi_auth_state(void)
+zf_wifi_auth_state_t zf_boot_config_wifi_auth_state(void)
 {
-	return (ef_wifi_auth_state_t)staged.auth;
+	return (zf_wifi_auth_state_t)staged.auth;
 }
 
-bool ef_boot_config_set_wifi_auth_state(ef_wifi_auth_state_t state)
+bool zf_boot_config_set_wifi_auth_state(zf_wifi_auth_state_t state)
 {
-	if ((unsigned)state > EF_WIFI_AUTH_SAE) {
+	if ((unsigned)state > ZF_WIFI_AUTH_SAE) {
 		return false;
 	}
 	staged.auth = (uint8_t)state;
 	return true;
 }
 
-void ef_boot_config_ble_key(uint8_t key[EF_BLE_KEY_SIZE])
+void zf_boot_config_ble_key(uint8_t key[ZF_BLE_KEY_SIZE])
 {
 	memcpy(key, staged.key, sizeof(staged.key));
 }
 
-void ef_boot_config_set_ble_key(const uint8_t key[EF_BLE_KEY_SIZE])
+void zf_boot_config_set_ble_key(const uint8_t key[ZF_BLE_KEY_SIZE])
 {
 	if (key) {
 		memcpy(staged.key, key, sizeof(staged.key));
@@ -279,12 +279,12 @@ void ef_boot_config_set_ble_key(const uint8_t key[EF_BLE_KEY_SIZE])
 	}
 }
 
-bool ef_boot_config_ble_key_configured(void)
+bool zf_boot_config_ble_key_configured(void)
 {
 	return (staged.flags & KEY_PRESENT) != 0;
 }
 
-bool ef_boot_config_wireless_restart_required(void)
+bool zf_boot_config_wireless_restart_required(void)
 {
 	return saved.disabled != boot.disabled || saved.auth != boot.auth ||
 	       saved.ssid_length != boot.ssid_length || memcmp(saved.ssid, boot.ssid, sizeof(saved.ssid)) ||
@@ -292,14 +292,14 @@ bool ef_boot_config_wireless_restart_required(void)
 	       memcmp(saved.key, boot.key, sizeof(saved.key));
 }
 
-bool ef_boot_config_restart_required(void)
+bool zf_boot_config_restart_required(void)
 {
-	return saved.sysclk != boot.sysclk || ef_boot_config_wireless_restart_required();
+	return saved.sysclk != boot.sysclk || zf_boot_config_wireless_restart_required();
 }
 
-int ef_boot_config_save(void)
+int zf_boot_config_save(void)
 {
-	uint8_t record[EF_BOOT_CONFIG_RECORD_SIZE];
+	uint8_t record[ZF_BOOT_CONFIG_RECORD_SIZE];
 	int err;
 
 	if (memcmp(&staged, &saved, sizeof(staged)) == 0) {
@@ -313,16 +313,16 @@ int ef_boot_config_save(void)
 		return err < 0 ? err : -EIO;
 	}
 	saved = staged;
-	source = EF_BOOT_CONFIG_SAVED;
+	source = ZF_BOOT_CONFIG_SAVED;
 	return 0;
 }
 
-void ef_boot_config_discard(void)
+void zf_boot_config_discard(void)
 {
 	staged = saved;
 }
 
-void ef_boot_config_encode(uint8_t record[EF_BOOT_CONFIG_RECORD_SIZE])
+void zf_boot_config_encode(uint8_t record[ZF_BOOT_CONFIG_RECORD_SIZE])
 {
 	encode(&staged, record);
 }

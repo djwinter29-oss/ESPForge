@@ -191,7 +191,7 @@ test("radio switches follow readiness and expired test credentials block saving"
     await fire("#direct-ble-generate", "click");
     assert.equal(bleOn().disabled, false);
     assert.equal(el("direct-settings-ble").value, "1", "generating a key enables Bluetooth");
-    assert.equal(Object.hasOwn(form.request(), "tcp_cli_enabled"), false, "ESPForge has no TCP CLI switch");
+    assert.equal(Object.hasOwn(form.request(), "tcp_cli_enabled"), false, "ZephyrForge has no TCP CLI switch");
     el("direct-settings-ble").value = "0";
     form.update();
     ready = false;

@@ -21,7 +21,7 @@ Native tests are grouped by the same service roles.
 
 ## Host-native unit tests
 
-ESPForge uses Ceedling 1.1.10 with Unity and CMock. Install Ruby 3.3,
+ZephyrForge uses Ceedling 1.1.10 with Unity and CMock. Install Ruby 3.3,
 Bundler 2.6.9 and a native GCC toolchain (`gcc` on PATH). These tests need neither
 Zephyr nor an ESP32-S3 board. From the repository root:
 
@@ -74,9 +74,9 @@ Both must pass for firmware changes; a native test pass is not target-build or h
 
 ## Zephyr target build
 
-`EF_ENABLE_STORAGE_BENCHMARK` is a CMake option defaulting to `OFF`. The build wrapper currently supplies
-`-DEF_ENABLE_STORAGE_BENCHMARK=ON`; it enables dashboard-controlled runs, not automatic writes.
-For a manual build, choose `west build ... -- -DEF_ENABLE_STORAGE_BENCHMARK=OFF` to omit it.
+`ZF_ENABLE_STORAGE_BENCHMARK` is a CMake option defaulting to `OFF`. The build wrapper currently supplies
+`-DZF_ENABLE_STORAGE_BENCHMARK=ON`; it enables dashboard-controlled runs, not automatic writes.
+For a manual build, choose `west build ... -- -DZF_ENABLE_STORAGE_BENCHMARK=OFF` to omit it.
 An existing CMake cache retains its chosen value, so use a fresh build directory to verify the default.
 See the [benchmark contract](../reference/sdcard.md#optional-storage-benchmark) before authorizing card writes.
 
@@ -84,6 +84,8 @@ Zephyr 4.3.2 and imported module commits are selected by `west.yml`; SDK 0.17.4 
 Workspace setup applies the tracked patches under `patches/zephyr/v4.3.2/` to that pinned Zephyr checkout.
 The SD patch retains the genuine initialization CID and adds public `DISK_IOCTL_GET_SD_CID` (16-byte buffer in wire
 byte order; `-ENODATA` without an initialized CID). It also propagates SPI CID/CSD read failures.
+The pinctrl patch adds an optional Espressif `drive-strength` pin-group property (5, 10, 20 or 40 mA) for output
+pads; omitted groups keep their current drive. Only ESP32-S3 builds are exercised.
 Application uses a forward `git apply --check`, or a reverse check for an already-applied patch; mismatches stop setup.
 For an already-initialized workspace, activate its venv and run
 `bash tools/firmware/apply-zephyr-patches.sh "$(west list zephyr -f '{abspath}')"` before a manual target build.
@@ -124,14 +126,14 @@ Use the matching [SD wiring](../reference/sdcard.md#pin-allocation) and disconne
 Host Validation also compiles the report and control tests for SPI with benchmarking enabled:
 
 ```sh
-bundle exec ceedling --mixin '={project: {build_root: build/ceedling-sd-spi}, defines: {test: [EF_STORAGE_SPI=1, EF_ENABLE_STORAGE_BENCHMARK=1]}}' test:test_hid_reports test:test_control
+bundle exec ceedling --mixin '={project: {build_root: build/ceedling-sd-spi}, defines: {test: [ZF_STORAGE_SPI=1, ZF_ENABLE_STORAGE_BENCHMARK=1]}}' test:test_hid_reports test:test_control
 ```
 
 For changes to board/configuration selection, use a pristine build from the workspace:
 
 ```sh
-west build -p always -b esp32s3_devkitc/esp32s3/procpu espforge/firmware \
-  -d espforge/build/firmware -- -DDTC_OVERLAY_FILE=boards/esp32s3_devkitc_n16r8_sdmmc.overlay
+west build -p always -b esp32s3_devkitc/esp32s3/procpu zephyrforge/firmware \
+  -d zephyrforge/build/firmware -- -DDTC_OVERLAY_FILE=boards/esp32s3_devkitc_n16r8_sdmmc.overlay
 ```
 
 Inspect generated `build/firmware/zephyr/.config` and `zephyr.dts`, not just source intent.
@@ -145,7 +147,7 @@ it has no dashboard management protocol. Shell commands and TCP exposure are def
 
 The reusable build also freezes the resolved west manifest and attaches binaries, configuration,
 dependency licenses and software-only flashing instructions. PRs and tagged releases use this same
-build path. An optional `ESPFORGE_VERSION=MAJOR.MINOR.PATCH` environment override sets the firmware
+build path. An optional `ZEPHYRFORGE_VERSION=MAJOR.MINOR.PATCH` environment override sets the firmware
 version for release builds; an empty/unset override preserves the development default.
 Invalid overrides fail configuration rather than silently using another version.
 See [release automation](../deployment/release.md) for package contents and preflight.

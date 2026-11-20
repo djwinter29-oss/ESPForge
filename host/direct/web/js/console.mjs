@@ -8,7 +8,7 @@ import { checkConsoleTarget } from "./ui/console/console-target.mjs";
 const query = new URLSearchParams(location.search);
 const source = query.get("source");
 const target = { ipv4: query.get("ipv4") ?? "", serial: query.get("serial") ?? "" };
-const channel = new BroadcastChannel(`espforge-console-${source}`);
+const channel = new BroadcastChannel(`zephyrforge-console-${source}`);
 mountConsole({
   openUrl: "/api/console", openBody: { ipv4: target.ipv4 },
   check: () => checkConsoleTarget(channel, target),

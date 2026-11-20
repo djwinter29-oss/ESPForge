@@ -100,13 +100,13 @@ export function deriveControlsViewModel(state, ui, environment) {
         : !bluetooth && (state.error || state.action_error) ? state.error ?? state.action_error
           : !bluetooth && state.busy ? "Connecting to the selected USB board…"
           : !bluetooth && state.reconnecting ? "Reconnecting to the USB board…"
-            : !bluetooth && state.connected ? "Connected through USB." : "Select an ESPForge board to connect.",
+            : !bluetooth && state.connected ? "Connected through USB." : "Select a ZephyrForge board to connect.",
       "bluetooth-connection-status": bleUnsupported
         ? "Web Bluetooth requires a supported browser and operating system on HTTPS or localhost."
         : bluetooth && (state.error || state.action_error) ? state.error ?? state.action_error
           : bluetooth && state.busy ? "Select a nearby board; connecting through Bluetooth…"
-          : bluetooth && state.connected ? `Connected to ${ui.bleName || state.hardware?.board_name || "ESPForge"}.`
-            : "Enter the control key, then scan for nearby ESPForge boards.",
+          : bluetooth && state.connected ? `Connected to ${ui.bleName || state.hardware?.board_name || "ZephyrForge"}.`
+            : "Enter the control key, then scan for nearby ZephyrForge boards.",
       "settings-note": settingsNote,
     },
     hideStatus: !state.error && !state.action_error && Boolean(settingsNote),

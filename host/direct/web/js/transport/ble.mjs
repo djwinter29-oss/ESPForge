@@ -7,7 +7,7 @@ import { CAP } from "../protocol/constants.mjs";
 import { wait } from "../timers.mjs";
 import { BoardError, errorValue, REASON } from "../state/errors.mjs";
 
-/** @brief ESPForge's primary Bluetooth LE service UUID. */
+/** @brief ZephyrForge's primary Bluetooth LE service UUID. */
 export const BLE_SERVICE = "ef5c0000-7c91-4d70-8b32-6e856443f502";
 /** @param {number} id */
 const characteristic = id => `ef5c${id.toString(16).padStart(4, "0")}-7c91-4d70-8b32-6e856443f502`;
@@ -45,7 +45,7 @@ const isFinalError = error => error !== null && typeof error === "object"
  */
 /** @typedef {import("./transport.mjs").Transport} Transport */
 /**
- * @brief Web Bluetooth byte pipe over the ESPForge GATT report mirrors, with session and per-request HMAC proofs.
+ * @brief Web Bluetooth byte pipe over the ZephyrForge GATT report mirrors, with session and per-request HMAC proofs.
  * @implements {Transport}
  */
 export class BleTransport extends EventTarget {
@@ -153,7 +153,7 @@ export class BleTransport extends EventTarget {
       await this.setControlKey(key);
       signal.throwIfAborted();
       const device = await api.requestDevice({
-        filters: [{ services: [BLE_SERVICE] }, { namePrefix: "ESPForge-" }],
+        filters: [{ services: [BLE_SERVICE] }, { namePrefix: "ZephyrForge-" }],
         optionalServices: [BLE_SERVICE, GATT_SERVICE],
       });
       signal.throwIfAborted();

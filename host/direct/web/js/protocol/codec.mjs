@@ -5,7 +5,7 @@
  * @file Pure version-1 HID report codecs and shared value rules for the Direct dashboard. No browser or device state.
  */
 import {
-  CAP, CONFIG_FLAGS, DEVICE_FILTER, ESPFORGE_CAPABILITIES, PRODUCT_ID, PRODUCT_IDS, RADIOS,
+  CAP, CONFIG_FLAGS, DEVICE_FILTER, ZEPHYRFORGE_CAPABILITIES, PRODUCT_ID, PRODUCT_IDS, RADIOS,
 } from "./constants.mjs";
 import { decodeSettings, OPCODES, validSettings } from "./opcodes.mjs";
 import { BoardError, REASON } from "../state/errors.mjs";
@@ -63,10 +63,10 @@ export function decodeIdentityReport(report) {
   const reserved = view.getUint32(22, true);
   const storage = capabilities & (CAP.SPI | CAP.SDMMC);
   requireValid((storage === CAP.SPI || storage === CAP.SDMMC)
-    && !(capabilities & ~ESPFORGE_CAPABILITIES)
+    && !(capabilities & ~ZEPHYRFORGE_CAPABILITIES)
     && total > 0 && reserved <= total && (board !== 1 || mcu === 3), "identity");
   return {
-    version: 1, product_id: product, product_name: "ESPForge",
+    version: 1, product_id: product, product_name: "ZephyrForge",
     serial_number: bytesToHex(bytesAt(view, 3, 8)).toUpperCase(),
     firmware_version: [11, 12, 13].map(offset => view.getUint8(offset)).join("."),
     mcu_id: mcu, mcu: ({ 3: "ESP32-S3" })[mcu] ?? null,
@@ -268,9 +268,9 @@ export function decodeControlResult(report, { ble = false } = {}) {
     commit_mask: saved ? data[4] : 0, settings: saved ? decodeSettings(data) : null };
 }
 
-/** @brief Whether a WebHID device exposes the ESPForge VID:PID and vendor collection. */
+/** @brief Whether a WebHID device exposes the ZephyrForge VID:PID and vendor collection. */
 /** @param {{vendorId: number, productId: number, collections: Array<{usagePage: number, usage: number}>}} device */
-export function matchesEspForge(device) {
+export function matchesZephyrForge(device) {
   return device.vendorId === DEVICE_FILTER.vendorId && PRODUCT_IDS.includes(device.productId)
     && device.collections.some(collection => collection.usagePage === DEVICE_FILTER.usagePage
       && collection.usage === DEVICE_FILTER.usage);

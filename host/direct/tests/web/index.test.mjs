@@ -7,7 +7,7 @@ import { readdirSync, readFileSync } from "node:fs";
 
 test("standalone dashboard labels profiles, active measurements, controls and accessible statuses", () => {
   const html = readFileSync(new URL("../../web/index.html", import.meta.url), "utf8");
-  assert.match(html, /<title>ESPForge Dashboard \| Direct<\/title>/);
+  assert.match(html, /<title>ZephyrForge Dashboard \| Direct<\/title>/);
   assert.match(html, /http-equiv="Content-Security-Policy"/);
   assert.match(html, /name="referrer" content="no-referrer"/);
   assert.match(html, /rel="icon"[^>]*href="favicon\.svg"/);
@@ -21,7 +21,7 @@ test("standalone dashboard labels profiles, active measurements, controls and ac
   assert.doesNotMatch(html, /settings-tcp-auth|ble-view-only|ble-authorize|bluetooth-access-step/);
   assert.match(html, /id="direct-ble-control-key"[^>]*type="password"/);
   assert.doesNotMatch(html, /settings-storage|High-Speed|tcp-cli|TCP CLI/,
-    "ESPForge has one SD profile and no TCP CLI");
+    "ZephyrForge has one SD profile and no TCP CLI");
   assert.match(html, /id="settings-save"[^>]*>Save&amp;Reboot/);
   assert.match(html, /id="settings-reboot"[^>]*>Reboot/);
   for (const path of ["../../web/index.html"]) {

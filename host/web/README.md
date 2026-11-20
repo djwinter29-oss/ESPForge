@@ -1,7 +1,7 @@
-# ESPForge Shared Web Dashboard
+# ZephyrForge Shared Web Dashboard
 
 The browser frontend served by both the [Python host](../python/README.md) and the
-[.NET host](../dotnet/ESPForge/README.md). It uses static assets and browser ES modules without a build step.
+[.NET host](../dotnet/ZephyrForge/README.md). It uses static assets and browser ES modules without a build step.
 The independent Direct dashboard does not share this code.
 Dashboard modules live under `src/js/dashboard/`; the standalone terminal lives under `src/js/console/`.
 Unit, integration and type checks follow the same split under `tests/dashboard/` and `tests/console/`;
@@ -12,7 +12,7 @@ changing the radio's Enabled/Disabled selection. Wireless edits are saved with *
 
 ## HTTP API
 
-Both hosts must serve the same ESPForge routes and JSON field names.
+Both hosts must serve the same ZephyrForge routes and JSON field names.
 Board-scoped routes take `?board=ID` from `/api/boards`.
 
 Device information shows compact, aligned values. Product exposes separate Board and MCU rows in its detail pop-up;

@@ -1,6 +1,6 @@
 # SD Storage Reference
 
-ESPForge provides two firmware images for the ESP32-S3-DevKitC-1 N16R8: **native four-bit SDMMC, slot 0**
+ZephyrForge provides two firmware images for the ESP32-S3-DevKitC-1 N16R8: **native four-bit SDMMC, slot 0**
 (the default), and **SD-over-SPI** on SPI3. Select the image that matches the wiring; there is no runtime fallback.
 Both use Zephyr's SDMMC disk layer and FatFs, with the same card detection and ownership behavior.
 This is the SD memory-card bus, not an SDIO peripheral/function API or a PIO-emulated bus.
@@ -32,6 +32,9 @@ prevent bidirectional native operation. Do not connect 5 V logic.
 CMD and DAT0-DAT3 require suitable **external pull-ups to 3.3 V** (typically 10 kOhm; verify the socket/module
 requirements and existing resistors). Do not add a pull-up to CLK. Pinctrl also requests internal command/data
 pull-ups, but these do not replace electrical qualification. Keep all six signal wires short.
+The native image sets CLK, CMD and DAT0-DAT3 pad drive to about 10 mA. The ESP32-S3 reset default of about 20 mA
+caused data-CRC write failures on tested hand wiring while reads and mounting still worked. Wiring changes can need a
+different `drive-strength` value in the board overlay (5, 10, 20 or 40 mA); requalify writes after changing it.
 
 GPIO8 is **active-low**: low means inserted, 3.3 V means absent. Connect the socket's insertion switch between
 GPIO8 and GND, closing when a card is inserted; the internal pull-up holds an open input high. A socket whose
@@ -76,6 +79,7 @@ validate the new allocation before use.
 | Disk layer | `zephyr,sdmmc-disk`, disk name `SD` |
 | Filesystem | FatFs, mount point `/SD:` |
 | Requested bus ceiling | 25 MHz; not a measured runtime clock or throughput |
+| Native image pad drive | `drive-strength = <10>` on CLK, CMD and DAT0-DAT3 |
 
 Both images enable GPIO/pinctrl, disk access, the SDMMC disk driver, the filesystem API and FatFs.
 The native image selects `CONFIG_SDHC_ESP32`; the SPI image selects `CONFIG_SPI_SDHC`.
@@ -115,6 +119,8 @@ The dashboard exposes **Enable USB drive** when this firmware advertises MSC and
 Native USB presents HID management plus a removable MSC LUN; it has no CDC console.
 Firmware unmounts FAT before exporting raw 512-byte sectors. The native USB device briefly disconnects and
 reconnects on export so an OS-ejected LUN can be loaded again.
+While firmware owns the card, including during transitions and benchmarks, the LUN reports no medium immediately
+instead of holding host commands until storage work finishes.
 
 Before **Return to firmware**, safely eject the drive in the operating system, then explicitly confirm eject
 in the dashboard. The native Zephyr class does not expose a public OS-eject notification; the confirmation is
@@ -187,8 +193,7 @@ The benchmark causes real card writes and wear; it provides neither power-loss a
 
 ## Validation limits
 
-SD-card testing is intentionally deferred until hardware is connected. Successful compilation and
-simulated absent-card UI do not qualify any card, breakout, FAT layout or sustained recording workload.
-The pin allocation is proposed wiring, not electrically qualified hardware. Actual bus frequency,
-mount compatibility and throughput remain unmeasured; see the
-[qualification gaps](../validation/qualification-gaps.md).
+Hardware results are kept in the [validation records](../validation/records/README.md); they cover individual
+card and wiring combinations. Successful compilation and simulated absent-card UI do not qualify any card, breakout,
+FAT layout or sustained recording workload. The pin allocation and pad drive are not electrically qualified for
+other wiring. See the [qualification gaps](../validation/qualification-gaps.md).

@@ -11,7 +11,7 @@ if [ -n "$SOURCE_SHA" ]; then
   test "$(git rev-parse 'FETCH_HEAD^{commit}')" = "$SOURCE_SHA"
 fi
 mkdir dist
-gh release download "$RELEASE_TAG" --pattern "espforge-$version-py3-none-any.whl" \
+gh release download "$RELEASE_TAG" --pattern "zephyrforge-$version-py3-none-any.whl" \
   --pattern SHA256SUMS.txt --dir dist
 cd dist
 sha256sum --check SHA256SUMS.txt --ignore-missing

@@ -1,11 +1,11 @@
-#include "app/espforge.h"
+#include "app/zephyrforge.h"
 
 #include <errno.h>
 #include <zephyr/device.h>
 #include <zephyr/drivers/clock_control.h>
 #include <zephyr/drivers/clock_control/esp32_clock_control.h>
 
-int ef_system_clock_apply(uint16_t mhz)
+int zf_system_clock_apply(uint16_t mhz)
 {
 	const struct device *clock = DEVICE_DT_GET(DT_NODELABEL(clock));
 	struct esp32_clock_config config = {
@@ -25,7 +25,7 @@ int ef_system_clock_apply(uint16_t mhz)
 	return clock_control_configure(clock, (clock_control_subsys_t)ESP32_CLOCK_CONTROL_SUBSYS_CPU, &config);
 }
 
-uint32_t ef_system_clock_hz(void)
+uint32_t zf_system_clock_hz(void)
 {
 	const struct device *clock = DEVICE_DT_GET(DT_NODELABEL(clock));
 	uint32_t rate = 0;
