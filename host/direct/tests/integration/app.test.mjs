@@ -78,13 +78,19 @@ test("Direct UI preserves unsaved profiles, and separates confirmed reboot", asy
   const prototypes = new Map(["connect", "saveSettings", "reboot"].map(name =>
     [name, BoardSession.prototype[name]]));
   const { document, element: el, fire } = createDocument();
+  const windowHandlers = new Map();
   let client;
   /** Apply a client change and flush the dashboard's coalesced refresh. */
   const sync = async changes => { patchState(client, changes); await null; };
   const commands = [];
   globalThis.document = document;
-  globalThis.window = { confirm() { assert.fail("Use styled dialogs, not browser confirmations"); } };
-  globalThis.location = { hostname: "example.test" };
+  globalThis.window = { confirm() { assert.fail("Use styled dialogs, not browser confirmations"); },
+    addEventListener(type, handler) { windowHandlers.set(type, handler); } };
+  globalThis.location = { hostname: "localhost" };
+  context.mock.method(globalThis, "fetch", async url => {
+    assert.equal(url, "/api/console/capabilities");
+    return { ok: true, status: 200, json: async () => ({ available: true }) };
+  });
   Object.defineProperty(globalThis, "navigator", { configurable: true, value: { hid: new EventTarget() } });
   Object.defineProperty(globalThis, "isSecureContext", { configurable: true, value: true });
   Object.defineProperty(globalThis, "sessionStorage", { configurable: true, value: memorySessionStorage() });
@@ -145,6 +151,43 @@ test("Direct UI preserves unsaved profiles, and separates confirmed reboot", asy
     await fire("#settings-reboot", "click");
     await fire("#confirm-reboot", "click");
     assert.deepEqual(commands[1], ["reboot", true]);
+    client.benchmark = async (...args) => { commands.push(["benchmark", ...args]); };
+    const openBenchmark = async () => {
+      el("#benchmark-start").disabled = false;
+      await fire("#benchmark-start", "click");
+      assert.equal(el("#benchmark-start-dialog").open, true);
+    };
+    el("#benchmark-size").value = "8";
+    await openBenchmark();
+    assert.match(el("#benchmark-start-warning").textContent, /8 MiB.*card wear/);
+    await fire("#cancel-benchmark-start", "click");
+    await fire("#confirm-benchmark-start", "click");
+    assert.equal(commands.length, 2, "a cancelled benchmark sends nothing");
+    await openBenchmark();
+    const hardware = client.state.hardware;
+    await sync({ hardware: { ...hardware, serial_number: "0000000000000000" } });
+    await fire("#confirm-benchmark-start", "click");
+    await null;
+    assert.equal(commands.length, 2, "a replaced board must not inherit the confirmation");
+    assert.equal(el("#status-message").textContent, "Board changed; reopen the benchmark.");
+    await sync({ hardware });
+    await openBenchmark();
+    await fire("#confirm-benchmark-start", "click");
+    assert.deepEqual(commands[2], ["benchmark", true, 8, true]);
+    client.setMsc = async (...args) => { commands.push(["msc", ...args]); };
+    el("#msc-enable").disabled = false;
+    await fire("#msc-enable", "click");
+    const storageDialog = el("#msc-dialog");
+    assert.equal(storageDialog.open, true);
+    await sync({ hardware: { ...hardware, serial_number: "0000000000000000" } });
+    await fire("#confirm-msc", "click");
+    await null;
+    assert.equal(commands.length, 3, "a replaced board must not inherit USB storage confirmation");
+    await sync({ hardware });
+    el("#msc-enable").disabled = false;
+    await fire("#msc-enable", "click");
+    await fire("#confirm-msc", "click");
+    assert.deepEqual(commands[3], ["msc", true, false]);
     await sync({ outcome_uncertain: true });
     assert.equal(el("#settings-save").disabled, true);
     assert.equal(el("#settings-reboot").disabled, true);
@@ -177,6 +220,13 @@ test("Direct UI preserves unsaved profiles, and separates confirmed reboot", asy
     client.pollWireless();
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(el("#direct-wifi-state").textContent, "HomeDev (192.168.1.9)");
+    const shell = el("#direct-wifi-state").children[0];
+    assert.ok(shell, "local relay discovery and fresh Report 12 must enable the shell link");
+    const shellUrl = new URL(shell.href, "http://localhost");
+    assert.equal(shellUrl.pathname, "/console.html");
+    assert.equal(shellUrl.searchParams.get("serial"), client.state.hardware.serial_number);
+    assert.equal(shellUrl.searchParams.get("ipv4"), "192.168.1.9");
+    assert.ok(shellUrl.searchParams.get("source"));
     assert.equal(reads, 1);
     wifiState = 1;
     client.pollWireless();
@@ -186,11 +236,13 @@ test("Direct UI preserves unsaved profiles, and separates confirmed reboot", asy
     client.pollWireless();
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(el("#direct-wifi-state").textContent, "HomeDev (connecting)");
+    assert.equal(el("#direct-wifi-state").children.length, 0);
     failure = true;
     now += 2000;
     client.pollWireless();
     await new Promise(resolve => setImmediate(resolve));
-    assert.equal(el("#direct-wifi-state").textContent, "HomeDev (connecting)", "one failed poll retains a fresh snapshot");
+    assert.equal(el("#direct-wifi-state").textContent, "HomeDev (connecting)",
+      "one failed poll retains a fresh snapshot");
     now += 4000;
     client.expireReports(); await null;
     assert.equal(el("#direct-wifi-state").textContent, "Unavailable");
@@ -206,6 +258,7 @@ test("Direct UI preserves unsaved profiles, and separates confirmed reboot", asy
     assert.equal(client.state.wireless, null, "a late report must not repopulate a disconnected board");
     assert.equal(el("#direct-wifi-state").textContent, "--");
   } finally {
+    windowHandlers.get("pagehide")?.();
     for (const [name, method] of prototypes) BoardSession.prototype[name] = method;
     globalThis.document = saved.document; globalThis.window = saved.window;
     if (saved.location === undefined) delete globalThis.location;
@@ -266,7 +319,7 @@ test("Bluetooth dialog takes the control key, then scans, and preserves transpor
     }
     this.transport.bleKey = {};
     this.transport.device = Object.assign(new EventTarget(), {
-      name: "ESPForge-0102", gatt: { connected: true, disconnect() {} },
+      name: "ZephyrForge-0102", gatt: { connected: true, disconnect() {} },
     });
     const hardware = decodeIdentityReport(identity());
     const wirelessReport = new Uint8Array(53);
@@ -349,19 +402,34 @@ test("Bluetooth dialog takes the control key, then scans, and preserves transpor
     await sync({ reboot_pending: false });
     await sync({ wireless: { wifi_enabled: true, wifi_state: "connected", ssid: "HomeDev", ipv4: "192.168.66.87" } });
     assert.equal(el("#direct-wifi-state").textContent, "HomeDev (192.168.66.87)");
-    assert.equal(el("#direct-wifi-state").children.length, 0, "ESPForge has no TCP console link");
+    assert.equal(el("#direct-wifi-state").children.length, 0, "ZephyrForge has no TCP console link");
     await sync({ pending_request: { opcode: 2, transaction_id: 1 }, outcome_uncertain: true });
     assert.equal(el("#usb-open").disabled, true);
     await fire("#bluetooth-open", "click"); await null;
-    assert.match(el("#bluetooth-connection-status").textContent, /Connected to ESPForge-0102/);
+    assert.match(el("#bluetooth-connection-status").textContent, /Connected to ZephyrForge-0102/);
     assert.equal(el("#direct-ble-control-key").disabled, true);
     assert.equal(el("#bluetooth-scan").textContent, "Disconnect", "one button toggles while connected");
     assert.equal(el("#bluetooth-scan").disabled, false);
     await fire("#bluetooth-scan", "click");
+    assert.equal(el("#disconnect-dialog").open, true, "unsaved configuration requires explicit disconnect confirmation");
+    await fire("#confirm-disconnect", "click");
     assert.equal(client.transport.bleKey, null);
     assert.equal(el("#usb-open").disabled, true, "disconnect must not discard a pending command to switch transport");
     await sync({ outcome_uncertain: false, pending_request: null });
     assert.equal(el("#usb-open").disabled, false);
+    await sync({ outcome_uncertain: true, pending_request: { opcode: 2, transaction_id: 2 } });
+    assert.equal(el("#recovery-abandon").hidden, false);
+    await fire("#recovery-abandon", "click");
+    assert.equal(el("#recovery-abandon-dialog").open, true);
+    assert.match(el("#recovery-abandon-warning").textContent, /does not undo or verify/);
+    await fire("#cancel-recovery-abandon", "click");
+    assert.equal(client.state.outcome_uncertain, true, "cancelling preserves the recovery record");
+    await fire("#recovery-abandon", "click");
+    await fire("#confirm-recovery-abandon", "click");
+    assert.equal(client.state.outcome_uncertain, false);
+    assert.equal(client.state.pending_request, null);
+    assert.equal(el("#recovery-abandon").hidden, true);
+    assert.match(el("#status-message").textContent, /outcome remains unknown/);
     el("#direct-ble-control-key").value = "ab".repeat(32);
     await fire("#bluetooth-connection-close", "click");
     assert.equal(el("#direct-ble-control-key").value, "", "closing the dialog discards an unsubmitted key");

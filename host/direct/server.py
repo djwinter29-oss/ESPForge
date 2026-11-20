@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 # Copyright (c) 2026 Ji Dong
 
-"""Serve the standalone ESPForge Direct dashboard on a local secure context (localhost)."""
+"""Serve the standalone ZephyrForge Direct dashboard on a local secure context (localhost)."""
 
 from __future__ import annotations
 
@@ -28,8 +28,8 @@ _SOURCE_ROOT = Path(__file__).resolve().parent
 _DEFAULT_WEB_ROOT = _SOURCE_ROOT / "web"
 _CONSOLE_SOURCE = _SOURCE_ROOT / "console_bridge.py"
 if not _CONSOLE_SOURCE.is_file():
-    _CONSOLE_SOURCE = _SOURCE_ROOT.parent / "python/src/espforge/dashboard/console.py"
-_CONSOLE_SPEC = importlib.util.spec_from_file_location("espforge_console_bridge", _CONSOLE_SOURCE)
+    _CONSOLE_SOURCE = _SOURCE_ROOT.parent / "python/src/zephyrforge/dashboard/console.py"
+_CONSOLE_SPEC = importlib.util.spec_from_file_location("zephyrforge_console_bridge", _CONSOLE_SOURCE)
 if _CONSOLE_SPEC is None or _CONSOLE_SPEC.loader is None:
     raise RuntimeError("Console bridge module is unavailable")
 _CONSOLE_MODULE = importlib.util.module_from_spec(_CONSOLE_SPEC)
@@ -51,6 +51,7 @@ CONTENT_SECURITY_POLICY = (
 
 
 def git(root: Path, *args: str) -> str:
+    """Run one git query in ``root`` and return its trimmed output; raises when git fails."""
     return subprocess.run(["git", "-C", str(root), *args], check=True, text=True,
                           stdout=subprocess.PIPE, stderr=subprocess.PIPE).stdout.strip()
 
@@ -129,7 +130,10 @@ class DirectHandler(SimpleHTTPRequestHandler):
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("Permissions-Policy", "hid=(self), bluetooth=(self)")
+        self.send_header("Cross-Origin-Opener-Policy", "same-origin")
+        cache_control = "no-store" if self.path.partition("?")[0].startswith("/api/") else "no-cache"
+        self.send_header("Cache-Control", cache_control)
         super().end_headers()
 
     def list_directory(self, path):  # type: ignore[override]
@@ -145,6 +149,7 @@ class DirectHandler(SimpleHTTPRequestHandler):
         self.wfile.write(body)
 
     def _local_console(self) -> bool:
+        """Allow relay calls only from a same-origin loopback page; otherwise send 403 and return False."""
         host = self.headers.get("Host", "")
         try:
             authority = urlsplit(f"http://{host}")
@@ -160,6 +165,7 @@ class DirectHandler(SimpleHTTPRequestHandler):
         return valid
 
     def _payload(self):
+        """Read one bounded JSON request body; raises ValueError for any other framing."""
         try:
             length = int(self.headers.get("Content-Length", "0"))
         except ValueError as error:
@@ -252,21 +258,27 @@ class DirectServer(ThreadingHTTPServer):
 
 
 def create_server(bind: str, port: int, directory: Path) -> ThreadingHTTPServer:
+    """Create the dashboard server for ``directory`` on the supported loopback address."""
+    if bind != "127.0.0.1":
+        raise ValueError("Direct server bind address must be 127.0.0.1")
     return DirectServer((bind, port), partial(DirectHandler, directory=str(directory)))
 
 
 def main(argv: list[str] | None = None) -> None:
+    """Validate options, serve the dashboard (a stamped temporary copy of the source tree), block until Ctrl+C."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--bind", default="127.0.0.1", help="Local bind address (default: 127.0.0.1)")
+    parser.add_argument("--bind", default="127.0.0.1", help="Bind address (only 127.0.0.1 is supported)")
     parser.add_argument("--port", type=int, default=8000, help="Local HTTP port (default: 8000)")
     parser.add_argument("--directory", type=Path, default=_DEFAULT_WEB_ROOT,
                         help="Dashboard directory (default: the adjacent web/ directory)")
     args = parser.parse_args(argv)
     if not 1 <= args.port <= 65535:
         parser.error("--port must be between 1 and 65535")
+    if args.bind != "127.0.0.1":
+        parser.error("--bind must be 127.0.0.1")
     if not args.directory.is_dir() or not (args.directory / "index.html").is_file():
         parser.error(f"dashboard directory must contain index.html: {args.directory}")
-    with TemporaryDirectory(prefix="espforge-direct-") as directory:
+    with TemporaryDirectory(prefix="zephyrforge-direct-") as directory:
         web = args.directory
         if (web / "build.json").is_file():
             verify_site(web)
@@ -275,8 +287,7 @@ def main(argv: list[str] | None = None) -> None:
             web = Path(directory) / "site"
             build_site(args.directory, web, version, commit, dirty)
         server = create_server(args.bind, args.port, web)
-        host = "127.0.0.1" if args.bind == "0.0.0.0" else args.bind
-        print(f"Direct dashboard: http://{host}:{args.port}/ (Chrome or Edge; stop with Ctrl+C)", flush=True)
+        print(f"Direct dashboard: http://{args.bind}:{args.port}/ (Chrome or Edge; stop with Ctrl+C)", flush=True)
         try:
             server.serve_forever()
         except KeyboardInterrupt:

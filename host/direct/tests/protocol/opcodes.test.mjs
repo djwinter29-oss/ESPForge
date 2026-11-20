@@ -16,8 +16,10 @@ test("settings codec round-trips the four save-settings argument bytes", () => {
   assert.deepEqual(decodeSettings(encodeSettings({ ...settings, radios: undefined })), { ...settings, radios: 0 });
 });
 
-test("ESPForge settings accept only its clocks, the one SD profile and switch bits 0 and 1", () => {
-  for (const clock of [0, 80, 160, 240]) assert.ok(validSettings({ system_clock_mhz: clock, sdcard_profile: 0, radios: 0 }));
+test("ZephyrForge settings accept only its clocks, the one SD profile and switch bits 0 and 1", () => {
+  for (const clock of [0, 80, 160, 240]) {
+    assert.ok(validSettings({ system_clock_mhz: clock, sdcard_profile: 0, radios: 0 }));
+  }
   for (const clock of [125, 200, 300]) assert.ok(!validSettings({ system_clock_mhz: clock, sdcard_profile: 0 }));
   assert.ok(!validSettings({ system_clock_mhz: 0, sdcard_profile: 1 }), "no High-Speed profile");
   assert.ok(!validSettings({ system_clock_mhz: 0, sdcard_profile: 0, radios: 4 }), "no TCP CLI switch");

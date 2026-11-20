@@ -2,12 +2,54 @@
 // Copyright (c) 2026 Ji Dong
 
 import { DEVICE_FILTER, PRODUCT_IDS } from "../protocol/constants.mjs";
-import { matchesEspForge, requireValid } from "../protocol/codec.mjs";
-import { BoardError, REASON } from "../state/errors.mjs";
+import { matchesZephyrForge, requireValid } from "../protocol/codec.mjs";
+import { BoardError, errorValue, REASON } from "../state/errors.mjs";
 
 /** @typedef {import("./transport.mjs").Transport} Transport */
-/** @implements {Transport} */
+/**
+ * @typedef {EventTarget & {
+ *   vendorId: number,
+ *   productId: number,
+ *   collections: Array<{usagePage: number, usage: number}>,
+ *   opened: boolean,
+ *   productName?: string | null,
+ *   open: () => Promise<void>,
+ *   close: () => Promise<void>,
+ *   receiveFeatureReport: (id: number) => Promise<DataView>,
+ *   sendFeatureReport: (id: number, data: Uint8Array) => Promise<void>,
+ * }} HidDevice
+ */
+/**
+ * @typedef {EventTarget & {
+ *   requestDevice: (options: {filters: Array<{vendorId: number, productId: number,
+ *     usagePage: number, usage: number}>}) => Promise<HidDevice[]>,
+ *   getDevices: () => Promise<HidDevice[]>,
+ * }} HidApi
+ */
+/** @typedef {Event & {device: HidDevice}} HidDeviceEvent */
+/** @typedef {HidDeviceEvent & {reportId: number, data: DataView}} HidInputReportEvent */
+/** @param {unknown} value @returns {value is HidDevice} */
+const isHidDevice = value => value !== null && typeof value === "object"
+  && value instanceof EventTarget && "vendorId" in value && typeof value.vendorId === "number"
+  && "productId" in value && typeof value.productId === "number"
+  && "collections" in value && Array.isArray(value.collections)
+  && "opened" in value && typeof value.opened === "boolean"
+  && "open" in value && typeof value.open === "function"
+  && "close" in value && typeof value.close === "function"
+  && "receiveFeatureReport" in value && typeof value.receiveFeatureReport === "function"
+  && "sendFeatureReport" in value && typeof value.sendFeatureReport === "function";
+/** @param {Event} event @returns {event is HidDeviceEvent} */
+const isHidDeviceEvent = event => "device" in event && isHidDevice(event.device);
+/** @param {Event} event @returns {event is HidInputReportEvent} */
+const isHidInputReportEvent = event => isHidDeviceEvent(event)
+  && "reportId" in event && typeof event.reportId === "number"
+  && "data" in event && event.data instanceof DataView;
+/**
+ * @brief WebHID byte pipe for one opened ZephyrForge device: Feature reports by ID and Input report events.
+ * @implements {Transport}
+ */
 export class HidTransport extends EventTarget {
+  /** @param {HidApi | undefined} hid */
   constructor(hid) {
     super();
     /** @type {"usb"} */
@@ -16,25 +58,33 @@ export class HidTransport extends EventTarget {
     this.available = Boolean(hid);
     this.unavailableReason = REASON.WEBHID_UNAVAILABLE;
     this.autoReconnect = true;
+    /** @type {number | null} */
     this.pollInterval = null;
     this.device = null;
     this.candidate = null;
     this.name = null;
+    /** @param {Event} event */
     this.onReport = event => {
+      if (!isHidInputReportEvent(event)) return;
       if (event.device === this.device) this.dispatchEvent(Object.assign(new Event("report"),
         { reportId: event.reportId, data: event.data }));
     };
+    /** @param {Event} event */
     this.onDisconnect = event => {
+      if (!isHidDeviceEvent(event)) return;
       if (event.device !== this.device) return;
       this.detach();
       this.dispatchEvent(new Event("disconnect"));
     };
+    /** @param {Event} event */
     this.onConnect = event => {
-      if (this.device || !matchesEspForge(event.device)) return;
+      if (this.device || !isHidDeviceEvent(event) || !matchesZephyrForge(event.device)) return;
       this.candidate = event.device;
       this.dispatchEvent(new Event("available"));
     };
+    /** @param {Event} event */
     this.onSuspend = event => {
+      if (!isHidDeviceEvent(event)) return;
       if (event.device === this.device) this.dispatchEvent(new Event("suspend"));
     };
     hid?.addEventListener("disconnect", this.onDisconnect);
@@ -42,6 +92,8 @@ export class HidTransport extends EventTarget {
     hid?.addEventListener("suspend", this.onSuspend);
   }
 
+  /** @brief Prompt for one ZephyrForge device and open it; @return false when the user selects none. */
+  /** @param {Uint8Array | undefined} _options @param {AbortSignal} signal */
   async connect(_options, signal) {
     signal.throwIfAborted();
     if (!this.api) throw new BoardError(this.unavailableReason);
@@ -50,11 +102,13 @@ export class HidTransport extends EventTarget {
     });
     signal.throwIfAborted();
     if (!devices.length) return false;
-    requireValid(devices.length === 1 && matchesEspForge(devices[0]), "device-selection");
+    requireValid(devices.length === 1 && matchesZephyrForge(devices[0]), "device-selection");
     await this.openDevice(devices[0], signal);
     return true;
   }
 
+  /** @brief Open the authorized device last announced by a WebHID connect event; @return false without one. */
+  /** @param {AbortSignal} signal */
   async reconnect(signal) {
     const device = this.candidate;
     this.candidate = null;
@@ -63,6 +117,8 @@ export class HidTransport extends EventTarget {
     return true;
   }
 
+  /** @brief Open `device` unless the connection signal aborts meanwhile, then forward its Input reports. */
+  /** @param {HidDevice} device @param {AbortSignal} signal */
   async openDevice(device, signal) {
     signal.throwIfAborted();
     if (!device.opened) await device.open();
@@ -75,6 +131,8 @@ export class HidTransport extends EventTarget {
     device.addEventListener("inputreport", this.onReport);
   }
 
+  /** @brief Read Feature report `id`; fails if the device disconnects or changes meanwhile. */
+  /** @param {number} id @param {AbortSignal} signal */
   async readReport(id, signal) {
     signal.throwIfAborted();
     const device = this.device;
@@ -85,15 +143,23 @@ export class HidTransport extends EventTarget {
     return value;
   }
 
+  /** @brief Write Feature report `id` (payload without the report ID) with the same identity fencing. */
+  /** @param {number} id @param {Uint8Array} data @param {AbortSignal} signal */
   async writeReport(id, data, signal) {
     signal.throwIfAborted();
     const device = this.device;
     if (!device) throw new BoardError(REASON.USB_DISCONNECTED);
-    await device.sendFeatureReport(id, data);
-    signal.throwIfAborted();
-    if (device !== this.device) throw new BoardError(REASON.USB_CHANGED);
+    try {
+      await device.sendFeatureReport(id, data);
+      signal.throwIfAborted();
+      if (device !== this.device) throw new BoardError(REASON.USB_CHANGED);
+    } catch (error) {
+      if (error instanceof BoardError && error.uncertain) throw error;
+      throw new BoardError(REASON.OUTCOME_UNCERTAIN, errorValue(error));
+    }
   }
 
+  /** @brief Forget the open device without closing it; @return the detached device, if any. */
   detach() {
     const device = this.device;
     device?.removeEventListener("inputreport", this.onReport);
@@ -102,11 +168,13 @@ export class HidTransport extends EventTarget {
     return device;
   }
 
+  /** @brief Detach and close the open device. */
   async disconnect() {
     const device = this.detach();
     if (device?.opened) await device.close();
   }
 
+  /** @brief Remove WebHID listeners and disconnect; the transport is unusable afterwards. */
   async dispose() {
     this.api?.removeEventListener("disconnect", this.onDisconnect);
     this.api?.removeEventListener("connect", this.onConnect);

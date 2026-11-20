@@ -13,14 +13,21 @@
     ]
   },
   "files": [
-    "src/js/console-terminal.mjs",
-    "src/js/console-session.mjs",
-    "src/js/console.mjs",
-    "src/js/dashboard-api.mjs",
-    "src/js/operation-state.mjs",
-    "src/js/wireless-form.mjs",
-    "src/js/app.mjs",
-    "src/js/dashboard.mjs",
-    "tests/types/dashboard-types.mjs"
+    "src/js/console/terminal.mjs",
+    "src/js/console/session.mjs",
+    "src/js/console/app.mjs",
+    "src/js/dashboard/api.mjs",
+    "src/js/dashboard/operation-state.mjs",
+    "src/js/dashboard/wireless-policy.mjs",
+    "src/js/dashboard/wireless-form.mjs",
+    "src/js/dashboard/board-session.mjs",
+    "src/js/dashboard/command-lifecycle.mjs",
+    "src/js/dashboard/device-actions.mjs",
+    "src/js/dashboard/command-recovery.mjs",
+    "src/js/dashboard/settings-workflow.mjs",
+    "src/js/dashboard/wireless-transport.mjs",
+    "src/js/dashboard/app.mjs",
+    "src/js/dashboard/view.mjs",
+    "tests/dashboard/types/dashboard-types.mjs"
   ]
 }

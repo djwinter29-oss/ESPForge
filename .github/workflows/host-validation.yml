@@ -38,16 +38,21 @@ jobs:
       - name: Run Python host tests
         run: python -m unittest discover -s host/python/tests -v
 
+      - name: Check firmware hardware-runner safety without hardware
+        run: python -m unittest discover -s firmware/tests/hardware -v
+
       - name: Type-check Python host
         if: matrix.os == 'ubuntu-24.04' && matrix.python == '3.12'
         working-directory: host/python
-        run: pyright
+        run: |
+          pyright
+          pyright ../../firmware/tests/hardware/run.py
 
       - name: Verify installed Python wheel
         if: matrix.os == 'ubuntu-24.04' && matrix.python == '3.12'
         run: |
-          mkdir -p host/python/src/espforge/web
-          cp -R host/web/src/. host/python/src/espforge/web/
+          mkdir -p host/python/src/zephyrforge/web
+          cp -R host/web/src/. host/python/src/zephyrforge/web/
           python -m pip wheel --no-deps host/python --wheel-dir build/wheels
           python -m venv build/wheel-check
           build/wheel-check/bin/python -m pip install build/wheels/*.whl
@@ -73,7 +78,10 @@ jobs:
         if: matrix.os == 'ubuntu-24.04' && matrix.python == '3.12'
         run: |
           npx --yes --package typescript@5.9.3 tsc --project host/web/tsconfig.json
-          npx --yes --package typescript@5.9.3 tsc --project host/direct/web/js/tsconfig.json
+          npx --yes --package typescript@5.9.3 tsc --project host/direct/tests/types/tsconfig.json
+          npx --yes --package typescript@5.9.3 tsc --project host/direct/tests/types/tsconfig.core-strict.json
+          npx --yes --package typescript@5.9.3 tsc --project host/direct/tests/types/tsconfig.protocol-strict.json
+          npx --yes --package typescript@5.9.3 tsc --project host/direct/tests/types/tsconfig.board-runtime-strict.json
 
       - name: Setup .NET
         if: matrix.python == '3.12'
@@ -83,7 +91,7 @@ jobs:
 
       - name: Build and test .NET host
         if: matrix.python == '3.12'
-        run: dotnet test host/dotnet/ESPForge.Tests
+        run: dotnet test host/dotnet/ZephyrForge.Tests
 
   dashboard-browser:
     name: Dashboard browser checks
@@ -137,7 +145,7 @@ jobs:
       - name: Run Ceedling
         run: |
           bundle exec ceedling test:all
-          bundle exec ceedling --mixin '={project: {build_root: build/ceedling-sd-spi}, defines: {test: [EF_STORAGE_SPI=1, EF_ENABLE_STORAGE_BENCHMARK=1]}}' test:test_hid_reports
+          bundle exec ceedling --mixin '={project: {build_root: build/ceedling-sd-spi}, defines: {test: [ZF_STORAGE_SPI=1, ZF_ENABLE_STORAGE_BENCHMARK=1]}}' test:test_hid_reports test:test_control
 
   docs:
     name: Documentation links

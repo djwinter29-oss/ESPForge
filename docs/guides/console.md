@@ -1,13 +1,13 @@
 # Diagnostic shells
 
-ESPForge enables Zephyr's native diagnostic shell on the UART connector and as a raw TCP stream on port **2323**.
+ZephyrForge enables Zephyr's native diagnostic shell on the UART connector and as a raw TCP stream on port **2323**.
 Neither shell carries dashboard commands or changes saved settings, wireless credentials or SD ownership.
 USB HID and authenticated BLE remain the management interfaces.
 
 ## UART
 
 Open the board's USB-to-UART bridge port in a serial terminal at **115200 baud, 8N1**, with flow control and local
-echo disabled. The prompt is `ESPForge> `. Enter submits a command; Tab lists or completes native commands.
+echo disabled. The prompt is `ZephyrForge> `. Enter submits a command; Tab lists or completes native commands.
 Boot messages and logs share this UART and may interrupt the prompt. Close the terminal before flashing.
 The native USB connector has HID and MSC, not a CDC serial shell.
 
@@ -39,7 +39,7 @@ intentionally rejects that non-default build.
 ### In-browser terminal
 
 In the Python and .NET dashboards, click fresh connected Wi-Fi status to open a browser terminal for the selected
-board. Direct offers the same link when served by its local ESPForge server; keep its connected dashboard tab
+board. Direct offers the same link when served by its local ZephyrForge server; keep its connected dashboard tab
 open. Static hosting cannot provide a TCP relay. The host connects only to the reported address on port 2323,
 and reports connection errors rather than treating connected Wi-Fi as listener readiness.
 

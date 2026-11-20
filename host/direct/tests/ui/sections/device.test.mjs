@@ -7,7 +7,8 @@ import { withDocument, snapshot } from "../../support/view.mjs";
 import { deriveDashboardViewModel } from "../../../web/js/ui/sections/status-model.mjs";
 import { deriveDeviceViewModel } from "../../../web/js/ui/sections/device.mjs";
 
-test("module memory keeps PSRAM separate from SRAM and unavailable flash unknown", () => withDocument((el, renderStatus) => {
+test("module memory keeps PSRAM separate from SRAM and unavailable flash unknown",
+  () => withDocument((el, renderStatus) => {
   const state = snapshot();
   state.hardware = { ...state.hardware, psram_total_bytes: 8 << 20, psram_reserved_bytes: 1 << 20,
     flash_total_bytes: 16 << 20 };
@@ -15,12 +16,22 @@ test("module memory keeps PSRAM separate from SRAM and unavailable flash unknown
   assert.equal(el("#ram-usage").textContent, "64.0 / 512 KiB (12.5%)");
   assert.equal(el("#psram-usage").textContent, "1.0 / 8.0 MiB (12.5%)");
   assert.equal(el("#flash-capacity").textContent, "16.0 MiB");
+  assert.equal(el("#memory-capacity").textContent, "16 MiB flash · 8 MiB PSRAM");
   state.hardware.psram_reserved_bytes = 16 << 20;
   state.hardware.flash_total_bytes = null;
   renderStatus(state);
   assert.equal(el("#psram-usage").textContent, "--");
   assert.equal(el("#flash-capacity").textContent, "--");
+  assert.equal(el("#memory-capacity").textContent, "-- MiB flash · 8 MiB PSRAM");
 }));
+
+test("memory summary never infers missing or invalid capacities from the board model", () => {
+  for (const value of [undefined, null, 0, -1, 1.5, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
+    const state = snapshot();
+    Object.assign(state.hardware, { ram_total_bytes: value, psram_total_bytes: value, flash_total_bytes: value });
+    assert.equal(deriveDeviceViewModel(state).text["memory-capacity"], "-- MiB flash · -- MiB PSRAM");
+  }
+});
 
 test("board pin tables are reused until the displayed configuration changes", () => withDocument((el, renderStatus) => {
   const state = snapshot();
@@ -53,7 +64,7 @@ test("SPI boards show four bus signals and retain card detection", () => withDoc
   state.settings = { ...state.settings, storage_gpios: [12, 11, 13, 10, 255, 255],
     board_flags: 0x45, card_detect_gpio: 8 };
   renderStatus(state);
-  assert.equal(el("#product-name").textContent, "ESPForge (SPI)");
+  assert.equal(el("#product-name").textContent, "ZephyrForge (SPI)");
   assert.equal(el("#board-storage-title").textContent, "Storage (SPI)");
   assert.deepEqual(el("#board-storage-pins").children.map(row => row.children.map(cell => cell.textContent)),
     [["SCK", "MOSI", "MISO", "CS", "Card detect"], ["GPIO12", "GPIO11", "GPIO13", "GPIO10", "GPIO8"]]);
@@ -66,8 +77,9 @@ test("identity RAM stays build accounting while stale inputs show no current val
     cpu_usage_core0_basis_points: 1234 };
   renderStatus(state);
   assert.equal(el("#ram-usage").textContent, "64.0 / 512 KiB (12.5%)");
-  assert.equal(el("#board-model").textContent, "ESP32-S3-DevKitC-1 (ESP32-S3)");
-  assert.equal(el("#product-name").textContent, "ESPForge (SDMMC)");
+  assert.equal(el("#board-model").textContent, "ESP32-S3-DevKitC-1");
+  assert.equal(el("#board-mcu").textContent, "ESP32-S3");
+  assert.equal(el("#product-name").textContent, "ZephyrForge (SDMMC)");
   assert.equal(el("#identity-clock").textContent, "240 MHz");
   assert.equal(el("#cpu-usage-core0").textContent, "12.3% / --");
   assert.match(el("#uptime").textContent, /104249991d/);

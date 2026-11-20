@@ -5,27 +5,47 @@
  * @file Opcode descriptor table: the single source of every control opcode's capability, link policy, request and
  * result rules, journalled request facts, result confirmation and lifecycle limits. Adding an opcode is one row.
  */
-import { CAP, CLOCKS_MHZ, OP, UNSUPPORTED_OPCODES } from "./constants.mjs";
+import { CAP, CLOCKS_MHZ, OP, RADIOS, REPORT, UNSUPPORTED_OPCODES } from "./constants.mjs";
 
 /** @brief Save-settings flag bit 1: commit the staged wireless values. Bit 0 (forced save) is unsupported. */
 export const SAVE_SETTINGS_COMMIT = 2;
 
-// radios: bit 0 Wi-Fi, bit 1 Bluetooth. ESPForge has one SD-card profile (0, Standard) and no TCP CLI switch.
-export const validSettings = settings => Boolean(settings) && CLOCKS_MHZ.includes(settings.system_clock_mhz)
+/**
+ * @typedef {{system_clock_mhz: number, sdcard_profile: number, radios: number}} Settings
+ * @typedef {{led_colour?: number, msc_enabled?: boolean, benchmark_start?: boolean, benchmark_size_mib?: number,
+ *   settings?: Settings, commit_mask?: number, scan_generation?: number, scan_index?: number}} OpcodeFacts
+ * @typedef {{settings: Settings | null, commit_mask: number, data: Uint8Array}} ControlResult
+ */
+
+/**
+ * @brief Whether settings are savable. `radios` holds RADIOS bits. ZephyrForge has one SD-card profile
+ * (0, Standard) and no TCP CLI switch.
+ */
+/** @param {Settings | null | undefined} settings */
+export const validSettings = settings => settings != null && CLOCKS_MHZ.includes(settings.system_clock_mhz)
   && settings.sdcard_profile === 0 && [undefined, 0, 1, 2, 3].includes(settings.radios);
 /** @brief Encode save-settings arguments: clock (LE16), SD profile, radio switches. */
+/** @param {Settings} settings */
 export const encodeSettings = settings => [settings.system_clock_mhz & 255,
   settings.system_clock_mhz >> 8, settings.sdcard_profile, settings.radios ?? 0];
 /** @brief Decode the four save-settings argument bytes produced by encodeSettings. @param {ArrayLike<number>} args */
+/** @param {ArrayLike<number>} args */
 export const decodeSettings = args => ({ system_clock_mhz: args[0] | args[1] << 8, sdcard_profile: args[2],
-  radios: args[3] & 3 });
-const sameSettings = (a, b) => a.system_clock_mhz === b.system_clock_mhz && a.sdcard_profile === b.sdcard_profile
+  radios: args[3] & (RADIOS.WIFI | RADIOS.BLE) });
+/** @param {Settings | null | undefined} a @param {Settings | null | undefined} b */
+const sameSettings = (a, b) => a != null && b != null && a.system_clock_mhz === b.system_clock_mhz
+  && a.sdcard_profile === b.sdcard_profile
   && (a.radios ?? 0) === (b.radios ?? 0);
 
+/** @param {Uint8Array} bytes */
 const printable = bytes => bytes.every(byte => byte >= 32 && byte <= 126);
-const inRange = (value, min, max) => Number.isInteger(value) && value >= min && value <= max;
+/** @brief Whether `value` is an integer in the inclusive range [min, max]. */
+/** @param {number} value @param {number} min @param {number} max */
+export const inRange = (value, min, max) => Number.isInteger(value) && value >= min && value <= max;
 const settingsKeys = ["system_clock_mhz", "sdcard_profile", "radios"];
-const exactKeys = (value, keys) => Boolean(value) && typeof value === "object" && !Array.isArray(value)
+/** @brief Whether `value` is a plain object whose own keys are exactly `keys`. */
+/** @param {unknown} value @param {string[]} keys */
+export const hasExactKeys = (value, keys) => value !== null && typeof value === "object" && !Array.isArray(value)
   && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
 
 /**
@@ -34,6 +54,7 @@ const exactKeys = (value, keys) => Boolean(value) && typeof value === "object" &
  * @property {{proof: boolean, flags: boolean} | null} ble Bluetooth policy: null = USB only; `proof` = needs a
  *   per-request HMAC; `flags` = nonzero request flags allowed over Bluetooth.
  * @property {boolean} [reboots] The board reboots after a successful result.
+ * @property {number[]} [invalidates] Status reports whose snapshot must be received again after a successful result.
  * @property {(report: Uint8Array, unused: (offset: number) => boolean) => boolean} request Full 68-byte request rule:
  *   [3] flags, [4..] arguments, `unused(n)` = zero tail.
  * @property {number[]} [excluded] Result statuses this opcode never reports.
@@ -42,11 +63,12 @@ const exactKeys = (value, keys) => Boolean(value) && typeof value === "object" &
  * @property {(data: Uint8Array, zero: (bytes: Uint8Array) => boolean) => boolean} [completed] Completed-result data
  *   rule; default all zero.
  * @property {boolean} [returnsSettings] A completed result carries the saved settings and commit mask.
- * @property {{keys: string[], read: (report: Uint8Array, options: object) => object, valid: (facts: object) =>
+ * @property {{keys: string[], read: (report: Uint8Array, options: {commitMask?: number}) => OpcodeFacts,
+ *   valid: (facts: OpcodeFacts) =>
  *   boolean}} [facts] Request facts journalled with the transaction and used to confirm its result.
- * @property {(result: object, request: object) => boolean} [confirms] Whether a completed result proves the
+ * @property {(result: ControlResult, request: OpcodeFacts) => boolean} [confirms] Whether a completed result proves the
  *   requested effect; a mismatch leaves the outcome uncertain.
- * @property {boolean} [unsupported] ESPForge never runs this opcode; its only result is Unsupported/error 4 and the
+ * @property {boolean} [unsupported] ZephyrForge never runs this opcode; its only result is Unsupported/error 4 and the
  *   dashboard never sends it.
  * @property {{generationMax: number, timeoutMs: number}} [lifecycle] Accepted long-running operation tracked through
  *   Feature 12 after its result.
@@ -59,17 +81,19 @@ const UNSUPPORTED = Object.freeze({ capability: 0, ble: null, unsupported: true,
 export const OPCODES = Object.freeze({
   ...Object.fromEntries(UNSUPPORTED_OPCODES.map(opcode => [opcode, UNSUPPORTED])),
   [OP.LED]: { capability: CAP.LED, ble: { proof: false, flags: false }, excluded: [1],
+    invalidates: [REPORT.TELEMETRY],
     request: (r, unused) => r[3] === 0 && r[4] <= 7 && unused(5),
     facts: { keys: ["led_colour"], read: r => ({ led_colour: r[4] }),
-      valid: facts => inRange(facts.led_colour, 0, 7) } },
+      valid: facts => facts.led_colour !== undefined && inRange(facts.led_colour, 0, 7) } },
   [OP.REBOOT]: { capability: CAP.REBOOT, ble: { proof: true, flags: true }, reboots: true, excluded: [4],
     rejections: [1, 2], details: { 1: 5, 2: 5, 28: 5 }, request: (r, unused) => r[3] === 1 && unused(4) },
   [OP.MSC]: { capability: CAP.SPI | CAP.SDMMC, ble: null, rejections: [1, 2, 3], details: { 1: 5, 2: 5 },
+    invalidates: [REPORT.STORAGE],
     request: (r, unused) => [0, 1].includes(r[4]) && r[3] === (r[4] === 0 ? 1 : 0) && unused(5),
     facts: { keys: ["msc_enabled"], read: r => ({ msc_enabled: r[4] === 1 }),
       valid: facts => typeof facts.msc_enabled === "boolean" } },
   [OP.BENCHMARK]: { capability: CAP.SELF_TEST, ble: null, excluded: [1],
-    details: { 1: 5, 2: 5, 3: 3, 4: 6, 10: 6 },
+    details: { 1: 5, 2: 5, 3: 3, 4: 6 }, invalidates: [REPORT.BENCHMARK, REPORT.STORAGE],
     request: (r, unused) => {
       const size = new DataView(r.buffer, r.byteOffset, r.byteLength).getUint32(5, true);
       return r[3] === 0 && [0, 1].includes(r[4]) && unused(9)
@@ -79,7 +103,8 @@ export const OPCODES = Object.freeze({
       read: r => ({ benchmark_start: r[4] === 1,
         benchmark_size_mib: new DataView(r.buffer, r.byteOffset, r.byteLength).getUint32(5, true) }),
       valid: facts => typeof facts.benchmark_start === "boolean" && (facts.benchmark_start
-        ? inRange(facts.benchmark_size_mib, 1, 1024) : facts.benchmark_size_mib === 0) } },
+        ? facts.benchmark_size_mib !== undefined && inRange(facts.benchmark_size_mib, 1, 1024)
+        : facts.benchmark_size_mib === 0) } },
   [OP.SAVE_SETTINGS]: { capability: CAP.SETTINGS, ble: { proof: true, flags: false }, reboots: true,
     details: { 1: 5, 2: 5, 19: 3, 20: 3, 21: 3, 25: 5, 26: 5, 27: 3, 28: 5 }, returnsSettings: true,
     request: (r, unused) => (r[3] & ~SAVE_SETTINGS_COMMIT) === 0 && CLOCKS_MHZ.includes(r[4] | r[5] << 8)
@@ -89,8 +114,8 @@ export const OPCODES = Object.freeze({
     facts: { keys: ["settings", "commit_mask"],
       read: (r, options) => ({ settings: decodeSettings(r.subarray(4, 8)), commit_mask: options.commitMask ?? 0 }),
       // Exact keys require a stored radios value, so validSettings alone cannot accept an omitted one.
-      valid: facts => exactKeys(facts.settings, settingsKeys) && validSettings(facts.settings)
-        && inRange(facts.commit_mask, 0, 7) },
+      valid: facts => hasExactKeys(facts.settings, settingsKeys) && validSettings(facts.settings)
+        && facts.commit_mask !== undefined && inRange(facts.commit_mask, 0, 7) },
     confirms: (result, request) => sameSettings(result.settings, request.settings)
       && result.commit_mask === request.commit_mask },
   [OP.STAGE_SSID]: { ...STAGED, capability: CAP.WIRELESS, ble: null, details: { 16: 3, 25: 5 },
@@ -112,13 +137,15 @@ export const OPCODES = Object.freeze({
       && zero(data.subarray(4 + data[3], 36)) && data[37] <= 7 && zero(data.subarray(38)),
     facts: { keys: ["scan_generation", "scan_index"],
       read: r => ({ scan_index: r[4], scan_generation: r[5] | r[6] << 8 }),
-      valid: facts => inRange(facts.scan_generation, 1, 65535) && inRange(facts.scan_index, 0, 17) },
+      valid: facts => facts.scan_generation !== undefined && inRange(facts.scan_generation, 1, 65535)
+        && facts.scan_index !== undefined && inRange(facts.scan_index, 0, 17) },
     confirms: (result, request) => (result.data[0] | result.data[1] << 8) === request.scan_generation
       && result.data[2] === request.scan_index },
 });
 
 /** @brief Whether the active link may carry this request; Bluetooth carries only the restricted command set. */
+/** @param {"usb" | "ble"} link @param {number} opcode @param {number} [flags] */
 export function allowedOnLink(link, opcode, flags = 0) {
   const ble = OPCODES[opcode]?.ble;
-  return link !== "ble" || Boolean(ble) && (ble.flags || flags === 0);
+  return link !== "ble" || ble !== null && ble !== undefined && (ble.flags || flags === 0);
 }

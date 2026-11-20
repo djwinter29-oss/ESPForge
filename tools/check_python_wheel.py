@@ -21,25 +21,25 @@ def main() -> None:
     root = Path(__file__).resolve().parents[1]
     assert sys.flags.isolated, "Run this check with python -I to exclude checkout imports and PYTHONPATH"
 
-    import espforge
-    from espforge.dashboard.boards import DashboardBoards
-    from espforge.dashboard.server import create_app
-    from espforge.hid.device import ESPForgeHid
-    from espforge.reports import parse_identity_report
+    import zephyrforge
+    from zephyrforge.dashboard.boards import DashboardBoards
+    from zephyrforge.dashboard.server import create_app
+    from zephyrforge.hid.device import ZephyrForgeHid
+    from zephyrforge.reports import parse_identity_report
 
-    assert espforge.__file__ is not None, "The installed distribution must be a regular package"
-    assert not Path(espforge.__file__).resolve().is_relative_to(root / "host/python")
-    expected_version = args.version or version("espforge")
-    assert version("espforge") == expected_version
-    assert espforge.__version__ == expected_version
-    assert ESPForgeHid.__module__ == "espforge.hid.device"
-    assert parse_identity_report.__module__ == "espforge.reports.identity"
+    assert zephyrforge.__file__ is not None, "The installed distribution must be a regular package"
+    assert not Path(zephyrforge.__file__).resolve().is_relative_to(root / "host/python")
+    expected_version = args.version or version("zephyrforge")
+    assert version("zephyrforge") == expected_version
+    assert zephyrforge.__version__ == expected_version
+    assert ZephyrForgeHid.__module__ == "zephyrforge.hid.device"
+    assert parse_identity_report.__module__ == "zephyrforge.reports.identity"
     for name in ("protocol", "uart", "console"):
-        assert find_spec(f"espforge.{name}") is None, name
+        assert find_spec(f"zephyrforge.{name}") is None, name
     source = root / "host/web/src"
     expected = {path.relative_to(source).as_posix(): path.read_bytes()
                 for path in source.rglob("*") if path.is_file() and "__pycache__" not in path.parts}
-    web = files("espforge").joinpath("web")
+    web = files("zephyrforge").joinpath("web")
 
     def assets(directory, prefix=""):
         result = {}
@@ -59,7 +59,7 @@ def main() -> None:
         client = app.test_client()
         response = client.get("/")
         assert response.status_code == 200
-        assert b"ESPForge Dashboard | Python" in response.data
+        assert b"ZephyrForge Dashboard | Python" in response.data
         assert f"App v{expected_version}<".encode() in response.data
         for asset, content in expected.items():
             if asset.endswith(".html"):
@@ -75,15 +75,16 @@ def main() -> None:
     finally:
         boards.close()
 
-    for module in ("espforge.reports", "espforge.reports.models", "espforge.hid",
-                   "espforge.dashboard.server", "espforge.cli"):
+    for module in ("zephyrforge.reports", "zephyrforge.reports.models", "zephyrforge.hid",
+                   "zephyrforge.dashboard.server", "zephyrforge.cli"):
         subprocess.run([sys.executable, "-I", "-c", f"import {module}"], check=True, timeout=10)
-    subprocess.run([sys.executable, "-I", "-m", "espforge", "--help"], check=True, timeout=10,
+    subprocess.run([sys.executable, "-I", "-m", "zephyrforge", "--help"], check=True, timeout=10,
                    stdout=subprocess.DEVNULL)
     scripts = Path(sysconfig.get_path("scripts"))
-    executable = scripts / ("espforge.exe" if sys.platform == "win32" else "espforge")
+    executable = scripts / ("zephyrforge.exe" if sys.platform == "win32" else "zephyrforge")
     subprocess.run([str(executable), "--help"], check=True, timeout=10, stdout=subprocess.DEVNULL)
-    print(f"Installed ESPForge {expected_version}: imports, entry points, template and {len(expected)} assets verified")
+    print(f"Installed ZephyrForge {expected_version}: imports, entry points, template and "
+          f"{len(expected)} assets verified")
 
 
 if __name__ == "__main__":

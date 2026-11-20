@@ -3,7 +3,7 @@
 #include <errno.h>
 #include <string.h>
 
-static uint32_t buffer[EF_BENCHMARK_CHUNK_SIZE / sizeof(uint32_t)];
+static uint32_t buffer[ZF_BENCHMARK_CHUNK_SIZE / sizeof(uint32_t)];
 
 static uint32_t pattern(uint32_t offset)
 {
@@ -29,17 +29,17 @@ static uint32_t mismatches(uint32_t offset)
 	return count;
 }
 
-static void io_error(ef_benchmark_t *status, int error)
+static void io_error(zf_benchmark_t *status, int error)
 {
-	if (error != 0 && status->error == EF_BENCHMARK_ERROR_NONE) {
-		status->error = error == -ENOMEDIUM ? EF_BENCHMARK_ERROR_CARD :
-				error == -EEXIST ? EF_BENCHMARK_ERROR_EXISTS : EF_BENCHMARK_ERROR_IO;
+	if (error != 0 && status->error == ZF_BENCHMARK_ERROR_NONE) {
+		status->error = error == -ENOMEDIUM ? ZF_BENCHMARK_ERROR_CARD :
+				error == -EEXIST ? ZF_BENCHMARK_ERROR_EXISTS : ZF_BENCHMARK_ERROR_IO;
 	}
 }
 
-void ef_benchmark_run(uint32_t size_mib)
+void zf_benchmark_run(uint32_t size_mib)
 {
-	ef_benchmark_t status = {.state = EF_BENCHMARK_PREPARING};
+	zf_benchmark_t status = {.state = ZF_BENCHMARK_PREPARING};
 	bool created = false;
 	bool opened = false;
 	bool cancelled = false;
@@ -47,37 +47,37 @@ void ef_benchmark_run(uint32_t size_mib)
 	uint32_t start;
 	int err;
 
-	if (size_mib == 0 || size_mib > EF_BENCHMARK_MAX_MIB) {
-		status.error = EF_BENCHMARK_ERROR_SIZE;
+	if (size_mib == 0 || size_mib > ZF_BENCHMARK_MAX_MIB) {
+		status.error = ZF_BENCHMARK_ERROR_SIZE;
 		goto cleanup;
 	}
 	status.target_bytes = size_mib * 1024u * 1024u;
-	if (!ef_platform_benchmark_update(&status)) {
+	if (!zf_platform_benchmark_update(&status)) {
 		cancelled = true;
 		goto cleanup;
 	}
-	status.error = ef_platform_benchmark_preflight(size_mib);
+	status.error = zf_platform_benchmark_preflight(size_mib);
 	if (status.error) {
 		goto cleanup;
 	}
-	err = ef_platform_benchmark_open(true);
+	err = zf_platform_benchmark_open(true);
 	if (err != 0) {
 		io_error(&status, err);
 		goto cleanup;
 	}
 	created = opened = true;
-	status.state = EF_BENCHMARK_WRITING;
-	start = ef_platform_benchmark_time();
+	status.state = ZF_BENCHMARK_WRITING;
+	start = zf_platform_benchmark_time();
 	while (status.written_bytes < status.target_bytes) {
 		uint32_t count = 0;
 
-		status.write_elapsed_ms = ef_platform_benchmark_time() - start;
-		if (!ef_platform_benchmark_update(&status)) {
+		status.write_elapsed_ms = zf_platform_benchmark_time() - start;
+		if (!zf_platform_benchmark_update(&status)) {
 			cancelled = true;
 			break;
 		}
 		fill(status.written_bytes);
-		err = ef_platform_benchmark_transfer(true, (uint8_t *)buffer, sizeof(buffer), &count);
+		err = zf_platform_benchmark_transfer(true, (uint8_t *)buffer, sizeof(buffer), &count);
 		if (count > sizeof(buffer)) {
 			count = 0;
 			err = -EIO;
@@ -88,31 +88,31 @@ void ef_benchmark_run(uint32_t size_mib)
 			break;
 		}
 	}
-	err = ef_platform_benchmark_close();
+	err = zf_platform_benchmark_close();
 	opened = false;
 	close_failed = err != 0;
 	io_error(&status, err);
-	status.write_elapsed_ms = ef_platform_benchmark_time() - start;
+	status.write_elapsed_ms = zf_platform_benchmark_time() - start;
 	if (status.error || cancelled) {
 		goto cleanup;
 	}
-	err = ef_platform_benchmark_open(false);
+	err = zf_platform_benchmark_open(false);
 	if (err != 0) {
 		io_error(&status, err);
 		goto cleanup;
 	}
 	opened = true;
-	status.state = EF_BENCHMARK_READING;
-	start = ef_platform_benchmark_time();
+	status.state = ZF_BENCHMARK_READING;
+	start = zf_platform_benchmark_time();
 	while (status.read_bytes < status.target_bytes) {
 		uint32_t count = 0;
 
-		status.read_elapsed_ms = ef_platform_benchmark_time() - start;
-		if (!ef_platform_benchmark_update(&status)) {
+		status.read_elapsed_ms = zf_platform_benchmark_time() - start;
+		if (!zf_platform_benchmark_update(&status)) {
 			cancelled = true;
 			break;
 		}
-		err = ef_platform_benchmark_transfer(false, (uint8_t *)buffer, sizeof(buffer), &count);
+		err = zf_platform_benchmark_transfer(false, (uint8_t *)buffer, sizeof(buffer), &count);
 		if (err != 0 || count != sizeof(buffer)) {
 			io_error(&status, err != 0 ? err : -EIO);
 			break;
@@ -120,30 +120,30 @@ void ef_benchmark_run(uint32_t size_mib)
 		status.mismatch_count += mismatches(status.read_bytes);
 		status.read_bytes += count;
 		if (status.mismatch_count) {
-			status.error = EF_BENCHMARK_ERROR_VERIFY;
+			status.error = ZF_BENCHMARK_ERROR_VERIFY;
 			break;
 		}
 	}
-	err = ef_platform_benchmark_close();
+	err = zf_platform_benchmark_close();
 	opened = false;
 	close_failed = err != 0;
 	io_error(&status, err);
-	status.read_elapsed_ms = ef_platform_benchmark_time() - start;
+	status.read_elapsed_ms = zf_platform_benchmark_time() - start;
 
 cleanup:
-	status.state = EF_BENCHMARK_CLEANUP;
-	(void)ef_platform_benchmark_update(&status);
+	status.state = ZF_BENCHMARK_CLEANUP;
+	(void)zf_platform_benchmark_update(&status);
 	if (opened) {
-		err = ef_platform_benchmark_close();
+		err = zf_platform_benchmark_close();
 		close_failed = err != 0;
 		io_error(&status, err);
 	}
-	if (created && (close_failed || ef_platform_benchmark_remove() != 0)) {
-		status.flags |= EF_BENCHMARK_FILE_REMAINS;
+	if (created && (close_failed || zf_platform_benchmark_remove() != 0)) {
+		status.flags |= ZF_BENCHMARK_FILE_REMAINS;
 		if (!status.error) {
-			status.error = EF_BENCHMARK_ERROR_CLEANUP;
+			status.error = ZF_BENCHMARK_ERROR_CLEANUP;
 		}
 	}
-	status.state = status.error ? EF_BENCHMARK_FAILED : cancelled ? EF_BENCHMARK_CANCELLED : EF_BENCHMARK_PASSED;
-	(void)ef_platform_benchmark_update(&status);
+	status.state = status.error ? ZF_BENCHMARK_FAILED : cancelled ? ZF_BENCHMARK_CANCELLED : ZF_BENCHMARK_PASSED;
+	(void)zf_platform_benchmark_update(&status);
 }

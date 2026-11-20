@@ -2,7 +2,7 @@
 # Copyright (c) 2026 Ji Dong
 
 name: Feature Request
-description: Suggest an enhancement for ESPForge
+description: Suggest an enhancement for ZephyrForge
 labels: [enhancement]
 body:
   - type: textarea

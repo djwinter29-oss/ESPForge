@@ -5,18 +5,26 @@
  * @file Report polling and freshness: input reports, the status-report poll, the one Feature 12 poll owner and
  * scan/test lifecycle observation. Writes only `report/*` domain events.
  */
-import { decodeStorageReport, decodeTelemetryReport, decodeBenchmarkReport, decodeWireless } from "../protocol/codec.mjs";
 import {
-  CAP, OP, REPORT, REPORT_LIFETIME_MS, SCAN_STATE, STAGED_EXPIRED, WIFI_STATE,
+  decodeBenchmarkReport, decodeStorageReport, decodeTelemetryReport, decodeWireless,
+} from "../protocol/codec.mjs";
+import {
+  BLE_REPORT_LIFETIME_MS, CAP, OP, REPORT, REPORT_LIFETIME_MS, SCAN_STATE, STAGED_EXPIRED, WIFI_STATE,
 } from "../protocol/constants.mjs";
 import { OPCODES } from "../protocol/opcodes.mjs";
 import { BoardError, errorValue, REASON } from "../state/errors.mjs";
 import { withTimeout } from "../timers.mjs";
 
 /** @brief Report IDs whose snapshot expires; Feature 12 lifetime follows its poll interval. */
+/** @typedef {typeof REPORT.TELEMETRY | typeof REPORT.STORAGE | typeof REPORT.BENCHMARK | typeof REPORT.WIRELESS}
+ * TrackedReport */
+/** @type {TrackedReport[]} */
 export const TRACKED_REPORTS = [REPORT.TELEMETRY, REPORT.STORAGE, REPORT.BENCHMARK];
+/** @param {number} id @returns {id is TrackedReport} */
+const isTrackedReport = id => TRACKED_REPORTS.some(reportId => reportId === id) || id === REPORT.WIRELESS;
 
 /** @brief State cleared when a report expires. */
+/** @type {Record<number, Partial<import("../state/reducer.mjs").DashboardState>>} */
 const STALE = {
   [REPORT.TELEMETRY]: { runtime: null },
   [REPORT.STORAGE]: { memory: null, filesystem_format: null },
@@ -25,25 +33,52 @@ const STALE = {
 };
 
 /** @brief Feature 12 poll interval: fast while a Wi-Fi test or scan runs, otherwise 2 s. */
-export const wirelessPollInterval = wireless => wireless?.state === WIFI_STATE.TESTING
+/** @param {ReturnType<typeof decodeWireless> | null | undefined} wireless */
+export const wirelessPollIntervalMs = wireless => wireless?.state === WIFI_STATE.TESTING
   || wireless?.scan_state === SCAN_STATE.SCANNING ? 500 : 2000;
 
 /** @brief Whether a snapshot shows the saved (not staged or under test) SSID. */
+/** @param {ReturnType<typeof decodeWireless>} wireless */
 const showsSavedSsid = wireless => !wireless.staged_mask
-  && ![WIFI_STATE.TESTING, WIFI_STATE.TEST_JOINED, WIFI_STATE.TEST_FAILED].includes(wireless.state);
+  && wireless.state !== WIFI_STATE.TESTING && wireless.state !== WIFI_STATE.TEST_JOINED
+  && wireless.state !== WIFI_STATE.TEST_FAILED;
 
 /** @brief Lifetime of one report snapshot in milliseconds. */
-export const reportLifetime = (id, wireless) => id === REPORT.WIRELESS
-  ? 3 * wirelessPollInterval(wireless) : REPORT_LIFETIME_MS[id];
+/** @param {TrackedReport} id
+ * @param {ReturnType<typeof decodeWireless> | null | undefined} wireless
+ * @param {"usb" | "ble"} [link] */
+export const reportLifetimeMs = (id, wireless, link = "usb") => {
+  if (id === REPORT.WIRELESS) return 3 * wirelessPollIntervalMs(wireless);
+  const lifetimes = link === "ble" ? BLE_REPORT_LIFETIME_MS : REPORT_LIFETIME_MS;
+  if (id === REPORT.TELEMETRY) return lifetimes[REPORT.TELEMETRY];
+  if (id === REPORT.STORAGE) return lifetimes[REPORT.STORAGE];
+  if (id === REPORT.BENCHMARK) return lifetimes[REPORT.BENCHMARK];
+  throw new BoardError(REASON.INVALID_REPORT, id);
+};
+
+/**
+ * @typedef {object} PollingSession
+ * @property {import("../state/reducer.mjs").DashboardState
+ *   & {freshness: Record<number, "fresh" | "stale" | "unavailable">}} state
+ * @property {object | null} device
+ * @property {AbortSignal} connectionSignal
+ * @property {number} timeout
+ * @property {ReturnType<typeof import("../timers.mjs").createTimerScope>} timers
+ * @property {() => number} now
+ * @property {(milliseconds: number, signal?: AbortSignal) => Promise<void>} sleep
+ * @property {import("../transport/transport.mjs").Transport} transport
+ * @property {boolean} disposed
+ * @property {(type: string, changes: Partial<import("../state/reducer.mjs").DashboardState>) => void} emit
+ */
 
 /**
  * @brief Interpret one Feature 12 snapshot for an accepted scan/test lifecycle.
- * @param status Decoded Feature 12 snapshot.
- * @param pending Lifecycle record `{operation, generation}`.
+ * @param {ReturnType<typeof decodeWireless>} status Decoded Feature 12 snapshot.
+ * @param {import("../state/reducer.mjs").WirelessLifecycle} pending Lifecycle record `{operation, generation}`.
  * @return `{kind: "completed", result}`, `{kind: "failed", error: BoardError}`, or null while still running; throws
  *   when the board started a different generation.
  */
-export function lifecycleOutcome(status, pending) {
+export function wirelessLifecycleOutcome(status, pending) {
   if (pending.operation === OP.SCAN) {
     if (status.scan_generation !== pending.generation) throw new BoardError(REASON.SCAN_GENERATION_CHANGED);
     if (status.scan_state === SCAN_STATE.FAILED) {
@@ -56,7 +91,7 @@ export function lifecycleOutcome(status, pending) {
       return { kind: "failed", error: new BoardError(REASON.TEST_FAILED, status.detail || null) };
     }
     if (status.state === WIFI_STATE.TEST_JOINED && status.pair_tested) {
-      // ponytail: no lifetime is transmitted; the board starts a 600s window on success. Subtract polling latency.
+      // No lifetime is transmitted; the board starts a 600 s window on success. Subtract polling latency.
       return { kind: "completed", result: { ...status, remaining_seconds: 599 } };
     }
   }
@@ -66,46 +101,55 @@ export function lifecycleOutcome(status, pending) {
 /** @brief Receipt clock for fresh reports; owns its one expiry timer. */
 export class ReportReceipts {
   /**
-   * @param timers Timer scope owning the expiry timer.
+   * @param {ReturnType<typeof import("../timers.mjs").createTimerScope>} timers Timer scope owning the expiry timer.
    * @param {() => number} now Monotonic clock in milliseconds.
-   * @param {() => object | null} wireless Current wireless snapshot, for the Feature 12 lifetime.
+   * @param {() => ReturnType<typeof decodeWireless> | null | undefined} wireless Current wireless snapshot.
+   * @param {"usb" | "ble"} [link] Link whose delivery cadence sets the status-report deadlines.
    */
-  constructor(timers, now, wireless) {
+  constructor(timers, now, wireless, link = "usb") {
     this.timers = timers;
     this.now = now;
     this.wireless = wireless;
-    /** @type {Map<number, number>} Report ID to receipt time. */
+    this.link = link;
+    /** @type {Map<TrackedReport, number>} Report ID to receipt time. */
     this.received = new Map();
     this.timer = null;
   }
 
+  /** @param {TrackedReport} id */
   get(id) { return this.received.get(id); }
   get size() { return this.received.size; }
 
+  /** @param {TrackedReport} id */
   record(id) { this.received.set(id, this.now()); }
 
   /**
    * @brief Drop expired (or, when suspended, all) receipts.
    * @return State changes with `freshness`, or null when nothing expired.
    */
+  /** @param {Record<number, "fresh" | "stale" | "unavailable">} freshness @param {boolean} [suspended] */
   expire(freshness, suspended = false) {
+    /** @type {Partial<import("../state/reducer.mjs").DashboardState>} */
     const changes = {};
     const next = { ...freshness };
     for (const [id, received] of this.received) {
-      if (!suspended && this.now() - received < reportLifetime(id, this.wireless())) continue;
+      if (!suspended && this.now() - received < reportLifetimeMs(id, this.wireless(), this.link)) continue;
       this.received.delete(id);
       next[id] = "stale";
-      Object.assign(changes, STALE[id]);
+      const stale = STALE[id];
+      if (!stale) throw new BoardError(REASON.INVALID_REPORT, id);
+      Object.assign(changes, stale);
     }
     return Object.keys(changes).length ? { ...changes, freshness: next } : null;
   }
 
   /** @brief Arm one timer for the earliest expiry; nothing is armed while there are no receipts. */
+  /** @param {() => void} onExpire */
   schedule(onExpire) {
     this.cancel();
     if (!this.received.size) return;
     const deadline = Math.min(...[...this.received].map(([id, received]) =>
-      received + reportLifetime(id, this.wireless())));
+      received + reportLifetimeMs(id, this.wireless(), this.link)));
     this.timer = this.timers.setTimeout(() => {
       this.timer = null;
       onExpire();
@@ -127,14 +171,15 @@ export class ReportReceipts {
 /** @brief Report reader and freshness owner for one board session. */
 export class Polling {
   /**
-   * @param {import("./session.mjs").BoardSession} session Facade giving access to the transport, store and peers.
+   * @param {PollingSession} session Report and link services used by polling.
    * @param {boolean} enabled Whether the session polls Feature 12 on its own.
    */
   constructor(session, enabled) {
     this.session = session;
     /** Feature 12 polling switch; tests disable it to drive reads explicitly. */
     this.enabled = enabled;
-    this.receipts = new ReportReceipts(session.timers, () => session.now(), () => session.state.wireless);
+    this.receipts = new ReportReceipts(session.timers, () => session.now(), () => session.state.wireless,
+      session.transport.kind);
     this.pollTimer = null;
     this.wirelessPollTimer = null;
     /** Clock value of the last Feature 12 poll. */
@@ -145,61 +190,67 @@ export class Polling {
   }
 
   /** @brief Record one status report from the transport or the poll. */
+  /** @param {{reportId: number, data: DataView | Uint8Array}} event */
   onInputReport(event) {
     const s = this.session;
     const state = s.state;
     if (!state.connected || s.connectionSignal.aborted) return;
+    const hardware = state.hardware;
+    if (!hardware) return;
     const id = event.reportId;
-    if (!TRACKED_REPORTS.includes(id)) return;
+    if (!isTrackedReport(id)) return;
     if (id === REPORT.BENCHMARK && !((state.hardware?.capabilities ?? 0) & CAP.SELF_TEST)) {
       s.emit("report/failed", { error: { code: REASON.INVALID_REPORT, detail: "benchmark-capability" } });
       return;
     }
     try {
-      const changes = id === REPORT.TELEMETRY ? { runtime: decodeTelemetryReport(event.data, this.session.state.hardware) }
+      /** @type {Partial<import("../state/reducer.mjs").DashboardState>} */
+      const changes = id === REPORT.TELEMETRY ? { runtime: decodeTelemetryReport(event.data, hardware) }
         : id === REPORT.BENCHMARK ? { self_test: decodeBenchmarkReport(event.data) }
-          : decodeStorageReport(event.data, s.state.hardware);
+          : decodeStorageReport(event.data, hardware);
       this.receipts.record(id);
       this.scheduleExpiry();
       s.emit("report/received", { ...changes, freshness: { ...state.freshness, [id]: "fresh" } });
     } catch (error) { s.emit("report/failed", { error: errorValue(error) }); }
   }
 
+  /** @brief Publish expired (or, when suspended, all) report snapshots as stale and re-arm the expiry timer. */
+  /** @param {boolean} [suspended] */
   expireReports(suspended = false) {
     const changes = this.receipts.expire(this.session.state.freshness, suspended);
     if (changes) this.session.emit("report/expired", changes);
     this.scheduleExpiry();
   }
 
-  /** Require a new LED/telemetry observation after admission or reconciliation. */
-  invalidateTelemetry() {
-    this.receipts.received.delete(REPORT.TELEMETRY);
-    this.session.emit("report/expired", { ...STALE[REPORT.TELEMETRY],
-      freshness: { ...this.session.state.freshness, [REPORT.TELEMETRY]: "stale" } });
+  /**
+   * @brief Mark reports stale until a new receipt arrives, so gates wait for the board to reflect a command.
+   * @param {number[]} [ids] Tracked report IDs; none is a no-op.
+   */
+  invalidate(ids = []) {
+    if (!ids.length) return;
+    const freshness = { ...this.session.state.freshness };
+    /** @type {Partial<import("../state/reducer.mjs").DashboardState>} */
+    const changes = { freshness };
+    for (const id of ids) {
+      if (!isTrackedReport(id)) throw new BoardError(REASON.INVALID_REPORT, id);
+      const stale = STALE[id];
+      if (!stale) throw new BoardError(REASON.INVALID_REPORT, id);
+      this.receipts.received.delete(id);
+      Object.assign(changes, stale);
+      freshness[id] = "stale";
+    }
+    this.session.emit("report/expired", changes);
     this.scheduleExpiry();
   }
 
-  /** @brief Require a new storage receipt after an admitted or reconciled ownership handoff. */
-  invalidateStorage() {
-    this.receipts.received.delete(REPORT.STORAGE);
-    this.session.emit("report/expired", { ...STALE[REPORT.STORAGE],
-      freshness: { ...this.session.state.freshness, [REPORT.STORAGE]: "stale" } });
-    this.scheduleExpiry();
-  }
-
-  /** Require fresh progress after a benchmark command or explicit reconciliation. */
-  invalidateBenchmark() {
-    this.receipts.received.delete(REPORT.BENCHMARK);
-    this.session.emit("report/expired", { ...STALE[REPORT.BENCHMARK],
-      freshness: { ...this.session.state.freshness, [REPORT.BENCHMARK]: "stale" } });
-    this.invalidateStorage();
-  }
-
+  /** @brief Arm the expiry timer while a link is open. */
   scheduleExpiry() {
     if (this.session.device) this.receipts.schedule(() => this.expireReports());
     else this.receipts.cancel();
   }
 
+  /** @brief Read one report with a timeout; throws if the connection changed meanwhile. */
+  /** @param {number} id @param {AbortSignal} [signal] @param {number} [timeout] */
   async readReport(id, signal = this.session.connectionSignal, timeout = this.session.timeout) {
     const s = this.session;
     const device = s.device;
@@ -209,6 +260,7 @@ export class Polling {
     return report;
   }
 
+  /** @brief Read status reports on links without Input reports while idle, then reschedule itself. */
   async pollReports() {
     const s = this.session;
     s.timers.clearTimeout(this.pollTimer);
@@ -241,9 +293,11 @@ export class Polling {
     const s = this.session;
     s.timers.clearTimeout(this.wirelessPollTimer);
     this.wirelessPollTimer = null;
-    if (!this.enabled || s.disposed || !s.state.connected || !(s.state.hardware?.capabilities & CAP.WIRELESS)) return;
+    const hardware = s.state.hardware;
+    if (!this.enabled || s.disposed || !s.state.connected || !hardware || !(hardware.capabilities & CAP.WIRELESS))
+      return;
     if (this.wirelessReading) return;
-    const delay = this.wirelessLastRead + wirelessPollInterval(s.state.wireless) - s.now();
+    const delay = this.wirelessLastRead + wirelessPollIntervalMs(s.state.wireless) - s.now();
     if (delay <= 0 && !s.state.busy && !s.state.reboot_pending && !s.state.pending_request
       && !s.state.wireless_busy) {
       void this.readWirelessNow();
@@ -253,6 +307,7 @@ export class Polling {
     this.wirelessPollTimer.unref?.();
   }
 
+  /** @brief Read Feature 12 once for the poll owner; failures expire reports and record a poll error. */
   async readWirelessNow() {
     const s = this.session;
     const signal = s.connectionSignal;
@@ -271,10 +326,11 @@ export class Polling {
   }
 
   /** @brief Read and record one Feature 12 snapshot; throws if the connection changed meanwhile. */
+  /** @param {AbortSignal} [operationSignal] @param {object | null} [device] */
   async readWireless(operationSignal, device = this.session.device) {
     const s = this.session;
     const signal = operationSignal ? AbortSignal.any([s.connectionSignal, operationSignal]) : s.connectionSignal;
-    const wireless = decodeWireless(await this.readReport(REPORT.WIRELESS, signal, 1500), s.state.settings);
+    const wireless = decodeWireless(await this.readReport(REPORT.WIRELESS, signal, 1500), s.state.settings ?? undefined);
     if (signal.aborted || device !== s.device) throw new BoardError(REASON.WIRELESS_CONNECTION_CHANGED);
     if (showsSavedSsid(wireless)) this.savedSsidHex = wireless.ssid_hex;
     this.receipts.record(REPORT.WIRELESS);
@@ -285,15 +341,20 @@ export class Polling {
   }
 
   /** @brief Poll Feature 12 until the pending scan/test lifecycle completes or fails; never replays it. */
+  /** @param {import("../state/reducer.mjs").WirelessLifecycle} pending
+   * @param {(progress: import("../state/reducer.mjs").ReasonValue) => void} [onProgress]
+   * @param {AbortSignal} [operationSignal] */
   async waitLifecycle(pending, onProgress, operationSignal) {
     const s = this.session;
     const device = s.device;
     const signal = operationSignal ? AbortSignal.any([s.connectionSignal, operationSignal]) : s.connectionSignal;
-    const deadline = s.now() + OPCODES[pending.operation].lifecycle.timeoutMs;
+    const lifecycle = OPCODES[pending.operation]?.lifecycle;
+    if (!lifecycle) throw new BoardError(REASON.JOURNAL_LIFECYCLE);
+    const deadline = s.now() + lifecycle.timeoutMs;
     while (s.now() < deadline) {
       if (signal.aborted) throw new BoardError(REASON.WIRELESS_UNCERTAIN);
       const status = await this.readWireless(signal, device);
-      const outcome = lifecycleOutcome(status, pending);
+      const outcome = wirelessLifecycleOutcome(status, pending);
       if (outcome) return outcome;
       onProgress?.(status.detail ? { code: REASON.WIFI_DETAIL, detail: status.detail } : REASON.WIRELESS_CONNECTING);
       await s.sleep(500, signal);

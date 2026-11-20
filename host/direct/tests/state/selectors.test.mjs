@@ -52,9 +52,11 @@ test("operation eligibility is one rule table for storage, settings and wireless
 
 test("benchmark starts need fresh firmware storage; cancellation works with a busy SD sample", () => {
   const state = readyState({ hardware: { capabilities: 0xb6 },
+    filesystem_format: "fat32",
     freshness: { 10: "fresh", 11: "fresh" }, memory: { sample_valid: true, initialized: true },
     self_test: { active: false } });
   assert.equal(canRun(state, "benchmark").allowed, true);
+  assert.equal(canRun({ ...state, filesystem_format: "unknown" }, "benchmark").allowed, false);
   assert.equal(canRun({ ...state, link: "ble" }, "benchmark").allowed, false);
   assert.equal(canRun({ ...state, freshness: { 10: "fresh", 11: "stale" } }, "benchmark").allowed, false);
   const active = { ...state, self_test: { active: true }, memory: { sample_valid: false } };
@@ -82,9 +84,11 @@ test("canRun is the one gate and names the first failing precondition per operat
     ["settings", { memory: null }, "Fresh storage status required before saving."],
     ["settings", { hardware: { capabilities: 16 } }, "Unavailable capability"],
     ["settings", { pending_request: { opcode: 2 } }, blocked],
-    ["wireless", { wireless_busy: true }, wireless],
-    ["wireless", { link: "ble" }, wireless],
-    ["wireless", { hardware: { capabilities: 2 | 4 | 16 } }, wireless],
+    ["wireless", { wireless_busy: true }, blocked],
+    ["wireless", { link: "ble" }, "This operation requires USB."],
+    ["wireless", { hardware: { capabilities: 2 | 4 | 16 } }, "Unavailable capability"],
+    ["wireless", { freshness: { 10: "stale" } }, wireless],
+    ["wireless", { outcome_uncertain: true }, blocked],
   ];
   for (const [operation, changes, reason] of cases) {
     const result = canRun({ ...ready, ...changes }, operation);

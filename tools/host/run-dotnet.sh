@@ -7,13 +7,13 @@ set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
 REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)
 DOTNET_EXE="${DOTNET:-dotnet}"
-PROJECT="$REPO_ROOT/host/dotnet/ESPForge/ESPForge.csproj"
+PROJECT="$REPO_ROOT/host/dotnet/ZephyrForge/ZephyrForge.csproj"
 
 usage() {
     cat <<'EOF'
 Usage: tools/host/run-dotnet.sh [application arguments...]
 
-Run the ESPForge .NET host dashboard at http://127.0.0.1:8002/ by default.
+Run the ZephyrForge .NET host dashboard at http://127.0.0.1:8002/ by default.
 Pass --port PORT to override the port. Set DOTNET to select a .NET 10 SDK executable.
 EOF
 }
@@ -32,7 +32,7 @@ if ! command -v "$DOTNET_EXE" >/dev/null 2>&1; then
 fi
 
 if [ ! -f "$PROJECT" ]; then
-    echo "ESPForge .NET project not found: $PROJECT" >&2
+    echo "ZephyrForge .NET project not found: $PROJECT" >&2
     exit 1
 fi
 

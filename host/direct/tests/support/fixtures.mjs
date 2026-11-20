@@ -5,7 +5,7 @@ import { describe } from "../../web/js/ui/messages.mjs";
 import { BoardSession } from "../../web/js/board/session.mjs";
 import { HidTransport } from "../../web/js/transport/hid.mjs";
 
-/** @brief ESPForge capabilities: reboot, settings, SDMMC storage, wireless (0x96). */
+/** @brief ZephyrForge capabilities: reboot, settings, SDMMC storage, wireless (0x96). */
 export const CAPABILITIES = 2 | 4 | 16 | 128;
 
 export function identity(capabilities = CAPABILITIES) {

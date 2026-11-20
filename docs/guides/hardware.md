@@ -3,7 +3,7 @@
 ## Initial target
 
 The starter targets `esp32s3_devkitc/esp32s3/procpu` in Zephyr 4.3.2.
-ESPForge builds for the ESP32-S3-DevKitC-1 **N16R8** (ESP32-S3-WROOM-1-N16R8 module): 16 MB quad flash and
+ZephyrForge builds for the ESP32-S3-DevKitC-1 **N16R8** (ESP32-S3-WROOM-1-N16R8 module): 16 MB quad flash and
 8 MB octal PSRAM. The project configuration selects the N16R8 memory sizes and partition layout
 (settings in `storage_partition` at `0xFB0000`), with octal PSRAM at 40 MHz and a boot-time memory test.
 PSRAM provides a separate 1 MB shared multi-heap; the kernel heap, Wi-Fi and BLE buffers stay in internal RAM.
@@ -13,7 +13,7 @@ Check the module marking. An image for N16R8 does not suit N4/N8 modules (smalle
 or N32R16V/N16R16VA modules (octal flash). Other boards need their own DTS/flash configuration and validation;
 do not assume compatibility from the ESP32-S3 chip name alone.
 
-The DevKitC has two USB-C connectors, and ESPForge uses both:
+The DevKitC has two USB-C connectors, and ZephyrForge uses both:
 
 | Connector | ESP32-S3 interface | Used for |
 | --- | --- | --- |
@@ -33,13 +33,13 @@ Wire with power disconnected. Do not apply 5 V to ESP32 GPIOs or a bare SD card.
 This is proposed wiring, not electrically qualified hardware.
 
 The alternate SD-over-SPI image supports a 3.3 V SPI socket/module without DAT1/DAT2 wiring.
-Follow the [SD pin allocation](../reference/sdcard.md#pin-allocation) for the selected image, GPIO8 active-high
+Follow the [SD pin allocation](../reference/sdcard.md#pin-allocation) for the selected image, GPIO8 active-low
 card detection, supply and ground. An unwired detection input reads absent and prevents mounting.
 
 GPIO assignments use explicit hardware pinctrl for native SDMMC slot 0 or SPI3.
 The ESP32-S3 has 512 KiB of internal SRAM and no on-chip flash. N16R8 specifies the module's 16 MiB SPI flash
 and 8 MiB octal PSRAM; both are external to the SoC. PSRAM is volatile RAM, not additional flash.
-The Module memory panel separates SRAM reservation, PSRAM reservation/capacity and detected module-flash
+The Module memory details separate SRAM reservation, PSRAM reservation/capacity and detected module-flash
 capacity. Reservations include linked regions and permanent heap pools, not live usage. Unknown or unavailable
 inventory remains `--`; it is not inferred from the board name. No additional flash chip or interface is configured.
 
@@ -66,9 +66,10 @@ not establish the link's condition on the actual board.
 
 Octal PSRAM occupies GPIO33-37, so those pins are not available on N16R8.
 Leave boot-strapping and onboard flash/PSRAM pins alone. Consult your exact board schematic.
-The requested SD bus ceiling is 25 MHz for either image; this is not a measured bus frequency or throughput claim.
+The requested SD bus ceiling is 40 MHz for native SDMMC and 25 MHz for SPI; this is not a measured bus frequency
+or throughput claim. Native speed is negotiated with the card; higher-speed wiring still needs write qualification.
 
-Prepare an existing FAT16/FAT32 volume on your computer and back up its data.
+Prepare an existing FAT16, FAT32 or exFAT volume on your computer and back up its data.
 Cards may be inserted after startup or replaced; detection mounts them for firmware, not automatically for USB.
 Power switching is not implemented. Power-cycle the card when switching between native SDMMC and SPI images;
 a board-only reset may leave the card in SPI mode.

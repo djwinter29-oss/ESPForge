@@ -5,16 +5,16 @@
 
 # pyright: reportPrivateUsage=false
 
-from espforge.dashboard.boards import DashboardBoards
-from espforge.dashboard.models import ControlResponse, DashboardSnapshot, ResyncResponse, SettingsResponse
-from espforge.dashboard.monitor import DeviceMonitor
-from espforge.dashboard.server import _board, create_app
+from zephyrforge.dashboard.boards import DashboardBoards
+from zephyrforge.dashboard.models import ControlResponse, DashboardSnapshot, ResyncResponse, SettingsResponse
+from zephyrforge.dashboard.monitor import DeviceMonitor
+from zephyrforge.dashboard.server import _board, create_app
 from flask import Flask
-from espforge.hid.device import ESPForgeHid
-from espforge.reports.models import ControlResult, HardwareIdentity, InputReport, WirelessStatus, WirelessTestResult
+from zephyrforge.hid.device import ZephyrForgeHid
+from zephyrforge.reports.models import ControlResult, HardwareIdentity, InputReport, WirelessStatus, WirelessTestResult
 
 
-def check_command_types(client: ESPForgeHid, monitor: DeviceMonitor) -> None:
+def check_command_types(client: ZephyrForgeHid, monitor: DeviceMonitor) -> None:
     _reboot: ControlResult = monitor._send_control(client.reboot)
     _wireless: WirelessTestResult = monitor._send_control(client.test_wireless, b"raw SSID", "password")
     _control: ControlResponse = monitor.reboot()
@@ -35,7 +35,7 @@ def check_route_types(boards: DashboardBoards) -> None:
     _invalid: str = _board(boards).set_settings({})["settings"]["radios"]  # pyright: ignore[reportAssignmentType]
 
 
-def check_lifecycle_types(client: ESPForgeHid, monitor: DeviceMonitor, result: ControlResult) -> None:
+def check_lifecycle_types(client: ZephyrForgeHid, monitor: DeviceMonitor, result: ControlResult) -> None:
     _snapshot: DashboardSnapshot = monitor.snapshot()
     _cleanup: bool = _snapshot["wireless_cleanup_required"]
     _identity: HardwareIdentity = client.read_info()

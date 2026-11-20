@@ -2,6 +2,7 @@
 
 Keep dated observations here. Every record identifies source/configuration/tool versions,
 what actually ran, what was simulated, and what remains untested.
+Dated results apply only to the source revisions and configurations tested, not automatically to the current checkout.
 
 - [Initial software setup](2026-11-07-setup.md)
 - [Native firmware unit-test setup](2026-11-07-ceedling.md)
@@ -13,5 +14,9 @@ what actually ran, what was simulated, and what remains untested.
 - [Boot settings](2026-11-07-boot-settings.md)
 - [USB HID, BLE and Wi-Fi implementation](2026-11-07-hid-ble-implementation.md)
 - [N16R8 flash and PSRAM](2026-11-07-n16r8-flash-psram.md)
+- [Functional hardware test report](2026-11-14-hardware-tests.md)
+- [Native SDMMC write reliability](2026-11-20-sd-write-reliability.md)
+- [Firmware software gates and qualification checks](2026-11-20-firmware-qualification.md)
+- [Native SDMMC clock and throughput improvement](2026-11-20-sdmmc-performance.md)
 
 Records are evidence, not operating instructions or blanket qualification.

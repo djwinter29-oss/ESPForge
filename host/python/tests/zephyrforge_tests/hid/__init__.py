@@ -1,0 +1,1 @@
+"""HID client tests."""

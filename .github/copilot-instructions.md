@@ -1,8 +1,9 @@
-# ESPForge Copilot Instructions
+# ZephyrForge Copilot Instructions
 
 ## Project boundaries
 
-- ESPForge is an ESP32-S3 Zephyr foundation, not a Pico SDK/TinyUSB firmware port.
+- ZephyrForge is a Zephyr foundation for a range of MCUs, not a Pico SDK/TinyUSB firmware port. ESP32-S3 is the
+  first and only supported target; add multi-target abstractions only when a second target needs them.
 - Preserve the ESP32-S3-DevKitC-1 N16R8 target: 16 MB flash, 8 MB octal PSRAM and a single PROCPU application.
 - Management uses native USB HID and authenticated Bluetooth LE. UART is for flashing and console logs.
 - Preserve native four-bit SDMMC, boot-time FAT mounting and no automatic formatting.
@@ -52,10 +53,10 @@
 - Keep `tools/` for human-operated utilities; do not put test scripts or test suites anywhere under it.
   Place tests in the relevant component's test directory instead.
 - Portable firmware: `bundle exec ceedling test:all`; use a focused suite when appropriate.
-- Target firmware: from an initialized Zephyr workspace, run `bash espforge/tools/firmware/build.sh`, then
-  `python espforge/tools/check_firmware_config.py`. Native tests do not validate Zephyr driver integration.
+- Target firmware: from an initialized Zephyr workspace, run `bash zephyrforge/tools/firmware/build.sh`.
+  Native tests do not validate Zephyr driver integration.
 - Python: `python3 -m unittest discover -s host/python/tests -v`.
-- .NET: `dotnet test host/dotnet/ESPForge.Tests`.
+- .NET: `dotnet test host/dotnet/ZephyrForge.Tests`.
 - Dashboards: `node host/web/tests/run-tests.mjs` and `node host/direct/tests/run-tests.mjs`.
 - Preserve existing Python and dashboard type checks; use the commands in the
   [host development guide](../docs/development/host-tools.md).

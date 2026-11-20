@@ -6,6 +6,21 @@ import test from "node:test";
 import { withDocument, snapshot } from "../../support/view.mjs";
 import { deriveStorageViewModel } from "../../../web/js/ui/sections/storage.mjs";
 
+test("initialized unmounted storage retains hardware identity without claiming mount readiness", () => {
+  const state = snapshot();
+  state.filesystem_format = "unknown";
+  state.memory = { ...state.memory, capacity_bytes: 64 * 1024 ** 3, bus_clock_hz: 25000000,
+    manufacturer: { id: 3, product_name: "SD64G", product_revision: "1.0",
+      manufacture_year: 2026, manufacture_month: 11, serial_number: 0x12345678 } };
+  const model = deriveStorageViewModel(state);
+  assert.equal(model.text["memory-state"], "Not mounted");
+  assert.match(model.text["memory-note"], /initialized but filesystem not mounted/);
+  assert.equal(model.text["memory-filesystem"], "Unknown");
+  assert.equal(model.text["memory-speed"], "25 MHz");
+  assert.match(model.text["memory-product"], /SD64G/);
+  assert.equal(model.text["memory-serial"], "12345678");
+});
+
 test("storage does not infer absence from an unavailable sample or mount from cached format", () =>
   withDocument((el, renderStatus) => {
   const state = snapshot();
@@ -20,7 +35,8 @@ test("storage does not infer absence from an unavailable sample or mount from ca
   state.memory.present = true; state.memory.initialized = false;
   renderStatus(state);
   assert.equal(el('[aria-labelledby="memory-title"]').hidden, false);
-  assert.equal(el("#memory-note").textContent, "Card detected but not initialized; check UART logs and SD-card wiring.");
+  assert.equal(el("#memory-note").textContent,
+    "Card detected but not initialized; check UART logs and SD-card wiring.");
   state.memory.presence_known = false; state.memory.present = false;
   renderStatus(state);
   assert.equal(el("#memory-note").textContent, "No card mounted; check card insertion and SD-card wiring.");
@@ -39,7 +55,8 @@ test("Direct dashboard retains storage visibility through stale reports without 
       state.storage_stale = true;
       state.freshness[10] = "stale";
       render(state);
-      assert.equal(el('[aria-labelledby="memory-title"]').hidden, true, "A missing report must not reveal absent storage");
+      assert.equal(el('[aria-labelledby="memory-title"]').hidden, true,
+        "A missing report must not reveal absent storage");
 
       state.memory = { sample_valid: true, presence_known: true, present: true, initialized: true, configured: true };
       state.storage_stale = false;

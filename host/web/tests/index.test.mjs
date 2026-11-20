@@ -12,9 +12,10 @@ test("server dashboard keeps radio dialogs and confirmation controls without dro
     const footer = dashboard.split('<footer class="status-line"')[1].split("</footer>")[0];
     assert.doesNotMatch(settings, /id="settings-note"/);
     assert.doesNotMatch(settings, /wireless-actions|wifi-open|ble-open/);
-    assert.doesNotMatch(settings, /id="(?:wifi|ble)-configure"/);
-    for (const radio of ["wifi", "ble"])
-      assert.match(settings, new RegExp(`id="settings-${radio}"[^>]*>[\\s\\S]*?value="configure"[^>]*>Configure…`));
+    for (const radio of ["wifi", "ble"]) {
+      assert.match(settings, new RegExp(`id="settings-${radio}"[^>]*>[\\s\\S]*?value="0">Disabled`));
+      assert.match(settings, new RegExp(`id="${radio}-configure"[^>]*>Configure ${radio === "wifi" ? "Wi-Fi" : "Bluetooth"}`));
+    }
     const board = settings.split('<div class="settings-controls">')[1].split('<p id="wireless-summary"')[0];
     assert.deepEqual([...board.matchAll(/<label for="([^"]+)"/g)].map(match => match[1]),
       ["settings-clock", "settings-wifi", "settings-ble"]);
@@ -30,8 +31,15 @@ test("server dashboard keeps radio dialogs and confirmation controls without dro
     assert.doesNotMatch(dashboard, /role="listbox"|role="option"/);
     assert.doesNotMatch(dashboard, /id="wireless-save"/);
     assert.match(dashboard, /id="configuration-wireless-warning" hidden/);
+    assert.match(dashboard,
+      /id="configuration-dialog"[^>]*aria-describedby="configuration-dialog-summary configuration-warning"/);
     assert.match(footer, /role="status" aria-live="polite"/);
-    assert.match(footer, /id="status-message"[\s\S]*id="settings-note"/);
+    assert.doesNotMatch(footer, /<footer[^>]*role="status"/);
+    assert.match(footer, /id="status-message" role="status" aria-live="polite"/);
+    assert.match(footer, /id="settings-note" role="status" aria-live="polite"/);
+    assert.match(settings, /id="settings-dirty-indicator" hidden>Unsaved changes/);
+    assert.match(dashboard, /<dialog[^>]*id="board-switch-dialog"/);
+    assert.match(dashboard, /id="reboot-board-target"/);
     assert.equal([...dashboard.matchAll(/id="settings-note"/g)].length, 1);
     assert.doesNotMatch(dashboard,
       /id="(self-test[^"]*|share-dialog|return-dialog|configuration-force-warning|cdc-state)"/);

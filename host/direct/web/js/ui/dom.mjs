@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: BSD-3-Clause
 // Copyright (c) 2026 Ji Dong
 
-/** Cache required DOM elements per document; no board or protocol access. */
+/** @file Cached required-element lookup and text updates; no board or protocol access. */
+
 /** @type {WeakMap<Document, Map<string, HTMLElement>>} */
 const elementsByRoot = new WeakMap();
 
@@ -19,6 +20,7 @@ const elementsByRoot = new WeakMap();
  * @return {HTMLElement}
  */
 /**
+ * @brief Return a required HTML element, cached per document; `tag#id` selectors also check the tag.
  * @param {string} selector
  * @param {Document} [root]
  * @return {HTMLElement}
@@ -42,7 +44,10 @@ export function queryElement(selector, root = document) {
   return html;
 }
 
-/** @param {Record<string, unknown>} values */
+/**
+ * @brief Set each element's text by ID, writing only changed values; null and undefined render empty.
+ * @param {Record<string, unknown>} values
+ */
 export function setText(values) {
   for (const [id, value] of Object.entries(values)) {
     const element = queryElement(`#${id}`);

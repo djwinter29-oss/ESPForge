@@ -47,10 +47,12 @@ test("Direct modules keep the agreed ownership and dependency boundaries", () =>
     }
   }
   assert.doesNotMatch(sources.get("app.mjs"), /querySelector|queryElement|\.command\(/);
-  assert.doesNotMatch(sources.get("board/session.mjs"), /HidTransport|BleTransport|receiveFeatureReport|sendFeatureReport/);
-  assert.doesNotMatch(sources.get("ui/sections/wireless-form.mjs"), /getRandomValues|writeText\(|bytesToHex/,
+  assert.doesNotMatch(sources.get("board/session.mjs"),
+    /HidTransport|BleTransport|receiveFeatureReport|sendFeatureReport/);
+  assert.doesNotMatch(sources.get("ui/sections/wireless-form/wireless-form.mjs"),
+    /getRandomValues|writeText\(|bytesToHex/,
     "wireless coordination delegates key generation and clipboard work");
-  assert.doesNotMatch(sources.get("ui/sections/wireless-form-view.mjs"),
+  assert.doesNotMatch(sources.get("ui/sections/wireless-form/wireless-form-view.mjs"),
     /addEventListener|setInterval|setTimeout|\.scanWireless\(|\.testWireless\(|\.cancelWireless\(/,
     "wireless presentation applies snapshots without initiating operations");
 });
@@ -142,9 +144,24 @@ test("every opcode has one complete descriptor and every reason code has dashboa
   }
   assert.equal(describe(new DOMException("Timed out", "TimeoutError")), "Unexpected error: Timed out",
     "DOMException numeric codes are not reasons; uncoded errors keep their message only as diagnostic detail");
+  assert.equal(describe(new BoardError(REASON.OUTCOME_UNCERTAIN)),
+    "Command outcome is uncertain; Direct will inspect it after reconnect. If it remains unresolved, inspect the "
+      + "board before clearing the local recovery hold. Never retry until the effect is known.");
   assert.match(describe(new DOMException(REASON.IO_TIMEOUT, "TimeoutError")), /timeout; command outcome uncertain/);
   assert.equal(describe(new BoardError(REASON.INVALID_REPORT, "storage-status")), "Invalid HID storage status");
   assert.equal(describe(new BoardError(REASON.INVALID_INPUT, "control-key")), "Invalid Control key (64 hex digits)");
+  assert.equal(describe(new BoardError(REASON.COMMAND_FAILED,
+    { opcode: 2, status: 3, error: 4, detail: 5 })), "Command 2: status 3, error 4, detail 5");
+  assert.equal(describe(new BoardError(REASON.COMMAND_FAILED, null)), "Command failed");
+  assert.equal(describe(new BoardError(REASON.CLOSE_FAILED,
+    { cause: new Error("USB closed"), close: "handle release failed" })),
+  "Unexpected error: USB closed; closing the transport failed: handle release failed");
+  assert.equal(describe(new BoardError(REASON.CLOSE_FAILED, {
+    cause: { code: REASON.UNEXPECTED, detail: { name: "Error", message: "Configuration read failed" } },
+    close: { code: REASON.UNEXPECTED, detail: { name: "Error", message: "USB handle cleanup failed" } },
+  })), "Unexpected error: Configuration read failed; closing the transport failed: "
+    + "Unexpected error: USB handle cleanup failed");
+  assert.equal(describe(new BoardError(REASON.CLOSE_FAILED, null)), "Closing the transport failed");
   assert.equal(describe(Object.assign(new Error("x"), { name: "NotFoundError" })), "No board was selected.");
 });
 
@@ -173,12 +190,15 @@ test("Direct stays self-contained: browser management and local console, no host
       `${path}: Direct has no Web Serial or host/web dependency`);
   }
   assert.ok(!paths.some(path => /serial|demo/.test(path)), "no Web Serial or demo modules");
-  const html = readFileSync(new URL("index.html", web), "utf8");
-  for (const [, url] of html.matchAll(/\b(?:href|src)="([^"]+)"/g)) {
-    if (url === "./") continue;
-    assert.doesNotMatch(url, /^(?:[a-z]+:|\/|\.\.\/)/i, `${url} must stay inside host/direct/web`);
-    assert.ok(existsSync(new URL(url, web)), `${url} exists`);
+  for (const page of ["index.html", "console.html"]) {
+    const html = readFileSync(new URL(page, web), "utf8");
+    for (const [, url] of html.matchAll(/\b(?:href|src)="([^"]+)"/g)) {
+      if (url === "./") continue;
+      assert.doesNotMatch(url, /^(?:[a-z]+:|\/|\.\.\/)/i, `${page}: ${url} must stay inside host/direct/web`);
+      assert.ok(existsSync(new URL(url, web)), `${page}: ${url} exists`);
+    }
+    assert.match(html, /<link rel="icon" type="image\/svg\+xml" href="favicon.svg">/);
   }
-  assert.match(html, /<link rel="icon" type="image\/svg\+xml" href="favicon.svg">/);
-  assert.match(readFileSync(new URL("favicon.svg", web), "utf8"), /<title>ESPForge<\/title>/, "the ESPForge favicon");
+  assert.match(readFileSync(new URL("favicon.svg", web), "utf8"), /<title>ZephyrForge<\/title>/,
+    "the ZephyrForge favicon");
 });

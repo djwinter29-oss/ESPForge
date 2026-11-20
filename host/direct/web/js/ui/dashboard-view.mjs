@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 // Copyright (c) 2026 Ji Dong
 
+/** @file Dashboard renderer: applies one presentation snapshot to every status section. */
 import { renderDevice } from "./sections/device.mjs";
 import { renderWirelessStatus } from "./sections/wireless.mjs";
 import { createStorageSection } from "./sections/storage.mjs";

@@ -5,13 +5,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   decodeIdentityReport, decodeConfigReport, decodeTelemetryReport, decodeStorageReport, decodeBenchmarkReport,
-  decodeControlResult, buildControlRequest, decodeWireless, displaySsid, matchesEspForge, ssidBytes, decodeMemoryInventory,
+  decodeControlResult, buildControlRequest, decodeWireless, displaySsid, matchesZephyrForge, ssidBytes,
+  decodeMemoryInventory,
 } from "../../web/js/protocol/codec.mjs";
 import { identity, config, telemetry, storage, result, memoryInventory } from "../support/fixtures.mjs";
 import { status } from "../support/wireless.mjs";
 
-/** @brief Report 12 vectors with the ESPForge SSID; byte 4 never carries the TCP CLI bit. */
-const ssid = Buffer.from("ESPForge").toString("hex");
+/** @brief Report 12 vectors with the ZephyrForge SSID; byte 4 never carries the TCP CLI bit. */
+const ssid = Buffer.from("ZephyrForge").toString("hex");
 
 test("memory inventory validates physical capacities, reservations and unavailable values", () => {
   const report = memoryInventory();
@@ -48,16 +49,16 @@ test("benchmark counters, rates and terminal facts are validated", () => {
   assert.throws(() => decodeBenchmarkReport(report));
 });
 const vectors = {
-  connected_with_key: `01020002032a2a2a2a08${ssid}${"00".repeat(30)}`,
-  tested_candidate: `01050002b32a2a2a2a08${ssid}${"00".repeat(28)}0100`,
-  test_failed_saved_link_serving: `01060600b32a2a2a2a08${ssid}${"00".repeat(28)}0100`,
-  radio_init_failed_while_connected: `01020100012a2a2a2a08${ssid}${"00".repeat(30)}`,
+  connected_with_key: `01020002032a2a2a2a0b${ssid}${"00".repeat(27)}`,
+  tested_candidate: `01050002b32a2a2a2a0b${ssid}${"00".repeat(25)}0100`,
+  test_failed_saved_link_serving: `01060600b32a2a2a2a0b${ssid}${"00".repeat(25)}0100`,
+  radio_init_failed_while_connected: `01020100012a2a2a2a0b${ssid}${"00".repeat(27)}`,
 };
 
-test("identity requires ESPForge product 3, the 0x96 capability set, ESP32-S3 and valid RAM", () => {
+test("identity requires ZephyrForge product 3, the 0x96 capability set, ESP32-S3 and valid RAM", () => {
   const report = identity();
   const decoded = decodeIdentityReport(report);
-  assert.equal(decoded.product_name, "ESPForge");
+  assert.equal(decoded.product_name, "ZephyrForge");
   assert.equal(decoded.serial_number, "0102030405060708");
   assert.equal(decoded.firmware_version, "1.2.3");
   assert.deepEqual([decoded.mcu, decoded.board_name, decoded.transport], ["ESP32-S3", "ESP32-S3-DevKitC-1", "sdmmc"]);
@@ -73,7 +74,7 @@ test("identity requires ESPForge product 3, the 0x96 capability set, ESP32-S3 an
   assert.equal(decodeIdentityReport(identity(16 | 128)).capabilities, 0x90, "capabilities may be a subset");
   assert.equal(decodeIdentityReport(identity(0x8e)).transport, "spi");
   const reserved = report.slice(); reserved[16] = 255;
-  assert.equal(decodeIdentityReport(reserved).product_name, "ESPForge", "identity reserved byte is ignored");
+  assert.equal(decodeIdentityReport(reserved).product_name, "ZephyrForge", "identity reserved byte is ignored");
   const unknown = report.slice(); unknown[14] = 99; unknown[15] = 99;
   assert.equal(decodeIdentityReport(unknown).mcu, null);
   assert.equal(decodeIdentityReport(unknown).board_model, 99);
@@ -98,20 +99,23 @@ test("SPI identity selects four pins and matching storage samples", () => {
   assert.throws(() => decodeStorageReport(storage(), spi));
 });
 
-test("WebHID matching needs the ESPForge VID:PID and the vendor collection", () => {
+test("WebHID matching needs the ZephyrForge VID:PID and the vendor collection", () => {
   const device = { vendorId: 0xcafe, productId: 0x4021, collections: [{ usagePage: 0xff00, usage: 1 }] };
-  assert.ok(matchesEspForge(device));
-  for (const change of [{ productId: 0x4011 }, { vendorId: 0x2e8a }, { collections: [{ usagePage: 0xff00, usage: 2 }] }]) {
-    assert.ok(!matchesEspForge({ ...device, ...change }), JSON.stringify(change));
+  assert.ok(matchesZephyrForge(device));
+  for (const change of [{ productId: 0x4011 }, { vendorId: 0x2e8a },
+    { collections: [{ usagePage: 0xff00, usage: 2 }] }]) {
+    assert.ok(!matchesZephyrForge({ ...device, ...change }), JSON.stringify(change));
   }
 });
 
-test("configuration validates ESPForge clocks, SD profile 0, SDMMC GPIOs, monitor UART and optional card detect", () => {
+test("configuration validates ZephyrForge clocks, SD profile 0, SDMMC GPIOs, monitor UART and optional card detect",
+  () => {
   const id = decodeIdentityReport(identity());
   const decoded = decodeConfigReport(config(), id);
   assert.deepEqual([decoded.system_clock_mhz, decoded.sdcard_profile, decoded.radios], [240, 0, 0]);
   assert.deepEqual(decoded.storage_gpios, [12, 11, 13, 14, 15, 10]);
-  assert.deepEqual([decoded.monitor_uart_index, decoded.monitor_uart_tx_gpio, decoded.monitor_uart_rx_gpio], [0, 43, 44]);
+  assert.deepEqual([decoded.monitor_uart_index, decoded.monitor_uart_tx_gpio, decoded.monitor_uart_rx_gpio],
+    [0, 43, 44]);
   assert.equal(decoded.led_gpio, 255);
   assert.equal(decoded.card_detect_gpio, 255);
   for (const clock of [0, 80, 160]) {
@@ -172,6 +176,10 @@ test("storage validates native SDMMC samples, timing, capacity and CID with isol
   assert.equal(decodeStorageReport(cid).memory.manufacturer.product_name, "SD16G");
   assert.equal(decodeStorageReport(cid).memory.manufacturer.serial_number, 0x12345678);
   assert.equal(decodeStorageReport(cid).memory.manufacturer.manufacture_year, 2025);
+  cid[30] = 0;
+  assert.equal(decodeStorageReport(cid).filesystem_format, "unknown");
+  assert.equal(decodeStorageReport(cid).memory.initialized, true);
+  assert.equal(decodeStorageReport(cid).memory.capacity_bytes, 512 * 100000);
   for (const [offset, value] of [[2, 128], [2, 63], [2, 64], [2, 71], [4, 1], [4, 4], [3, 2], [9, 0], [9, 3],
     [31, 1], [32, 1], [33, 2], [30, 5], [14, 1]]) {
     const bad = storage(); bad[offset] = value;
@@ -262,15 +270,15 @@ test("all decoders reject padded, short and unsupported-layout payloads", () => 
 
 test("Report12 uses exact48byte vectors, raw SSIDs and no fabricated removed diagnostics", () => {
   const wireless = decodeWireless(Buffer.from(vectors.connected_with_key, "hex"), { radios: 3 });
-  assert.equal(wireless.ssid, "ESPForge");
-  assert.equal(wireless.ssid_hex, "455350466f726765");
+  assert.equal(wireless.ssid, "ZephyrForge");
+  assert.equal(wireless.ssid_hex, "5a6570687972466f726765");
   assert.deepEqual([wireless.wifi_enabled, wireless.ble_enabled, wireless.ble_key_configured], [true, true, true]);
   for (const field of ["rssi", "reconnect_count", "wifi_auth_state", "restart_required", "password_configured",
     "transaction_id", "tcp_cli_started", "tcp_cli_auth_required", "error"]) {
     assert.equal(Object.hasOwn(wireless, field), false, field);
   }
   const tcp = Buffer.from(vectors.connected_with_key, "hex"); tcp[4] |= 4;
-  assert.throws(() => decodeWireless(tcp), "ESPForge never reports a TCP CLI");
+  assert.throws(() => decodeWireless(tcp), "ZephyrForge never reports a TCP CLI");
   const candidate = decodeWireless(Buffer.from(vectors.tested_candidate, "hex"));
   assert.equal(candidate.pair_tested, true);
   assert.equal(candidate.test_generation, 1);
@@ -332,6 +340,8 @@ test("strict result validation enforces details, scan padding, commit masks and 
   for (const [offset, value] of [[5, 0], [7, 18], [8, 33], [10, 1], [42, 8], [43, 1]]) {
     const bad = scan.slice(); bad[offset] = value; assert.throws(() => decodeControlResult(bad));
   }
+  const unavailableMount = result(1, 4, 6, 6); unavailableMount[5] = 10;
+  assert.throws(() => decodeControlResult(unavailableMount));
   const saved = result(1, 5); saved.set([240, 0, 0, 3, 7], 5);
   assert.equal(decodeControlResult(saved).commit_mask, 7);
   saved[9] = 8; assert.throws(() => decodeControlResult(saved));

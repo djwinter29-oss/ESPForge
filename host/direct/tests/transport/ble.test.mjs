@@ -7,6 +7,9 @@ import { createHmac, webcrypto } from "node:crypto";
 import { describe } from "../../web/js/ui/messages.mjs";
 import { BleTransport, BLE_SERVICE } from "../../web/js/transport/ble.mjs";
 import { BoardSession } from "../../web/js/board/session.mjs";
+import { CAP, OP } from "../../web/js/protocol/constants.mjs";
+import { buildControlRequest } from "../../web/js/protocol/codec.mjs";
+import { REASON } from "../../web/js/state/errors.mjs";
 import {
   fakeConnection, storage, identity, config, telemetry, result, patchState, says, memoryInventory,
 } from "../support/fixtures.mjs";
@@ -23,8 +26,10 @@ test("BLE maps normalized68byte control to restricted9byte wire form and HMACs t
   const warnings = [];
   console.warn = (...args) => warnings.push(args);
   const nonce = Uint8Array.from({ length: 16 }, (_, index) => index);
+  const benchmark = new Uint8Array(32); benchmark[0] = 1;
   const ble = new EventTarget();
-  const values = { 1: identity(), 2: config(), 3: telemetry(), 10: storage(), 12: status(), 13: memoryInventory(), 256: nonce };
+  const values = { 1: identity(), 2: config(), 3: telemetry(), 10: storage(), 11: benchmark,
+    12: status(), 13: memoryInventory(), 256: nonce };
   values[1][16] = 1;
   ble.gatt = { connected: false,
     async connect() {
@@ -41,7 +46,7 @@ test("BLE maps normalized68byte control to restricted9byte wire form and HMACs t
           } };
         }
         assert.equal(uuid, BLE_SERVICE);
-        discoveryOrder.push("espforge_service_discovery");
+        discoveryOrder.push("zephyrforge_service_discovery");
         return { async getCharacteristic(uuid) {
           assert.match(uuid, /^ef5c[0-9a-f]{4}-7c91-4d70-8b32-6e856443f502$/);
           const id = parseInt(uuid.slice(4, 8), 16); requested.push(id);
@@ -70,11 +75,12 @@ test("BLE maps normalized68byte control to restricted9byte wire form and HMACs t
     await client.connect(new Uint8Array(32).fill(0xab));
     assert.equal(client.state.connected, true);
     assert.equal(BLE_SERVICE, "ef5c0000-7c91-4d70-8b32-6e856443f502");
-    assert.deepEqual(filters, [{ services: [BLE_SERVICE] }, { namePrefix: "ESPForge-" }]);
+    assert.deepEqual(filters, [{ services: [BLE_SERVICE] }, { namePrefix: "ZephyrForge-" }]);
     assert.ok(requestedServices.includes(0x1801));
     assert.equal(notificationStarts, 1);
-    assert.deepEqual(discoveryOrder.slice(0, 2), ["service_changed_subscription", "espforge_service_discovery"]);
+    assert.deepEqual(discoveryOrder.slice(0, 2), ["service_changed_subscription", "zephyrforge_service_discovery"]);
     assert.deepEqual(requested, [1, 2, 3, 10, 12, 20, 256, 257, 13]);
+    assert.equal(client.state.freshness[11], "unavailable");
     assert.equal(client.state.hardware.psram_total_bytes, 8 << 20);
     assert.equal(client.state.hardware.flash_total_bytes, 16 << 20);
     const sign = request => [...createHmac("sha256", Buffer.from("ab".repeat(32), "hex"))
@@ -100,8 +106,17 @@ test("BLE maps normalized68byte control to restricted9byte wire form and HMACs t
     assert.equal(client.state.wireless.ssid_hex, "");
     await client.disconnect();
     serviceChangedAvailable = false;
+    values[1][17] |= CAP.SELF_TEST;
+    requested.length = 0;
     await client.connect(new Uint8Array(32).fill(0xab));
     assert.equal(client.state.connected, true);
+    assert.equal(client.state.error, null);
+    assert.ok(requested.includes(11), "advertised benchmark status is discovered before polling");
+    for (const id of [3, 10, 11]) assert.equal(client.state.freshness[id], "fresh");
+    assert.equal(client.state.self_test.state, "idle");
+    benchmark[1] = 7;
+    await client.polling.pollReports();
+    assert.equal(client.state.self_test.sequence, 7, "later polls keep reading live benchmark status");
     assert.equal(notificationStarts, 1);
     assert.ok(warnings.some(([message]) => message.includes("Service Changed is unavailable")));
   } finally {
@@ -148,6 +163,100 @@ test("BLE discovery retries only read-only setup on the chosen board and retains
   assert.equal(connects, 3);
   assert.match(describe(client.state.error), /No matching service/);
   assert.equal(client.transport.bleKey, null);
+});
+
+test("BLE serializes reads and proved writes, skips aborted queued I/O and continues after rejection", async () => {
+  const transport = new BleTransport({});
+  const calls = [];
+  let release;
+  transport.uid = "0102030405060708";
+  transport.prove = async () => {
+    calls.push("proof");
+    await new Promise(resolve => setImmediate(resolve));
+  };
+  transport.characteristics.set(3, { async readValue() {
+    calls.push(3);
+    await new Promise(resolve => { release = resolve; });
+    return telemetry();
+  } });
+  transport.characteristics.set(10, { async readValue() { calls.push(10); return storage(); } });
+  transport.characteristics.set(12, { async readValue() { calls.push(12); return status(); } });
+  transport.characteristics.set(20, { async writeValueWithResponse() { calls.push("write"); } });
+  const signal = new AbortController().signal;
+  const cancelled = new AbortController();
+  const first = transport.readReport(3, signal);
+  const second = transport.readReport(10, signal);
+  const write = transport.writeReport(20, buildControlRequest(1, 2, { flags: 1 }), signal);
+  const aborted = assert.rejects(transport.readReport(12, cancelled.signal), { name: "AbortError" });
+  const last = transport.readReport(10, signal);
+  cancelled.abort();
+  const pending = [first, second, write, aborted, last];
+  const settled = Promise.allSettled(pending);
+  try {
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(calls, [3], "only one native GATT operation may be in flight");
+    release();
+    await Promise.all(pending);
+    assert.deepEqual(calls, [3, 10, "proof", "write", 10]);
+  } finally {
+    release?.();
+    await settled;
+    await transport.disconnect();
+  }
+});
+
+test("BLE distinguishes proof rejection from ambiguous command-write failure", async () => {
+  const transport = new BleTransport({});
+  transport.uid = "0102030405060708";
+  transport.device = { gatt: { connected: true } };
+  let writes = 0;
+  transport.characteristics.set(20, { async writeValueWithResponse() {
+    writes++;
+    throw new DOMException("Response was lost after dispatch", "NetworkError");
+  } });
+  const signal = new AbortController().signal;
+  const report = buildControlRequest(1, OP.REBOOT, { flags: 1 });
+  transport.prove = async () => { throw new DOMException("Proof rejected", "NetworkError"); };
+  await assert.rejects(transport.writeReport(20, report, signal),
+    error => error.code === REASON.BLE_PROOF_REJECTED && !error.uncertain);
+  assert.equal(writes, 0, "a rejected proof prevents the command write");
+
+  transport.prove = async () => {};
+  await assert.rejects(transport.writeReport(20, report, signal),
+    error => error.code === REASON.OUTCOME_UNCERTAIN && error.uncertain);
+  assert.equal(writes, 1, "the ambiguous failure occurs after command dispatch");
+});
+
+test("BLE disconnect fences queued writes without blocking a new connection", async () => {
+  const transport = new BleTransport({});
+  transport.device = Object.assign(new EventTarget(), { gatt: { disconnect() {} } });
+  let release, freshReads = 0, writes = 0;
+  transport.characteristics.set(3, { async readValue() {
+    await new Promise(resolve => { release = resolve; });
+    return telemetry();
+  } });
+  transport.characteristics.set(20, { async writeValueWithResponse() { writes++; } });
+  const signal = new AbortController().signal;
+  const oldRead = transport.readReport(3, signal);
+  const oldWrite = assert.rejects(transport.writeReport(20, buildControlRequest(1, 1, { args: [0] }), signal),
+    { code: REASON.CONNECTION_CHANGED });
+  const pending = [oldRead, oldWrite];
+  try {
+    await new Promise(resolve => setImmediate(resolve));
+    transport.onDisconnect();
+    transport.device = Object.assign(new EventTarget(), { gatt: { disconnect() {} } });
+    transport.characteristics.set(3, { async readValue() { freshReads++; return telemetry(); } });
+    pending.push(transport.readReport(3, signal));
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(freshReads, 1, "an old unresolved read must not hold up the new link");
+    release();
+    await Promise.all(pending);
+    assert.equal(writes, 0, "queued writes from the old link must never reach the new device");
+  } finally {
+    release?.();
+    await Promise.allSettled(pending);
+    await transport.disconnect();
+  }
 });
 
 test("the bluetooth.md worked proof vector signs SESSION01 and a confirmed reboot", async () => {

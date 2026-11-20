@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 // Copyright (c) 2026 Ji Dong
 
+import { REPORT } from "../../protocol/constants.mjs";
 import { queryElement, setText } from "../dom.mjs";
 import { unknown } from "../messages.mjs";
 import { deriveDashboardViewModel } from "./status-model.mjs";
@@ -21,6 +22,7 @@ function uptimeLabel(milliseconds) {
   return days > 0 ? `${days}d ${hours}h ${minutes}m` : `${hours}h ${minutes}m ${seconds % 60}s`;
 }
 
+/** @brief Identity, runtime, pin-map and freshness text for the device panels; pure. */
 export function deriveDeviceViewModel(state, dashboard = deriveDashboardViewModel(state)) {
   const hardware = state.hardware;
   const runtime = state.runtime;
@@ -30,6 +32,8 @@ export function deriveDeviceViewModel(state, dashboard = deriveDashboardViewMode
   const psramTotal = hardware?.psram_total_bytes;
   const psramReserved = hardware?.psram_reserved_bytes;
   const flashTotal = hardware?.flash_total_bytes;
+  const capacity = value => Number.isSafeInteger(value) && value > 0
+    ? String(Number((value / 1048576).toFixed(1))) : "--";
   const transport = hardware?.transport === "spi" ? "SPI" : "SDMMC";
   const signals = transport === "SPI" ? ["SCK", "MOSI", "MISO", "CS"] : ["CLK", "CMD", "DAT0", "DAT1", "DAT2", "DAT3"];
   const pin = value => !config ? "--" : value === 255 || value == null ? "Unassigned" : `GPIO${value}`;
@@ -41,8 +45,8 @@ export function deriveDeviceViewModel(state, dashboard = deriveDashboardViewMode
   return {
     ...dashboard,
     active: Boolean(state.connected && runtime),
-    error: Boolean(state.error),
-    freshness: [[3, "telemetry"], [10, "storage"]].map(([id, label]) => ({
+    error: dashboard.status_error,
+    freshness: [[REPORT.TELEMETRY, "telemetry"], [REPORT.STORAGE, "storage"]].map(([id, label]) => ({
       label, hidden: state.freshness?.[id] === "fresh", text: `${label}: ${state.freshness?.[id] ?? "unavailable"}`,
     })),
     pins: {
@@ -53,9 +57,10 @@ export function deriveDeviceViewModel(state, dashboard = deriveDashboardViewMode
     },
     text: {
       "product-name": hardware ? `${hardware.product_name} (${transport})` : "--",
-      "board-model": hardware ? `${hardware.board_name ?? unknown("board", hardware.board_model)} `
-        + `(${hardware.mcu ?? unknown("MCU", hardware.mcu_id)})` : "--",
+      "board-model": hardware ? hardware.board_name ?? unknown("board", hardware.board_model) : "--",
+      "board-mcu": hardware ? hardware.mcu ?? unknown("MCU", hardware.mcu_id) : "--",
       "firmware-version": hardware?.firmware_version ?? "Unknown",
+      "memory-capacity": `${capacity(flashTotal)} MiB flash · ${capacity(psramTotal)} MiB PSRAM`,
       "identity-clock": runtime
         ? `${(runtime.system_clock_hz / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: 3 })} MHz` : "--",
       "cpu-usage-core0": [runtime?.cpu_usage_core0_basis_points, runtime?.cpu_usage_core1_basis_points]
@@ -83,6 +88,7 @@ export function deriveDeviceViewModel(state, dashboard = deriveDashboardViewMode
   };
 }
 
+/** @brief Apply the device view model; pin tables are rebuilt only when the board configuration changes. */
 export function renderDevice(state, dashboard) {
   const model = deriveDeviceViewModel(state, dashboard);
   setText({ ...model.text, "connection-label": model.connection_label, "status-message": model.status_message });

@@ -65,7 +65,7 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
           RID: ${{ matrix.rid }}
         run: >-
-          dotnet publish host/dotnet/ESPForge/ESPForge.csproj -c Release -r "$RID" --self-contained true
+          dotnet publish host/dotnet/ZephyrForge/ZephyrForge.csproj -c Release -r "$RID" --self-contained true
           -p:MinVerVersionOverride="$VERSION" -p:RestorePackagesPath="$PWD/build/nuget/"
           -p:PublishDir="$PWD/build/host-release/"
 

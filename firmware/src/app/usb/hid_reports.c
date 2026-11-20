@@ -13,9 +13,13 @@
 #define MONITOR_UART_TX 43u
 #define MONITOR_UART_RX 44u
 
-#define CONFIG_FLAG_MONITOR_UART 0x04u
-#define CONFIG_FLAG_WIFI 0x08u
-#define CONFIG_FLAG_BLE 0x10u
+/* Report 2 board_flags bits; bit 5, the reserved TCP CLI switch, stays clear. */
+#define BOARD_FLAG_CARD_DETECT 0x01u
+#define BOARD_FLAG_LED 0x02u
+#define BOARD_FLAG_MONITOR_UART 0x04u
+#define BOARD_FLAG_WIFI 0x08u
+#define BOARD_FLAG_BLE 0x10u
+#define BOARD_FLAG_MSC 0x40u
 
 static void put16(uint8_t *out, uint16_t value)
 {
@@ -29,24 +33,24 @@ static void put32(uint8_t *out, uint32_t value)
 	put16(out + 2, (uint16_t)(value >> 16));
 }
 
-void ef_report_identity(const ef_identity_t *identity, uint8_t out[EF_IDENTITY_SIZE])
+void zf_report_identity(const zf_identity_t *identity, uint8_t out[ZF_IDENTITY_SIZE])
 {
-	memset(out, 0, EF_IDENTITY_SIZE);
+	memset(out, 0, ZF_IDENTITY_SIZE);
 	out[0] = 1;
-	put16(out + 1, EF_PRODUCT_ID);
-	memcpy(out + 3, identity->uid, EF_UID_SIZE);
+	put16(out + 1, ZF_PRODUCT_ID);
+	memcpy(out + 3, identity->uid, ZF_UID_SIZE);
 	memcpy(out + 11, identity->firmware, 3);
-	out[14] = EF_MCU_ESP32S3;
-	out[15] = EF_BOARD_DEVKITC;
-	out[16] = EF_EXT_MEMORY;
-	out[17] = EF_CAPABILITIES;
+	out[14] = ZF_MCU_ESP32S3;
+	out[15] = ZF_BOARD_DEVKITC;
+	out[16] = ZF_EXT_MEMORY;
+	out[17] = ZF_CAPABILITIES;
 	put32(out + 18, identity->ram_total_bytes);
 	put32(out + 22, identity->ram_reserved_bytes);
 }
 
-void ef_report_memory(const ef_memory_inventory_t *memory, uint8_t out[EF_MEMORY_SIZE])
+void zf_report_memory(const zf_memory_inventory_t *memory, uint8_t out[ZF_MEMORY_SIZE])
 {
-	memset(out, 0, EF_MEMORY_SIZE);
+	memset(out, 0, ZF_MEMORY_SIZE);
 	out[0] = 1;
 	out[1] = (memory->psram_available ? 1u : 0u) | (memory->flash_available ? 2u : 0u);
 	if (memory->psram_available) {
@@ -58,26 +62,26 @@ void ef_report_memory(const ef_memory_inventory_t *memory, uint8_t out[EF_MEMORY
 	}
 }
 
-void ef_report_config(const ef_config_t *config, uint8_t out[EF_CONFIG_SIZE])
+void zf_report_config(const zf_config_t *config, uint8_t out[ZF_CONFIG_SIZE])
 {
-	uint8_t flags = CONFIG_FLAG_MONITOR_UART;
+	uint8_t flags = BOARD_FLAG_MONITOR_UART;
 
 	if (config->led_available) {
-		flags |= 0x02u;
+		flags |= BOARD_FLAG_LED;
 	}
 	if (config->card_detect_available) {
-		flags |= 0x01u;
+		flags |= BOARD_FLAG_CARD_DETECT;
 	}
 	if (config->msc_supported) {
-		flags |= EF_CONFIG_FLAG_MSC;
+		flags |= BOARD_FLAG_MSC;
 	}
-	if (config->stored_radios & EF_WIRELESS_WIFI) {
-		flags |= CONFIG_FLAG_WIFI;
+	if (config->stored_radios & ZF_WIRELESS_WIFI) {
+		flags |= BOARD_FLAG_WIFI;
 	}
-	if (config->stored_radios & EF_WIRELESS_BLE) {
-		flags |= CONFIG_FLAG_BLE;
+	if (config->stored_radios & ZF_WIRELESS_BLE) {
+		flags |= BOARD_FLAG_BLE;
 	}
-	memset(out, 0, EF_CONFIG_SIZE);
+	memset(out, 0, ZF_CONFIG_SIZE);
 	out[0] = 1;
 	put16(out + 1, config->stored_clock_mhz);
 	out[3] = 0;
@@ -87,13 +91,13 @@ void ef_report_config(const ef_config_t *config, uint8_t out[EF_CONFIG_SIZE])
 	memcpy(out + 7, config->storage_gpios, sizeof(config->storage_gpios));
 	out[13] = flags;
 	out[14] = config->reset_cause;
-	out[15] = config->led_available ? config->led_gpio : EF_GPIO_UNASSIGNED;
-	out[16] = config->card_detect_available ? config->card_detect_gpio : EF_GPIO_UNASSIGNED;
+	out[15] = config->led_available ? config->led_gpio : ZF_GPIO_UNASSIGNED;
+	out[16] = config->card_detect_available ? config->card_detect_gpio : ZF_GPIO_UNASSIGNED;
 }
 
-void ef_report_telemetry(const ef_telemetry_t *telemetry, uint8_t out[EF_TELEMETRY_SIZE])
+void zf_report_telemetry(const zf_telemetry_t *telemetry, uint8_t out[ZF_TELEMETRY_SIZE])
 {
-	memset(out, 0, EF_TELEMETRY_SIZE);
+	memset(out, 0, ZF_TELEMETRY_SIZE);
 	out[0] = 1;
 	out[1] = telemetry->led_available ? telemetry->led_colour : 0;
 	if (telemetry->temperature_valid) {
@@ -102,19 +106,19 @@ void ef_report_telemetry(const ef_telemetry_t *telemetry, uint8_t out[EF_TELEMET
 	put32(out + 4, (uint32_t)telemetry->uptime_ms);
 	put32(out + 8, (uint32_t)(telemetry->uptime_ms >> 32));
 	put16(out + 12, telemetry->core0_load);
-	put16(out + 14, EF_LOAD_UNAVAILABLE);
+	put16(out + 14, ZF_LOAD_UNAVAILABLE);
 	put32(out + 16, telemetry->system_clock_hz);
 	out[20] = telemetry->sequence;
 	out[21] = (uint8_t)((telemetry->usb_configured ? 0x01u : 0) | (telemetry->temperature_valid ? 0x04u : 0) |
 			   (telemetry->led_available ? 0x08u : 0));
 }
 
-void ef_report_storage(const ef_storage_t *storage, uint8_t out[EF_STORAGE_SIZE])
+void zf_report_storage(const zf_storage_t *storage, uint8_t out[ZF_STORAGE_SIZE])
 {
 	uint8_t sd_flags = storage->configured ? 0x01u : 0;
 	bool valid = storage->sample_valid && !storage->msc_enabled && !storage->msc_transition_pending;
 
-	memset(out, 0, EF_STORAGE_SIZE);
+	memset(out, 0, ZF_STORAGE_SIZE);
 	out[0] = 1;
 	out[1] = storage->sequence;
 	if (valid) {
@@ -128,12 +132,16 @@ void ef_report_storage(const ef_storage_t *storage, uint8_t out[EF_STORAGE_SIZE]
 	}
 	if (valid && storage->initialized) {
 		sd_flags |= 0x08u;
+		if (storage->cid_valid) {
+			sd_flags |= 0x10u;
+			memcpy(out + 14, storage->cid, sizeof(storage->cid));
+		}
 		if (storage->capacity_valid) {
 			sd_flags |= 0x20u;
 			put32(out + 10, storage->block_count);
 		}
 		out[3] = 1;
-		out[4] = EF_STORAGE_SPI ? 2 : 3;
+		out[4] = ZF_STORAGE_SPI ? 2 : 3;
 		put32(out + 5, storage->bus_clock_hz);
 		out[9] = 1;
 	}
@@ -144,9 +152,9 @@ void ef_report_storage(const ef_storage_t *storage, uint8_t out[EF_STORAGE_SIZE]
 	out[33] = storage->msc_request_rejected;
 }
 
-void ef_report_benchmark(const ef_benchmark_t *status, uint8_t out[EF_BENCHMARK_SIZE])
+void zf_report_benchmark(const zf_benchmark_t *status, uint8_t out[ZF_BENCHMARK_SIZE])
 {
-	memset(out, 0, EF_BENCHMARK_SIZE);
+	memset(out, 0, ZF_BENCHMARK_SIZE);
 	out[0] = 1;
 	out[1] = status->sequence;
 	out[2] = status->state;
@@ -157,15 +165,16 @@ void ef_report_benchmark(const ef_benchmark_t *status, uint8_t out[EF_BENCHMARK_
 	put32(out + 16, status->write_elapsed_ms);
 	put32(out + 20, status->read_elapsed_ms);
 	put32(out + 24, status->mismatch_count);
-	out[28] = status->state == EF_BENCHMARK_FAILED ? status->error : 0;
-	out[29] = status->state == EF_BENCHMARK_FAILED ? status->filesystem_result : 0;
+	out[28] = status->state == ZF_BENCHMARK_FAILED ? status->error : 0;
+	out[29] = status->state == ZF_BENCHMARK_FAILED ? status->filesystem_result : 0;
 }
 
-void ef_report_wireless(const ef_wireless_t *wireless, uint8_t out[EF_WIRELESS_SIZE])
+void zf_report_wireless(const zf_wireless_t *wireless, uint8_t out[ZF_WIRELESS_SIZE])
 {
-	uint8_t length = wireless->ssid_length <= EF_SSID_MAX ? wireless->ssid_length : EF_SSID_MAX;
+	uint8_t length = wireless->ssid_length <= ZF_SSID_MAX_BYTES
+		? wireless->ssid_length : ZF_SSID_MAX_BYTES;
 
-	memset(out, 0, EF_WIRELESS_SIZE);
+	memset(out, 0, ZF_WIRELESS_SIZE);
 	out[0] = 1;
 	out[1] = wireless->wifi_state;
 	out[2] = wireless->detail;
@@ -181,18 +190,18 @@ void ef_report_wireless(const ef_wireless_t *wireless, uint8_t out[EF_WIRELESS_S
 	out[47] = wireless->staged_state;
 }
 
-void ef_uid_hex(const uint8_t uid[EF_UID_SIZE], char out[2 * EF_UID_SIZE + 1])
+void zf_uid_hex(const uint8_t uid[ZF_UID_SIZE], char out[2 * ZF_UID_SIZE + 1])
 {
 	static const char digits[] = "0123456789ABCDEF";
 
-	for (unsigned i = 0; i < EF_UID_SIZE; ++i) {
+	for (unsigned i = 0; i < ZF_UID_SIZE; ++i) {
 		out[2 * i] = digits[uid[i] >> 4];
 		out[2 * i + 1] = digits[uid[i] & 0x0Fu];
 	}
-	out[2 * EF_UID_SIZE] = '\0';
+	out[2 * ZF_UID_SIZE] = '\0';
 }
 
-uint8_t ef_reset_cause(uint32_t hwinfo_cause)
+uint8_t zf_reset_cause(uint32_t hwinfo_cause)
 {
 	if (hwinfo_cause & HWINFO_RESET_POR) {
 		return 1;
@@ -206,10 +215,10 @@ uint8_t ef_reset_cause(uint32_t hwinfo_cause)
 	return 0;
 }
 
-uint16_t ef_load_basis_points(uint64_t busy_cycles, uint64_t total_cycles)
+uint16_t zf_load_basis_points(uint64_t busy_cycles, uint64_t total_cycles)
 {
 	if (total_cycles == 0) {
-		return EF_LOAD_UNAVAILABLE;
+		return ZF_LOAD_UNAVAILABLE;
 	}
 	if (busy_cycles >= total_cycles) {
 		return 10000u;

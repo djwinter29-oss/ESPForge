@@ -1,0 +1,187 @@
+diff --git a/drivers/pinctrl/pinctrl_esp32.c b/drivers/pinctrl/pinctrl_esp32.c
+index eacf62a6..6f88b6a9 100644
+--- a/drivers/pinctrl/pinctrl_esp32.c
++++ b/drivers/pinctrl/pinctrl_esp32.c
+@@ -74,7 +74,7 @@ static inline bool esp32_pin_is_output_capable(uint32_t pin)
+ 	return ((BIT(pin) & SOC_GPIO_VALID_OUTPUT_GPIO_MASK) != 0);
+ }
+ 
+-static int esp32_pin_apply_config(uint32_t pin, uint32_t flags)
++static int esp32_pin_apply_config(uint32_t pin, uint32_t flags, uint32_t drive)
+ {
+ 	gpio_dev_t *const gpio_base = (gpio_dev_t *)DT_REG_ADDR(DT_NODELABEL(gpio0));
+ 	uint32_t io_pin = (uint32_t) pin + ((ESP32_PORT_IDX(pin) == 1 && pin < 32) ? 32 : 0);
+@@ -148,6 +148,18 @@ static int esp32_pin_apply_config(uint32_t pin, uint32_t flags)
+ 			gpio_ll_od_disable(gpio_base, io_pin);
+ 		}
+ 
++		if (drive != 0) {
++			gpio_drive_cap_t cap = (gpio_drive_cap_t)(drive - 1);
++
++			if (!rtc_gpio_is_valid_gpio(io_pin) || SOC_GPIO_SUPPORT_RTC_INDEPENDENT) {
++				gpio_ll_set_drive_capability(&GPIO, io_pin, cap);
++			} else {
++#if SOC_RTCIO_INPUT_OUTPUT_SUPPORTED
++				rtcio_hal_set_drive_capability(rtc_io_num_map[io_pin], cap);
++#endif
++			}
++		}
++
+ 		/* Set output pin initial value */
+ 		if (flags & ESP32_PIN_OUT_HIGH_FLAG) {
+ 			gpio_ll_set_level(gpio_base, io_pin, 1);
+@@ -277,7 +289,7 @@ static int esp32_pin_configure(const uint32_t pin_mux, const uint32_t pin_cfg)
+ 		}
+ 	}
+ 
+-	esp32_pin_apply_config(pin_num, flags);
++	esp32_pin_apply_config(pin_num, flags, ESP32_PIN_DS(pin_cfg));
+ 
+ 	if (flags & ESP32_DIR_OUT_FLAG) {
+ 		esp_rom_gpio_matrix_out(pin_num, sig_out, 0, 0);
+diff --git a/dts/bindings/pinctrl/espressif,esp32-pinctrl.yaml b/dts/bindings/pinctrl/espressif,esp32-pinctrl.yaml
+index 5fe2c5e8..cf7bc16a 100644
+--- a/dts/bindings/pinctrl/espressif,esp32-pinctrl.yaml
++++ b/dts/bindings/pinctrl/espressif,esp32-pinctrl.yaml
+@@ -131,6 +131,7 @@ child-binding:
+           - bias-pull-up
+           - drive-push-pull
+           - drive-open-drain
++          - drive-strength
+           - input-enable
+           - output-enable
+           - output-high
+@@ -144,3 +145,9 @@ child-binding:
+           Each array element represents pin muxing information of an individual
+           pin. The array elements are pre-declared macros taken from Espressif's
+           HAL.
++
++      drive-strength:
++        enum: [5, 10, 20, 40]
++        description: |
++          Approximate pad drive capability in mA for pins routed as outputs.
++          When omitted, the pad keeps its current drive capability.
+diff --git a/include/zephyr/drivers/pinctrl/pinctrl_esp32_common.h b/include/zephyr/drivers/pinctrl/pinctrl_esp32_common.h
+index 421eb80c..fbbb5bd1 100644
+--- a/include/zephyr/drivers/pinctrl/pinctrl_esp32_common.h
++++ b/include/zephyr/drivers/pinctrl/pinctrl_esp32_common.h
+@@ -31,4 +31,7 @@
+ #define ESP32_PIN_EN_DIR(_cfg) \
+ 	(((_cfg) >> ESP32_PIN_EN_DIR_SHIFT) & ESP32_PIN_EN_DIR_MASK)
+ 
++#define ESP32_PIN_DS(_cfg) \
++	(((_cfg) >> ESP32_PIN_DS_SHIFT) & ESP32_PIN_DS_MASK)
++
+ #endif /* ZEPHYR_INCLUDE_DRIVERS_PINCTRL_PINCTRL_ESP32_COMMON_H_ */
+diff --git a/include/zephyr/dt-bindings/pinctrl/esp-pinctrl-common.h b/include/zephyr/dt-bindings/pinctrl/esp-pinctrl-common.h
+index 7b83e8d3..5f90374a 100644
+--- a/include/zephyr/dt-bindings/pinctrl/esp-pinctrl-common.h
++++ b/include/zephyr/dt-bindings/pinctrl/esp-pinctrl-common.h
+@@ -41,6 +41,9 @@
+ #define ESP32_PIN_OUT_MASK       0x3U
+ #define ESP32_PIN_EN_DIR_SHIFT   6U
+ #define ESP32_PIN_EN_DIR_MASK    0x3U
++/* Drive strength enum index plus one; zero keeps the pad's current drive capability. */
++#define ESP32_PIN_DS_SHIFT       10U
++#define ESP32_PIN_DS_MASK        0x7U
+ 
+ /* Bias definitions */
+ #define ESP32_NO_PULL            0x1
+diff --git a/soc/espressif/esp32/pinctrl_soc.h b/soc/espressif/esp32/pinctrl_soc.h
+index 78d2e4fe..7faf9f25 100644
+--- a/soc/espressif/esp32/pinctrl_soc.h
++++ b/soc/espressif/esp32/pinctrl_soc.h
+@@ -48,7 +48,8 @@ typedef struct pinctrl_soc_pin {
+ 	 ((ESP32_PIN_OUT_HIGH * DT_PROP(node_id, output_high)) << ESP32_PIN_OUT_SHIFT) |           \
+ 	 ((ESP32_PIN_OUT_LOW * DT_PROP(node_id, output_low)) << ESP32_PIN_OUT_SHIFT) |             \
+ 	 ((ESP32_PIN_OUT_EN * DT_PROP(node_id, output_enable)) << ESP32_PIN_EN_DIR_SHIFT) |        \
+-	 ((ESP32_PIN_IN_EN * DT_PROP(node_id, input_enable)) << ESP32_PIN_EN_DIR_SHIFT))
++	 ((ESP32_PIN_IN_EN * DT_PROP(node_id, input_enable)) << ESP32_PIN_EN_DIR_SHIFT) |          \
++	 ((DT_ENUM_IDX_OR(node_id, drive_strength, -1) + 1) << ESP32_PIN_DS_SHIFT))
+ 
+ /**
+  * @brief Utility macro to initialize each pin.
+diff --git a/soc/espressif/esp32c2/pinctrl_soc.h b/soc/espressif/esp32c2/pinctrl_soc.h
+index 17b49055..008c59ac 100644
+--- a/soc/espressif/esp32c2/pinctrl_soc.h
++++ b/soc/espressif/esp32c2/pinctrl_soc.h
+@@ -48,7 +48,8 @@ typedef struct pinctrl_soc_pin {
+ 	 ((ESP32_PIN_OUT_HIGH * DT_PROP(node_id, output_high)) << ESP32_PIN_OUT_SHIFT) |           \
+ 	 ((ESP32_PIN_OUT_LOW * DT_PROP(node_id, output_low)) << ESP32_PIN_OUT_SHIFT) |             \
+ 	 ((ESP32_PIN_OUT_EN * DT_PROP(node_id, output_enable)) << ESP32_PIN_EN_DIR_SHIFT) |        \
+-	 ((ESP32_PIN_IN_EN * DT_PROP(node_id, input_enable)) << ESP32_PIN_EN_DIR_SHIFT))
++	 ((ESP32_PIN_IN_EN * DT_PROP(node_id, input_enable)) << ESP32_PIN_EN_DIR_SHIFT) |          \
++	 ((DT_ENUM_IDX_OR(node_id, drive_strength, -1) + 1) << ESP32_PIN_DS_SHIFT))
+ 
+ /**
+  * @brief Utility macro to initialize each pin.
+diff --git a/soc/espressif/esp32c3/pinctrl_soc.h b/soc/espressif/esp32c3/pinctrl_soc.h
+index 5099a2b6..2a1d2ee0 100644
+--- a/soc/espressif/esp32c3/pinctrl_soc.h
++++ b/soc/espressif/esp32c3/pinctrl_soc.h
+@@ -48,7 +48,8 @@ typedef struct pinctrl_soc_pin {
+ 	 ((ESP32_PIN_OUT_HIGH * DT_PROP(node_id, output_high)) << ESP32_PIN_OUT_SHIFT) |           \
+ 	 ((ESP32_PIN_OUT_LOW * DT_PROP(node_id, output_low)) << ESP32_PIN_OUT_SHIFT) |             \
+ 	 ((ESP32_PIN_OUT_EN * DT_PROP(node_id, output_enable)) << ESP32_PIN_EN_DIR_SHIFT) |        \
+-	 ((ESP32_PIN_IN_EN * DT_PROP(node_id, input_enable)) << ESP32_PIN_EN_DIR_SHIFT))
++	 ((ESP32_PIN_IN_EN * DT_PROP(node_id, input_enable)) << ESP32_PIN_EN_DIR_SHIFT) |          \
++	 ((DT_ENUM_IDX_OR(node_id, drive_strength, -1) + 1) << ESP32_PIN_DS_SHIFT))
+ 
+ /**
+  * @brief Utility macro to initialize each pin.
+diff --git a/soc/espressif/esp32c6/pinctrl_soc.h b/soc/espressif/esp32c6/pinctrl_soc.h
+index db809815..c3bb2fda 100644
+--- a/soc/espressif/esp32c6/pinctrl_soc.h
++++ b/soc/espressif/esp32c6/pinctrl_soc.h
+@@ -49,7 +49,8 @@ typedef struct pinctrl_soc_pin {
+ 	 ((ESP32_PIN_OUT_HIGH * DT_PROP(node_id, output_high)) << ESP32_PIN_OUT_SHIFT) |           \
+ 	 ((ESP32_PIN_OUT_LOW * DT_PROP(node_id, output_low)) << ESP32_PIN_OUT_SHIFT) |             \
+ 	 ((ESP32_PIN_OUT_EN * DT_PROP(node_id, output_enable)) << ESP32_PIN_EN_DIR_SHIFT) |        \
+-	 ((ESP32_PIN_IN_EN * DT_PROP(node_id, input_enable)) << ESP32_PIN_EN_DIR_SHIFT))
++	 ((ESP32_PIN_IN_EN * DT_PROP(node_id, input_enable)) << ESP32_PIN_EN_DIR_SHIFT) |          \
++	 ((DT_ENUM_IDX_OR(node_id, drive_strength, -1) + 1) << ESP32_PIN_DS_SHIFT))
+ 
+ /**
+  * @brief Utility macro to initialize each pin.
+diff --git a/soc/espressif/esp32h2/pinctrl_soc.h b/soc/espressif/esp32h2/pinctrl_soc.h
+index ac1bfba5..e56e6201 100644
+--- a/soc/espressif/esp32h2/pinctrl_soc.h
++++ b/soc/espressif/esp32h2/pinctrl_soc.h
+@@ -48,7 +48,8 @@ typedef struct pinctrl_soc_pin {
+ 	 ((ESP32_PIN_OUT_HIGH * DT_PROP(node_id, output_high)) << ESP32_PIN_OUT_SHIFT) |           \
+ 	 ((ESP32_PIN_OUT_LOW * DT_PROP(node_id, output_low)) << ESP32_PIN_OUT_SHIFT) |             \
+ 	 ((ESP32_PIN_OUT_EN * DT_PROP(node_id, output_enable)) << ESP32_PIN_EN_DIR_SHIFT) |        \
+-	 ((ESP32_PIN_IN_EN * DT_PROP(node_id, input_enable)) << ESP32_PIN_EN_DIR_SHIFT))
++	 ((ESP32_PIN_IN_EN * DT_PROP(node_id, input_enable)) << ESP32_PIN_EN_DIR_SHIFT) |          \
++	 ((DT_ENUM_IDX_OR(node_id, drive_strength, -1) + 1) << ESP32_PIN_DS_SHIFT))
+ 
+ /**
+  * @brief Utility macro to initialize each pin.
+diff --git a/soc/espressif/esp32s2/pinctrl_soc.h b/soc/espressif/esp32s2/pinctrl_soc.h
+index 0f7e45c5..8b7a19c4 100644
+--- a/soc/espressif/esp32s2/pinctrl_soc.h
++++ b/soc/espressif/esp32s2/pinctrl_soc.h
+@@ -48,7 +48,8 @@ typedef struct pinctrl_soc_pin {
+ 	 ((ESP32_PIN_OUT_HIGH * DT_PROP(node_id, output_high)) << ESP32_PIN_OUT_SHIFT) |           \
+ 	 ((ESP32_PIN_OUT_LOW * DT_PROP(node_id, output_low)) << ESP32_PIN_OUT_SHIFT) |             \
+ 	 ((ESP32_PIN_OUT_EN * DT_PROP(node_id, output_enable)) << ESP32_PIN_EN_DIR_SHIFT) |        \
+-	 ((ESP32_PIN_IN_EN * DT_PROP(node_id, input_enable)) << ESP32_PIN_EN_DIR_SHIFT))
++	 ((ESP32_PIN_IN_EN * DT_PROP(node_id, input_enable)) << ESP32_PIN_EN_DIR_SHIFT) |          \
++	 ((DT_ENUM_IDX_OR(node_id, drive_strength, -1) + 1) << ESP32_PIN_DS_SHIFT))
+ 
+ /**
+  * @brief Utility macro to initialize each pin.
+diff --git a/soc/espressif/esp32s3/pinctrl_soc.h b/soc/espressif/esp32s3/pinctrl_soc.h
+index 6c8bddd2..8a549597 100644
+--- a/soc/espressif/esp32s3/pinctrl_soc.h
++++ b/soc/espressif/esp32s3/pinctrl_soc.h
+@@ -50,7 +50,8 @@ typedef struct pinctrl_soc_pin pinctrl_soc_pin_t;
+ 	 ((ESP32_PIN_OUT_HIGH * DT_PROP(node_id, output_high)) << ESP32_PIN_OUT_SHIFT) |           \
+ 	 ((ESP32_PIN_OUT_LOW * DT_PROP(node_id, output_low)) << ESP32_PIN_OUT_SHIFT) |             \
+ 	 ((ESP32_PIN_OUT_EN * DT_PROP(node_id, output_enable)) << ESP32_PIN_EN_DIR_SHIFT) |        \
+-	 ((ESP32_PIN_IN_EN * DT_PROP(node_id, input_enable)) << ESP32_PIN_EN_DIR_SHIFT))
++	 ((ESP32_PIN_IN_EN * DT_PROP(node_id, input_enable)) << ESP32_PIN_EN_DIR_SHIFT) |          \
++	 ((DT_ENUM_IDX_OR(node_id, drive_strength, -1) + 1) << ESP32_PIN_DS_SHIFT))
+ 
+ /**
+  * @brief Utility macro to initialize each pin.

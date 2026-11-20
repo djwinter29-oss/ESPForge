@@ -31,6 +31,7 @@ export const REASON = Object.freeze({
   STORAGE_UNAVAILABLE: "storage-unavailable",
   RECOVERY_UNAVAILABLE: "recovery-unavailable",
   RECOVERY_CLEAR_FAILED: "recovery-clear-failed",
+  RECOVERY_ABANDONED: "recovery-abandoned",
   // Connection and recovery.
   CONNECTION_CHANGED: "connection-changed",
   CONNECTION_CANCELLED: "connection-cancelled",
@@ -96,13 +97,17 @@ export const REASON = Object.freeze({
   UNEXPECTED: "unexpected",
 });
 
-/** @brief Codes whose failure leaves a device write with an unknown outcome; never replay such a request. */
-/** @type {Set<string>} */
-const UNCERTAIN = new Set([REASON.IO_TIMEOUT, REASON.OUTCOME_UNCERTAIN, REASON.DISCONNECTED_UNCERTAIN, REASON.RESULT_TIMEOUT,
-  REASON.NOT_CONFIRMED, REASON.RECOVERY_NOT_CONFIRMED, REASON.WIRELESS_UNCERTAIN, REASON.WIRELESS_DISCONNECTED,
-  REASON.WIRELESS_TIMEOUT]);
-/** @brief Codes refused before any device write; the user may retry once the condition clears. */
-/** @type {Set<string>} */
+/**
+ * @brief Codes whose failure leaves a device write with an unknown outcome; never replay such a request.
+ * @type {Set<string>}
+ */
+const UNCERTAIN = new Set([REASON.IO_TIMEOUT, REASON.OUTCOME_UNCERTAIN, REASON.DISCONNECTED_UNCERTAIN,
+  REASON.RESULT_TIMEOUT, REASON.NOT_CONFIRMED, REASON.RECOVERY_NOT_CONFIRMED, REASON.WIRELESS_UNCERTAIN,
+  REASON.WIRELESS_DISCONNECTED, REASON.WIRELESS_TIMEOUT]);
+/**
+ * @brief Codes refused before any device write; the user may retry once the condition clears.
+ * @type {Set<string>}
+ */
 const RETRYABLE = new Set([REASON.COMMAND_BLOCKED, REASON.QUEUE_BUSY, REASON.REBOOT_STORAGE,
   REASON.SETTINGS_STORAGE, REASON.WIRELESS_STORAGE,
   REASON.STATUS_READ_FAILED, REASON.CONNECTION_CHANGED, REASON.WIRELESS_CONNECTION_CHANGED]);
@@ -144,15 +149,6 @@ export function errorCode(error) {
   }
   const { name = "Error", message = String(error) } = /** @type {{name?: string, message?: string}} */ (error ?? {});
   return CODES.has(message) ? { code: message, detail: null } : { code: REASON.UNEXPECTED, detail: { name, message } };
-}
-
-/**
- * @brief Rebuild a throwable error from a state value written by errorValue.
- * @param {string | {code: string, detail: unknown}} value
- */
-export function errorFromValue(value) {
-  const { code, detail = null } = typeof value === "object" ? value : { code: value };
-  return new BoardError(code, detail);
 }
 
 /**

@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "lib": ["ES2022", "DOM"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "noEmit": true,
+    "strict": true,
+    "target": "ES2022"
+  },
+  "include": [
+    "../../web/js/board/commands.mjs",
+    "../../web/js/board/connection.mjs",
+    "../../web/js/board/polling.mjs",
+    "../../web/js/board/recovery.mjs",
+    "../../web/js/state/reducer.mjs",
+    "../../web/js/transport/ble.mjs",
+    "../../web/js/transport/hid.mjs"
+  ]
+}

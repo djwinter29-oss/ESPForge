@@ -1,0 +1,96 @@
+diff --git a/include/zephyr/drivers/disk.h b/include/zephyr/drivers/disk.h
+index 18b1c0f..f894075 100644
+--- a/include/zephyr/drivers/disk.h
++++ b/include/zephyr/drivers/disk.h
+@@ -69,6 +69,14 @@ extern "C" {
+  */
+ #define DISK_IOCTL_CTRL_DEINIT			7
+ 
++/**
++ * @brief Copy the initialized SD card's raw 16-byte CID in wire byte order.
++ *
++ * The caller supplies a 16-byte buffer. Returns -ENODATA when no initialized
++ * CID is available and -ENOTSUP for disks that do not implement this command.
++ */
++#define DISK_IOCTL_GET_SD_CID			8
++
+ /**
+  * @brief Possible return bitmasks for disk_status()
+  */
+diff --git a/include/zephyr/sd/sd.h b/include/zephyr/sd/sd.h
+index f194486..dc4a74e 100644
+--- a/include/zephyr/sd/sd.h
++++ b/include/zephyr/sd/sd.h
+@@ -70,6 +70,8 @@ struct sd_card {
+ 	struct sd_switch_caps switch_caps; /*!< SD switch capabilities */
+ 	unsigned int num_io: 3; /*!< I/O function count. 0 for SD cards */
+ 	uint16_t relative_addr; /*!< Card relative address */
++	uint8_t raw_cid[16]; /*!< Raw CID in wire byte order, valid only after initialization */
++	bool cid_valid; /*!< CID was successfully read during the current initialization */
+ 	uint32_t block_count; /*!< Number of blocks in SD card */
+ 	uint16_t block_size; /*!< SD block size */
+ 	uint8_t sd_version; /*!< SD specification version */
+diff --git a/subsys/sd/sd.c b/subsys/sd/sd.c
+index a270f08..4afdbb6 100644
+--- a/subsys/sd/sd.c
++++ b/subsys/sd/sd.c
+@@ -237,6 +237,9 @@ int sd_init(const struct device *sdhc_dev, struct sd_card *card)
+ 	if (!sdhc_dev) {
+ 		return -ENODEV;
+ 	}
++	card->status = CARD_UNINITIALIZED;
++	card->cid_valid = false;
++	memset(card->raw_cid, 0, sizeof(card->raw_cid));
+ 	card->sdhc = sdhc_dev;
+ 	ret = sdhc_get_host_props(card->sdhc, &card->host_props);
+ 	if (ret) {
+diff --git a/subsys/sd/sd_ops.c b/subsys/sd/sd_ops.c
+index da5e0ff..5baa602 100644
+--- a/subsys/sd/sd_ops.c
++++ b/subsys/sd/sd_ops.c
+@@ -226,6 +226,7 @@ static int sdmmc_spi_read_cxd(struct sd_card *card, uint32_t opcode, uint32_t *c
+ 	ret = sdhc_request(card->sdhc, &cmd, &data);
+ 	if (ret) {
+ 		LOG_DBG("CMD%d failed: %d", opcode, ret);
++		return ret;
+ 	}
+ 	/* Swap endianness of CXD */
+ 	for (i = 0; i < 4; i++) {
+@@ -302,6 +303,11 @@ int card_read_cid(struct sd_card *card)
+ 		return ret;
+ 	}
+ 
++	for (size_t i = 0; i < ARRAY_SIZE(cid); ++i) {
++		sys_put_be32(cid[3 - i], &card->raw_cid[4 * i]);
++	}
++	card->cid_valid = true;
++
+ #if defined(CONFIG_MMC_STACK)
+ 	if (card->type == CARD_MMC) {
+ 		LOG_INF("CID decoding not supported for MMC");
+@@ -781,6 +787,15 @@ int card_ioctl(struct sd_card *card, uint8_t cmd, void *buf)
+ 		return ret;
+ 	}
+ 	switch (cmd) {
++	case DISK_IOCTL_GET_SD_CID:
++		if (buf == NULL) {
++			ret = -EINVAL;
++		} else if (card->status != CARD_INITIALIZED || !card->cid_valid) {
++			ret = -ENODATA;
++		} else {
++			memcpy(buf, card->raw_cid, sizeof(card->raw_cid));
++		}
++		break;
+ 	case DISK_IOCTL_GET_SECTOR_COUNT:
+ 		(*(uint32_t *)buf) = card->block_count;
+ 		break;
+@@ -796,6 +811,9 @@ int card_ioctl(struct sd_card *card, uint8_t cmd, void *buf)
+ 		ret = sdmmc_wait_ready(card);
+ 		break;
+ 	case DISK_IOCTL_CTRL_DEINIT:
++		card->status = CARD_UNINITIALIZED;
++		card->cid_valid = false;
++		memset(card->raw_cid, 0, sizeof(card->raw_cid));
+ 		/* Ensure card is not busy with data write */
+ 		ret = sdmmc_wait_ready(card);
+ 		if (ret < 0) {

@@ -24,6 +24,7 @@ function serverShape({ msc = null, filesystem_format = null, settings = null, me
 export async function appFixture(context) {
   const state = {
     statusFails: false, statusUnknownBoard: false, boardScanFails: false, boardWarnings: [],
+    beforeUnload: null,
     saveFails: false, settingsFailure: "save", settingsOutcomeConflict: false, settingsTimeout: false,
     readbackMismatch: false, rebootFails: false, rebootResponseError: false,
     now: Date.now(),
@@ -33,14 +34,13 @@ export async function appFixture(context) {
   const fixture = domFixture();
   const { handlers, elements, el: element } = fixture;
   const configureRadio = radio => {
-    element(`#settings-${radio}`).value = "configure";
-    return handlers.get(`#settings-${radio}:change`)();
+    return handlers.get(`#${radio}-configure:click`)();
   };
   const connected = { connected: true, error: null, command_outcome_uncertain: false, reboot_pending: false,
     telemetry_stale: false, storage_stale: false, self_test_stale: true,
     runtime: { led_available: false, led_on: false },
-    hardware: { product_name: "ESPForge", board_model: "ESP32-S3-DevKitC-1", mcu: "ESP32-S3", capabilities: 2 | 4 | 16,
-      ram_reserved_bytes: 121008, ram_total_bytes: 524288 },
+    hardware: { product_name: "ZephyrForge", board_model: "ESP32-S3-DevKitC-1", mcu: "ESP32-S3",
+      capabilities: 2 | 4 | 16, ram_reserved_bytes: 121008, ram_total_bytes: 524288 },
     settings_supported: true, settings: { system_clock_mhz: 240, sdcard_profile: 0, radios: 0 },
     board_configuration: { monitor_uart_index: 0, monitor_uart_tx_gpio: 43, monitor_uart_rx_gpio: 44,
       storage_gpios: [12, 11, 13, 14, 15, 10], card_detect_gpio: 255, reset_cause: 1 },
@@ -79,7 +79,13 @@ export async function appFixture(context) {
   });
   const saved = { document: globalThis.document, window: globalThis.window, fetch: globalThis.fetch };
   globalThis.document = fixture.document;
-  globalThis.window = { setInterval: callback => { state.tick = callback; }, confirm: () => true };
+  globalThis.window = {
+    setInterval: callback => { state.tick = callback; },
+    addEventListener: (type, callback) => {
+      if (type === "beforeunload") state.beforeUnload = callback;
+    },
+    confirm: () => true,
+  };
   const saveAndConfirm = async () => {
     handlers.get("#settings-save:click")();
     await handlers.get("#confirm-configuration:click")();
@@ -87,8 +93,8 @@ export async function appFixture(context) {
   const switchBoard = async id => {
     elements.get("#board-select").value = id;
     handlers.get("#board-select:change")();
-    await new Promise(resolve => setImmediate(resolve));
-    await new Promise(resolve => setImmediate(resolve));
+    if (elements.get("#board-switch-dialog").open) handlers.get("#confirm-board-switch:click")();
+    for (let turn = 0; turn < 4; turn++) await new Promise(resolve => setImmediate(resolve));
     assert.equal(elements.get("#board-select").value, id, `board ${id} is selectable after the prior request settles`);
   };
   const reconnect = async () => {
@@ -113,8 +119,8 @@ export async function appFixture(context) {
       if (state.boardScanFails) throw new Error("scan down");
       return { ok: true, json: async () => ({
         boards: [
-          { id: "board-a", product_name: "ESPForge", serial_number: "board-A", device_path: "/hid/a" },
-          { id: "board-b", product_name: "ESPForge HID", serial_number: null, device_path: "/hid/b" },
+          { id: "board-a", product_name: "ZephyrForge", serial_number: "board-A", device_path: "/hid/a" },
+          { id: "board-b", product_name: "ZephyrForge HID", serial_number: null, device_path: "/hid/b" },
         ],
         default_board_id: "board-a",
         warnings: state.boardWarnings,
@@ -181,16 +187,17 @@ export async function appFixture(context) {
     }
     if (url.startsWith("/api/settings?board=")) {
       const settings = JSON.parse(options.body);
-      assert.equal(settings.confirm_data_loss, undefined, "ESPForge never requests a forced save");
+      assert.equal(settings.confirm_data_loss, undefined, "ZephyrForge never requests a forced save");
       savedSettings.push(settings);
       if (state.settingsTimeout) throw new DOMException("HTTP deadline", "TimeoutError");
       const status = state.settingsOutcomeConflict ? 409
         : state.saveFails ? state.settingsFailure === "unsupported" ? 503 : 409 : 200;
       return { ok: !state.saveFails && !state.settingsOutcomeConflict, status,
-        json: async () => ({ error: state.settingsOutcomeConflict
-          ? "Save outcome is uncertain; the command was not resent"
-          : state.settingsFailure === "unsupported" ? "HID settings command is not supported" : "save rejected",
-        settings: state.readbackMismatch ? { ...settings, sdcard_profile: 99 } : settings }) };
+        json: async () => status === 200
+          ? { settings: state.readbackMismatch ? { ...settings, sdcard_profile: 99 } : settings }
+          : { error: state.settingsOutcomeConflict
+            ? "Save outcome is uncertain; the command was not resent"
+            : state.settingsFailure === "unsupported" ? "HID settings command is not supported" : "save rejected" } };
     }
     if (url.startsWith("/api/reboot?board=")) {
       assert.deepEqual(JSON.parse(options.body), { confirm: true });
@@ -198,14 +205,15 @@ export async function appFixture(context) {
         status: state.rebootResponseError ? 409 : state.rebootFails ? 503 : 200,
         json: async () => state.rebootFails || state.rebootResponseError
           ? { error: state.rebootResponseError
-            ? "Reboot outcome is uncertain; command was not resent" : "Reboot delivery failed" } : {} };
+            ? "Reboot outcome is uncertain; command was not resent" : "Reboot delivery failed" }
+          : { accepted: true } };
     }
     await state.gate;
     return { ok: false, status: 503, json: async () => ({ error: "HID command delivery failed" }) };
   };
 
   context.after(() => Object.assign(globalThis, saved));
-  await import(`../../src/js/app.mjs?fixture=${++generation}`);
+  await import(`../../src/js/dashboard/app.mjs?fixture=${++generation}`);
   await new Promise(resolve => setImmediate(resolve));
   await new Promise(resolve => setImmediate(resolve));
   return {

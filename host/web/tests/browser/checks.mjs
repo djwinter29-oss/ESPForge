@@ -48,7 +48,7 @@ const mock = `<script>
     command_outcome_uncertain: false, reboot_pending: false, telemetry_stale: false,
     command_resync_supported: true,
     runtime: { led_available: false, led_on: false },
-    hardware: { product_name: "ESPForge", board_model: "ESP32-S3-DevKitC-1", mcu: "ESP32-S3",
+    hardware: { product_name: "ZephyrForge", board_model: "ESP32-S3-DevKitC-1", mcu: "ESP32-S3",
       capabilities: 128 | 16 | 4 | 2, ram_reserved_bytes: 121008, ram_total_bytes: 524288 },
     settings_supported: true,
     board_configuration: { system_clock_mhz: 160, sdcard_profile: 0, radios: 0,
@@ -65,7 +65,8 @@ const mock = `<script>
     savedWireless: structuredClone(connected.wireless), testId: null,
     mismatch: false, cleanupFailure: false, cleanups: 0,
     scanInvalid: false, wirelessScans: 0, resyncs: 0, failedCommand: null, noResultCommand: null,
-    statusReads: 0, malformedStatus: null, rebootUncertain: false, wirelessRequests: [], settingsRequests: [],
+    statusReads: 0, statusFails: false, malformedStatus: null, rebootUncertain: false,
+    wirelessRequests: [], settingsRequests: [],
     mscRequests: []};
   window.fetch = async (input, options = {}) => {
     const url = new URL(input, document.baseURI);
@@ -81,6 +82,7 @@ const mock = `<script>
       return response({error: "unknown board; rescan and select a listed board"}, 404);
     if (url.pathname === "/api/status") {
       state.statusReads++;
+      if (state.statusFails) throw new TypeError("status endpoint offline");
       return response(state.malformedStatus ?? connected);
     }
     if (url.pathname === "/api/control/resync") {
@@ -98,14 +100,14 @@ const mock = `<script>
       state.mscRequests.push(payload);
       connected.memory = { ...connected.memory, sample_valid: !payload.enabled, initialized: !payload.enabled,
         present: payload.enabled ? null : true, msc: { enabled: payload.enabled, transition_pending: false } };
-      return response({control_result: {opcode: 3, status: "completed"}});
+      return response({accepted: true});
     }
     if (url.pathname === "/api/reboot") {
       state.reboots++;
       if (state.failedCommand === 2) connected.command_outcome_uncertain = true;
       if (state.rebootUncertain || state.failedCommand === 2 || state.noResultCommand === 2)
         throw new TypeError("lost reboot reply");
-      return response({});
+      return response({accepted: true});
     }
     if (url.pathname === "/api/settings") {
       const settings = JSON.parse(options.body);
@@ -169,12 +171,12 @@ const mock = `<script>
     return response({ error: "Unexpected browser-check request" }, 404);
   };
 </script>
-<script type="module" src="js/app.mjs"></script>`;
+<script type="module" src="js/dashboard/app.mjs"></script>`;
 const html = source
   .replace("<head>", `<head><base href="${new URL("../../src/", import.meta.url)}">`)
-  .replace('<script type="module" src="/js/app.mjs"></script>', mock)
+  .replace('<script type="module" src="/js/dashboard/app.mjs"></script>', mock)
   .replaceAll('href="/', `href="${new URL("../../src/", import.meta.url)}`)
-  .replace('src="js/app.mjs"', `src="${new URL("../../src/js/app.mjs", import.meta.url)}"`);
+  .replace('src="js/dashboard/app.mjs"', `src="${new URL("../../src/js/dashboard/app.mjs", import.meta.url)}"`);
 dashboard.style.width = "1000px";
 dashboard.style.height = "800px";
 dashboard.srcdoc = html;
@@ -189,9 +191,10 @@ await waitFor(() => page.querySelector("#connection-label").textContent === "Con
   "mock board did not connect");
 
 const configureRadio = radio => {
-  radio.focus();
-  radio.value = "configure";
-  radio.dispatchEvent(new Event("change", { bubbles: true }));
+  const name = radio.id.slice("settings-".length);
+  const configure = page.querySelector(`#${name}-configure`);
+  configure.focus();
+  configure.click();
 };
 
 await run("command lifecycle gates, restart recovery, and confirmation focus", async () => {
@@ -289,7 +292,7 @@ await run("Wi-Fi cancellation failure remains open and retry succeeds", async ()
   ssid.dispatchEvent(new Event("input", { bubbles: true }));
   page.querySelector("#wifi-connect").click();
   await waitFor(() => !dialog.open, "Wi-Fi test did not finish and close the dialog");
-  check(page.activeElement === page.querySelector("#settings-wifi"), "focus was not restored after a successful test");
+  check(page.activeElement === page.querySelector("#wifi-configure"), "focus was not restored after a successful test");
 
   configureRadio(radio);
   const cancel = new Event("cancel", { cancelable: true });
@@ -300,7 +303,7 @@ await run("Wi-Fi cancellation failure remains open and retry succeeds", async ()
   check(page.querySelector("#wifi-cancel").textContent === "Retry clearing test", "retry is not offered");
   page.querySelector("#wifi-cancel").click();
   await waitFor(() => !dialog.open, "cancellation retry did not close the dialog");
-  check(page.activeElement === page.querySelector("#settings-wifi"), "focus was not restored after cancellation retry");
+  check(page.activeElement === page.querySelector("#wifi-configure"), "focus was not restored after cancellation retry");
 });
 
 await run("browser-only uncertainty is recoverable inside the Wi-Fi dialog without replay", async () => {
@@ -403,6 +406,19 @@ await run("testing another Wi-Fi network survives candidate polls and saves once
     el("wifi-connect").click();
     await waitFor(() => !el("wifi-dialog").open && el("wireless-summary").textContent.includes(ssid),
       "network testing did not complete");
+    if (!previousCandidate) {
+      const summary = el("wireless-summary");
+      const countdown = el("wireless-countdown");
+      let mutations = 0;
+      const observer = new MutationObserver(records => { mutations += records.length; });
+      observer.observe(summary, { childList: true, characterData: true, subtree: true });
+      const firstCountdown = countdown.textContent;
+      await new Promise(resolve => setTimeout(resolve, 2100));
+      observer.disconnect();
+      check(mutations === 0, "the per-second countdown changed the polite live region");
+      check(countdown.textContent !== firstCountdown && countdown.getAttribute("aria-live") === "off",
+        "the visible countdown did not update outside the polite live region");
+    }
     const latestCandidate = structuredClone(state.connected.wireless);
     if (previousCandidate) {
       state.connected.wireless = previousCandidate;
@@ -423,6 +439,13 @@ await run("testing another Wi-Fi network survives candidate polls and saves once
   }
   const saves = state.wirelessRequests.length;
   el("settings-save").click();
+  const confirmation = el("configuration-dialog-wireless").textContent;
+  check(confirmation.includes("replacement-browser-network") && !confirmation.includes("browser-password"),
+    "wireless confirmation did not name the tested network or exposed credential text");
+  check(!el("configuration-wireless-warning").hidden
+    && el("configuration-wireless-warning").textContent.includes("not encrypted")
+    && !el("configuration-wireless-warning").textContent.includes("Control key"),
+  "wireless confirmation showed irrelevant credential warnings");
   el("confirm-configuration").click();
   await waitFor(() => el("settings-note").textContent.includes("Settings saved"), "tested pair was not saved");
   check(state.wirelessRequests.length === saves + 1, "Save did not send exactly one request");
@@ -635,7 +658,7 @@ await run("clock drafts preserve remotely updated radios and credentials", async
     check(el(`settings-${field}`).value === "80", "local edit was overwritten");
     check(!el("settings-save").disabled, "remote update manufactured a conflicting credential draft");
     el("settings-save").click();
-    check(el("configuration-dialog-profile").textContent.includes("Bluetooth key: preserve"),
+    check(el("configuration-dialog-wireless").textContent.includes("Control key: unchanged"),
       "confirmation did not explain credential preservation");
     el("confirm-configuration").click();
     await waitFor(() => el("settings-note").textContent.includes("Settings saved"), "unrelated settings save failed");
@@ -682,7 +705,7 @@ await run("forced radio-disable events cannot bypass readiness; recovery explici
   await waitFor(() => !el("settings-save").disabled, "fresh wireless status did not release explicit radio intent");
   check(el("settings-wifi").value === "0", "baseline recovery overwrote the explicit disable");
   el("settings-save").click();
-  check(el("configuration-dialog-profile").textContent.includes("Wi-Fi credentials: erase"),
+  check(el("configuration-dialog-wireless").textContent.includes("Wi-Fi credentials: erase saved credentials"),
     "confirmation did not explain erasure");
   el("confirm-configuration").click();
   await waitFor(() => el("settings-note").textContent.includes("Settings saved"), "explicit disable did not save");

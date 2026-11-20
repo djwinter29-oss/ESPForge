@@ -1,6 +1,6 @@
-# ESPForge Direct Dashboard
+# ZephyrForge Direct Dashboard
 
-Connect to an ESPForge ESP32-S3 board directly from desktop Chrome or Edge using **USB (WebHID)** or
+Connect to a ZephyrForge ESP32-S3 board directly from desktop Chrome or Edge using **USB (WebHID)** or
 **Bluetooth LE (Web Bluetooth)**. View live diagnostics, edit boot settings, provision Wi-Fi and Bluetooth, and
 reboot the board without installing the Python or .NET host application.
 
@@ -24,7 +24,7 @@ required. It is fully independent of the Python/.NET dashboard assets in `host/w
 |---|---|---|
 | Hosted dashboard | GitHub Pages, after a release is [published](../../docs/deployment/release.md) | Yes, with browser support |
 | Repository checkout | Run the command below from the repository root | Yes, with browser support |
-| Release ZIP | Extract `espforge-direct-vX.Y.Z.zip` from the repository's Releases page | Yes, with browser support |
+| Release ZIP | Extract `zephyrforge-direct-vX.Y.Z.zip` from the repository's Releases page | Yes, with browser support |
 
 **From a repository checkout:**
 
@@ -39,8 +39,9 @@ python3 server.py --port 8000
 ```
 
 For either local option, open **<http://127.0.0.1:8000/>**. The local server requires Python, but does not require the
-ESPForge Python host package. Keep the default loopback binding for local use.
-Local startup does not require reverse DNS resolution of the bind address.
+ZephyrForge Python host package. It binds only to `127.0.0.1`, sends same-origin-only WebHID/Web Bluetooth permissions
+and isolates top-level browsing contexts. These headers do not add encryption or change browser-granted device
+permissions. Local startup does not require reverse DNS resolution.
 
 Local checkout launches serve a temporary, versioned copy without editing the source assets. Like the other hosts,
 versions use `vMAJOR.MINOR.PATCH` Git tags: the next commit after `v1.2.3` displays `1.2.4-dev.1`.
@@ -60,19 +61,20 @@ OS in a secure context, such as HTTPS or localhost. Bluetooth support on Linux v
 
 1. Close other applications using the board's HID interface, including the Python/.NET hosts.
 2. Choose **USB**, then **Select board**.
-3. Select the ESPForge board (USB `0xCAFE:0x4021`) and grant access to its vendor HID interface.
+3. Select the ZephyrForge board (USB `0xCAFE:0x4021`) and grant access to its vendor HID interface.
 4. Wait for valid identity, configuration, and fresh status reports before using controls.
 
 The chooser opens even for previously authorized devices so you can select the intended board. Cancel leaves the
 dashboard disconnected. Browser permission cannot override another application's HID access.
 
 For Bluetooth, first provision a Control key over USB. Then choose **Bluetooth**, enter the saved key, and scan for
-a board advertising as `ESPForge-…`. See [wireless setup](../../docs/guides/wireless.md).
+a board advertising as `ZephyrForge-…`. See [wireless setup](../../docs/guides/wireless.md).
 
 ### Safety essentials
 
 - Do not run competing clients against the same board.
 - A timeout or disconnect does **not** automatically retry a command. Resolve uncertain outcomes before continuing.
+- Disconnecting with unsaved board or wireless edits asks for confirmation and identifies the connected board.
 - Control keys authenticate commands; they do not encrypt BLE traffic. Flash credentials are not encrypted.
 - Host tests and successful builds do not establish physical hardware, radio, or SD-card reliability.
 
@@ -80,23 +82,28 @@ a board advertising as `ESPForge-…`. See [wireless setup](../../docs/guides/wi
 
 | Section | What it shows or controls |
 |---|---|
-| Device information | Product, board/MCU, serial, system clock, reserved/total firmware RAM, and firmware version |
+| Device information | Product, serial, system clock, firmware version, and flash/PSRAM capacities |
 | Board configuration | Next-boot clock, Wi-Fi and Bluetooth switches, and reset cause |
 | Pin configuration | Collapsible management UART, SDMMC and allocated card-detect GPIO tables |
 | Live diagnostics | Uptime, Core 0 CPU load, temperature, storage bus speed, and wireless status |
 | Storage | Card state, capacity, filesystem, and card identity |
 
-Firmware RAM is boot-stable build accounting, not live heap or stack usage. ESPForge has one SD-card profile, so
+Hover or focus Product for separate Board and MCU rows, or Module memory for SRAM/PSRAM reservations and flash capacity.
+Click or tap either item to toggle its details; Escape closes them.
+Firmware RAM is boot-stable build accounting, not live heap or stack usage.
+ZephyrForge has one SD-card profile, so
 the dashboard always saves profile 0 and shows the bus clock actually reported by Storage.
 
 USB connections can explicitly export an initialized SD card and return it after confirmed OS eject;
 see [SD ownership](../../docs/reference/sdcard.md#usb-drive-handoff). Bluetooth cannot change ownership.
-ESPForge has no forced save. Local serving also provides a browser link to the native Wi-Fi shell.
+ZephyrForge has no forced save. Local serving also provides a browser link to the native Wi-Fi shell.
 The Device information RGB dropdown sends volatile colour requests over USB or an authenticated BLE session.
 It requires fresh available-driver telemetry; uncertain commands are reconciled without replay.
-When firmware advertises benchmarking, Storage offers confirmed start/cancel and live write/read verification results.
-See [benchmark safety and timing](../../docs/reference/sdcard.md#optional-storage-benchmark); BLE mirrors progress read-only.
-The dashboard omits those controls rather than inventing values.
+When firmware advertises benchmarking, Storage offers a start-confirmation dialog naming the size and card wear,
+cancellation, and live write/read verification results. Confirming after the board changes sends no command.
+See [benchmark safety and timing](../../docs/reference/sdcard.md#optional-storage-benchmark); BLE mirrors progress
+read-only.
+Without this capability, benchmark controls and BLE benchmark-status polling are omitted.
 
 ### Wi-Fi shell
 
@@ -109,7 +116,7 @@ Wi-Fi connectivity is not proof of listener readiness; failed TCP connections ar
 
 The relay is available only through same-origin loopback HTTP requests. Static hosting, including Pages and
 other local static servers, keeps Wi-Fi status as plain text rather than presenting a broken shell link.
-`GET /api/console/capabilities` reports `{"available":true}` on the local ESPForge server.
+`GET /api/console/capabilities` reports `{"available":true}` on the local ZephyrForge server.
 Direct opens with `POST /api/console`, exactly `{"ipv4":"REPORTED_ADDRESS"}`; the remaining header-token,
 bounded packet and no-replay contract matches the [bridge API](../web/README.md#browser-shell).
 The release ZIP includes its standard-library relay and requires no Python host installation.
@@ -132,6 +139,9 @@ Controls depend on board capabilities, connection type, and fresh reports.
 | Radio switches, Wi-Fi credentials, and Control-key provisioning | Supported | USB-only |
 
 ### Wireless provisioning
+
+Wi-Fi follows the Python/.NET dashboards' scan/select, **Other network…**, password and **Test connection** flow.
+Open networks hide the password field; long network names and dialog actions wrap on narrow screens.
 
 1. Over USB, choose **Configure…** for the radio.
 2. For Wi-Fi, select or enter a network and successfully test it.
@@ -163,7 +173,9 @@ state: drafts are cleared; reconnect explicitly. Commands are never automaticall
 Pending-operation journals remain in the current tab's `sessionStorage` for same-board reconciliation.
 They contain allowlisted transaction/profile/commit-mask or generation facts, never SSIDs, passwords, or Control
 keys. Missing, inaccessible, or invalid journal storage blocks writes. Keep the tab open while resolving an
-uncertain operation; recovery does not survive ending the tab's session.
+uncertain operation; recovery does not survive ending the tab's session. If same-board recovery remains uncertain,
+**Abandon unresolved recovery…** clears only the local journal after explicit confirmation; use it only after
+independently checking the board. It does not undo or verify the operation. Never retry until its effect is known.
 
 Async form results belong to their originating session, connection generation, and draft lifecycle. Old
 completions cannot clear newer post-reconnect drafts.
@@ -188,13 +200,13 @@ not use Web Serial. See the
 
 | Layer | Responsibility |
 |---|---|
-| Static server | Loopback hosting with security headers |
+| Static server | Loopback hosting, security headers, and revalidated static assets |
 | Application | Browser integration and lifecycle ownership |
 | Protocol | Report codecs, constants and opcode policy |
 | Transport | Abort-aware WebHID/Web Bluetooth byte pipes, framing and authentication |
 | Board session | Connection lifecycle, command journal, recovery, polling and use cases |
 | State | Domain/UI stores, allowlisted events, readiness selectors and errors |
-| Presentation | Dashboard composition, view models and DOM updates |
+| Presentation | Dashboard composition, feature dialogs, view models and DOM updates |
 | Timers | Abortable waits and page-owned timer scopes |
 
 ### Ownership rules
@@ -217,8 +229,15 @@ qualification.
 ```sh
 node host/direct/tests/run-tests.mjs
 python3 -m unittest host.direct.tests.test_server -v
-npx --yes --package typescript@5.9.3 tsc --project host/direct/web/js/tsconfig.json
+npx --yes --package typescript@5.9.3 tsc --project host/direct/tests/types/tsconfig.json
+npx --yes --package typescript@5.9.3 tsc --project host/direct/tests/types/tsconfig.core-strict.json
+npx --yes --package typescript@5.9.3 tsc --project host/direct/tests/types/tsconfig.protocol-strict.json
+npx --yes --package typescript@5.9.3 tsc --project host/direct/tests/types/tsconfig.board-runtime-strict.json
 ```
+
+The full runtime check covers all browser modules; full strict mode is enforced for the shared core utilities,
+protocol codecs, board lifecycle, recovery, polling, transports and reducer. The remaining runtime modules are
+moving to strict checking incrementally.
 
 To isolate command-lifecycle failures:
 
@@ -230,10 +249,11 @@ node --test host/direct/tests/board/commands.test.mjs
 |---|---|
 | `tests/integration/` | Composition root and cross-layer scenarios |
 | `tests/contracts/` | Architecture, self-containment, and test-layout invariants |
+| `tests/ui/` | Presentation, console, and DOM behavior |
 | `tests/web/` | HTML and asset contracts |
 | `tests/browser/` | Chromium interaction checks and their pinned dependency |
-| `tests/types/` | Static-only negative type contracts; never run with Node |
-| `tests/support/` | Shared Direct-only fixtures, including a fake ESPForge WebHID device |
+| `tests/types/` | TypeScript config and static-only negative type contracts; never run with Node |
+| `tests/support/` | Shared Direct-only fixtures, including a fake ZephyrForge WebHID device |
 | `tests/test_server.py` | Server behavior |
 
 ### Browser checks
@@ -244,17 +264,28 @@ python3 -m playwright install chromium
 python3 host/direct/tests/browser/run.py
 ```
 
-The runner owns an ephemeral loopback server and fails on incomplete checks, assertion failures, or browser errors.
-Checks cover dialog focus/Escape, narrow viewports, invalid keys, Wi-Fi selection/cancellation/reset, save/reconnect
-ownership, failed-key-save recovery, and telemetry render coalescing. A fake WebHID board drives the production
-entry point through connect, input reports, and Save. A history-navigation check verifies draft disposal and journal
-retention. They do not exercise real hardware.
+The runner owns an ephemeral loopback server and fails on incomplete checks, assertion failures, browser errors,
+or failed runtime asset loads.
+It also runs the vendored axe-core 4.10.3 WCAG 2.1 A/AA and best-practice rules against the dashboard and each dialog;
+its MPL-2.0 and bundled third-party notices are in `tests/browser/vendor/`. Checks cover dialog focus/Escape,
+narrow viewports, invalid keys, Wi-Fi selection/cancellation/reset, save/reconnect ownership, failed-key-save
+recovery, module request count/transfer size, and telemetry render coalescing. A fake WebHID board drives the
+production entry point through connect, input reports, and Save. A history-navigation check verifies draft
+disposal and journal retention. They do not exercise real hardware.
+
+The JavaScript runner enforces aggregate coverage of 90% lines, 80% branches, and 85% functions, plus per-file floors
+of 80% lines, 55% branches, and 50% functions. LCOV output provides per-file metrics independently of Node's
+human-readable coverage table. Repeated source records combine hits by line, branch and function identity rather
+than averaging execution totals; merging records without complete per-item details is an error.
+The type checks cover the complete runtime module graph and full strict checks for protocol modules, shared core
+utilities, board lifecycle, recovery, polling, transports and reducer. Other runtime modules are moving to strict
+checking incrementally.
 
 ## Further reading
 
 - [Getting started](../../docs/guides/getting-started.md)
 - [Wireless setup](../../docs/guides/wireless.md)
-- [ESPForge implementation reference](../../docs/reference/espforge-implementation.md)
+- [ZephyrForge implementation reference](../../docs/reference/zephyrforge-implementation.md)
 - [HID report reference](../../docs/reference/usb-hid.md)
 - [Bluetooth LE protocol](../../docs/reference/bluetooth.md)
 - [Boot settings](../../docs/reference/settings.md)

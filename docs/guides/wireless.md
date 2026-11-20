@@ -40,7 +40,7 @@ Power-cycling the board does not by itself clear the dashboard's recovery state.
 
 Create a Control key and copy it to a password manager before saving: the board never returns the key. Bluetooth
 stays off until a key is saved. To connect, choose the Direct dashboard's **Bluetooth** option, enter the key, and
-select `ESPForge-<serial>`. Use desktop Chrome or Edge with Web Bluetooth, served from localhost or HTTPS. Python and
+select `ZephyrForge-<serial>`. Use desktop Chrome or Edge with Web Bluetooth, served from localhost or HTTPS. Python and
 .NET can provision Bluetooth settings over USB but do not connect over BLE.
 
 The Control key authenticates commands. It is not a Bluetooth pairing password and does not encrypt the link.

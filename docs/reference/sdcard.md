@@ -1,6 +1,6 @@
 # SD Storage Reference
 
-ESPForge provides two firmware images for the ESP32-S3-DevKitC-1 N16R8: **native four-bit SDMMC, slot 0**
+ZephyrForge provides two firmware images for the ESP32-S3-DevKitC-1 N16R8: **native four-bit SDMMC, slot 0**
 (the default), and **SD-over-SPI** on SPI3. Select the image that matches the wiring; there is no runtime fallback.
 Both use Zephyr's SDMMC disk layer and FatFs, with the same card detection and ownership behavior.
 This is the SD memory-card bus, not an SDIO peripheral/function API or a PIO-emulated bus.
@@ -22,7 +22,7 @@ exact board and breakout before connecting them.
 | Data bit 1 | GPIO14 | DAT1 | Bidirectional |
 | Data bit 2 | GPIO15 | DAT2 | Bidirectional |
 | Data bit 3 | GPIO10 | DAT3 | Bidirectional |
-| Card detect | GPIO8 | Inserted-high, 3.3 V detection signal | Input with internal pull-down |
+| Card detect | GPIO8 | Inserted-low detection switch to GND | Input with internal pull-up |
 | Supply | 3V3 | 3.3 V supply input | Power |
 | Ground | GND | GND | Common ground |
 
@@ -32,12 +32,15 @@ prevent bidirectional native operation. Do not connect 5 V logic.
 CMD and DAT0-DAT3 require suitable **external pull-ups to 3.3 V** (typically 10 kOhm; verify the socket/module
 requirements and existing resistors). Do not add a pull-up to CLK. Pinctrl also requests internal command/data
 pull-ups, but these do not replace electrical qualification. Keep all six signal wires short.
+The native image sets CLK, CMD and DAT0-DAT3 pad drive to about 10 mA. The ESP32-S3 reset default of about 20 mA
+caused data-CRC write failures on tested hand wiring while reads and mounting still worked. Wiring changes can need a
+different `drive-strength` value in the board overlay (5, 10, 20 or 40 mA); requalify writes after changing it.
 
-GPIO8 is **active-high**: 3.3 V means inserted, low means absent. Connect a suitable insertion switch between
-GPIO8 and 3V3, closing when a card is inserted; the internal pull-down holds an open/unwired input low.
-A socket whose detect contact instead shorts to ground on insertion needs polarity adaptation, not direct
-connection with this configuration. Never apply 5 V. Detection wiring is required for mounting: an unwired
-GPIO8 reports no card even when the SDMMC signals are connected. There is no power-control GPIO.
+GPIO8 is **active-low**: low means inserted, 3.3 V means absent. Connect the socket's insertion switch between
+GPIO8 and GND, closing when a card is inserted; the internal pull-up holds an open input high. A socket whose
+detect contact instead drives 3.3 V on insertion needs polarity adaptation, not direct connection with this
+configuration. Never apply 5 V. An unwired GPIO8 reads absent; a GPIO8 shorted to GND reads inserted even
+without a card, so firmware retries initialization until a card responds. There is no power-control GPIO.
 In the native image, GPIO10 is DAT3, **not a chip-select output**.
 When changing between native SDMMC and SPI images, disconnect card power before restarting:
 a board reset alone does not necessarily reset the card's selected bus mode.
@@ -50,15 +53,16 @@ a board reset alone does not necessarily reset the card's selected bus mode.
 | MOSI | GPIO11 | CMD / DI |
 | MISO | GPIO13 | DAT0 / DO |
 | CS, active-low | GPIO10 | DAT3 / CS |
-| Card detect | GPIO8 | Inserted-high, 3.3 V detection signal |
+| Card detect | GPIO8 | Inserted-low detection switch to GND |
 
-Supply, ground and the active-high detect switch use the same wiring and precautions as above.
+Supply, ground and the active-low detect switch use the same wiring and precautions as above.
 GPIO14 and GPIO15 are unused by the SPI image; DAT1/DAT2 do not carry SPI data.
 Use a 3.3 V-compatible SPI socket/module with appropriate SD pull-ups, including CS; internal data pull-ups do not
 replace external resistors. This is ordinary full-duplex SPI with one MOSI and one MISO line, not native one-bit SDMMC.
 
 The native image enables SDMMC slot 0 with a four-bit bus; the SPI image disables that slot and enables SPI3.
-Both request a 25 MHz maximum frequency. SPI2 remains dedicated to the RGB LED in both images.
+Native SDMMC requests a 40 MHz maximum frequency; SPI requests 25 MHz.
+SPI2 remains dedicated to the RGB LED in both images.
 GPIO33-37 are occupied by octal PSRAM on N16R8.
 
 Report `2` publishes storage GPIOs in CLK, CMD, DAT0, DAT1, DAT2, DAT3 order as
@@ -75,15 +79,25 @@ validate the new allocation before use.
 | SPI image controller/slot | SPI3, compatible `zephyr,sdhc-spi-slot` |
 | Disk layer | `zephyr,sdmmc-disk`, disk name `SD` |
 | Filesystem | FatFs, mount point `/SD:` |
-| Requested bus ceiling | 25 MHz; not a measured runtime clock or throughput |
+| Requested bus ceiling | Native 40 MHz; SPI 25 MHz; not a measured runtime clock or throughput |
+| Native image pad drive | `drive-strength = <10>` on CLK, CMD and DAT0-DAT3 |
 
 Both images enable GPIO/pinctrl, disk access, the SDMMC disk driver, the filesystem API and FatFs.
 The native image selects `CONFIG_SDHC_ESP32`; the SPI image selects `CONFIG_SPI_SDHC`.
 Both `CONFIG_FS_FATFS_MOUNT_MKFS` and `CONFIG_FS_FATFS_MKFS` are explicitly
 disabled: the application cannot automatically format a failed mount or call FatFs mkfs through these options.
 
-Prepare an existing FAT16/FAT32 volume on a computer and back up its data before use. exFAT is not enabled
-in the default firmware. The report format reserves a value for exFAT; that does not imply filesystem support.
+Prepare an existing FAT16, FAT32 or exFAT volume on a computer and back up its data before use. exFAT support
+covers mounting existing volumes, such as factory-formatted SDXC cards; the firmware still cannot create one.
+
+Native SDMMC starts at the probing clock and negotiates the card's advertised capabilities.
+Cards that accept High Speed mode can use the 40 MHz ceiling; cards without that support remain at the legacy
+clock, at most 25 MHz requested. The ESP32 driver divides a 160 MHz source: a 25 MHz request produces about
+22.9 MHz, while 40 MHz is exact. Requesting 50 MHz would still select 40 MHz with this driver.
+There is no UHS/1.8 V mode or automatic clock reduction after CRC errors.
+A card's write-speed class does not determine its negotiated bus clock.
+Keep the 10 mA pad drive and qualify writes on the actual wiring; if higher-speed operation is unreliable,
+restore `max-bus-freq = <25000000>` in the native board overlay and rebuild rather than replaying failed writes.
 
 ## Boot and runtime mount lifecycle
 
@@ -92,8 +106,12 @@ An inserted boot-time card is mounted immediately. Startup continues after a log
 
 A separate worker polls card detection nominally every 50 ms and requires 100 ms stable insertion. Insertion, including
 insertion after startup, mounts the existing FAT volume. Failed initialization/mount attempts retry every
-2 seconds while a card is detected. Successful initialization also requires a nonzero sector count and
-512-byte sectors; failed geometry validation releases the medium rather than advertising usable storage.
+2 seconds after the previous attempt completes while a card is detected. Successful hardware initialization requires a
+nonzero sector count and 512-byte sectors; failed geometry validation releases the medium rather than advertising
+usable storage.
+Hardware metadata is collected before mounting. A failed mount leaves the initialized card's CID, capacity and
+configured bus facts available, with filesystem format unknown. Retries clean up the previous filesystem registration
+and disk references before reinitializing; they do not format, repair or automatically export the card.
 
 An observed removal, even shorter than the debounce period, invalidates current card facts and revokes USB ownership.
 Absence is confirmed after 100 ms stability; raw absence already rejects USB I/O before the worker handles it.
@@ -107,10 +125,12 @@ cleanup is not a verified hardware reset. Power-cycle a card if it cannot be rei
 
 ## USB drive handoff
 
-The dashboard exposes **Enable USB drive** when this firmware advertises MSC and a FAT card is initialized.
+The dashboard exposes **Enable USB drive** when this firmware advertises MSC and card hardware is initialized.
 Native USB presents HID management plus a removable MSC LUN; it has no CDC console.
 Firmware unmounts FAT before exporting raw 512-byte sectors. The native USB device briefly disconnects and
 reconnects on export so an OS-ejected LUN can be loaded again.
+While firmware owns the card, including during transitions and benchmarks, the LUN reports no medium immediately
+instead of holding host commands until storage work finishes.
 
 Before **Return to firmware**, safely eject the drive in the operating system, then explicitly confirm eject
 in the dashboard. The native Zephyr class does not expose a public OS-eject notification; the confirmation is
@@ -123,16 +143,17 @@ command. See the [USB control contract](usb-hid.md#msc-command-rules) for exact 
 
 ## Status reporting
 
-Report `10` carries live detection/ownership snapshots, mount outcome, filesystem type and available capacity
+Report `10` carries live detection/ownership snapshots, hardware identity, filesystem type and available capacity
 over USB HID and BLE.
 The [USB HID specification](usb-hid.md#report-id-10-storage-status) owns field values, flags and validation.
 Detection distinguishes confirmed absence from an inserted card whose mount failed.
 During media work or USB ownership, the firmware SD sample is invalid and current SD fields are cleared.
 Capacity counts the whole volume in 512-byte sectors, not free space. The reported clock is the configured
-ceiling, not a runtime measurement. CID and negotiated bus state are unavailable.
+ceiling, not a runtime measurement. CID reports manufacturer/product/revision, serial and manufacturing date even
+when no filesystem is mounted. Negotiated bus state is not reported.
 
 The mount error code is **only logged**, not retained in Report `10`. Hosts can distinguish detected absence,
-but cannot distinguish bad SD wiring, an unsupported filesystem or another mount error from this report alone.
+and hardware initialization from a mounted filesystem, but cannot classify a mount error from this report alone.
 Use the UART log for
 diagnosis, and do not label every uninitialized sample "no card".
 
@@ -182,8 +203,7 @@ The benchmark causes real card writes and wear; it provides neither power-loss a
 
 ## Validation limits
 
-SD-card testing is intentionally deferred until hardware is connected. Successful compilation and
-simulated absent-card UI do not qualify any card, breakout, FAT layout or sustained recording workload.
-The pin allocation is proposed wiring, not electrically qualified hardware. Actual bus frequency,
-mount compatibility and throughput remain unmeasured; see the
-[qualification gaps](../validation/qualification-gaps.md).
+Hardware results are kept in the [validation records](../validation/records/README.md); they cover individual
+card and wiring combinations. Successful compilation and simulated absent-card UI do not qualify any card, breakout,
+FAT layout or sustained recording workload. The pin allocation and pad drive are not electrically qualified for
+other wiring. See the [qualification gaps](../validation/qualification-gaps.md).

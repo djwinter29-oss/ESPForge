@@ -25,7 +25,7 @@ test("unavailable recovery storage fails closed and keeps its error visible acro
 
 test("malformed saved operation records fail closed and cannot authorize a write", async () => {
   const { device, hid, sent, pendingStore } = fakeConnection();
-  pendingStore.setItem("espforge.direct.pending-operation", JSON.stringify({
+  pendingStore.setItem("zephyrforge.direct.pending-operation", JSON.stringify({
     version: 1, kind: "control", uid: "0102030405060708",
     request: { transaction_id: 1, opcode: OP.SCAN }, password: "unexpected",
   }));
@@ -59,20 +59,17 @@ test("transactions serialize, match ID and opcode, poll Pending, wrap IDs, and d
   await client.disconnect();
 });
 
-test("SET failure never polls; terminal rejection permits a new transaction; timeout blocks replay", async () => {
-  const { client, device, reads } = fakeConnection();
+test("terminal rejection permits a new transaction; timeout blocks replay", async () => {
+  const { client, device, sent } = fakeConnection();
   await client.connect(); emit(device, 3, telemetry());
-  device.sendFeatureReport = async () => { throw new Error("SET rejected"); };
-  await assert.rejects(scan(client), says(/SET rejected/));
-  assert.deepEqual(reads, [1, 2]);
-  assert.equal(client.state.outcome_uncertain, false);
   let request;
-  device.sendFeatureReport = async (id, payload) => { request = payload; };
+  device.sendFeatureReport = async (id, payload) => { sent.push([id, ...payload]); request = payload; };
   device.receiveFeatureReport = async () => result(request[1], request[2], 6, 6);
   await assert.rejects(scan(client), says(/status 6, error 6/));
   assert.equal(client.state.outcome_uncertain, false);
   device.receiveFeatureReport = async () => result(request[1], request[2]);
   await assert.doesNotReject(scan(client));
+  assert.equal(sent.length, 2);
   const timeout = fakeConnection({ sleep: async () => {}, timeout: 10000 });
   await timeout.client.connect(); emit(timeout.device, 3, telemetry());
   timeout.device.receiveFeatureReport = async () => result(0, 0, 0);
@@ -80,6 +77,25 @@ test("SET failure never polls; terminal rejection permits a new transaction; tim
   await assert.rejects(timeout.client.command(OP.SCAN), says(/uncertain/));
   assert.equal(timeout.sent.length, 1);
   await timeout.client.disconnect();
+  await client.disconnect();
+});
+
+test("ambiguous HID write failures retain the recovery journal and block retries", async () => {
+  const { client, device, sent, pendingStore } = fakeConnection();
+  await client.connect(); emit(device, 3, telemetry());
+  let writes = 0;
+  device.sendFeatureReport = async (id, report) => {
+    writes++;
+    sent.push([id, ...report]);
+    throw new Error("Transfer failed after dispatch");
+  };
+  await assert.rejects(scan(client), says(/uncertain/));
+  assert.equal(client.state.outcome_uncertain, true);
+  assert.ok(client.state.pending_request);
+  assert.ok(pendingStore.getItem("zephyrforge.direct.pending-operation"));
+  await assert.rejects(scan(client), says(/uncertain/));
+  assert.equal(writes, 1, "a retry is blocked while the original outcome is unknown");
+  assert.equal(sent.length, 1);
   await client.disconnect();
 });
 
@@ -148,7 +164,7 @@ test("cancelling an in-flight write preserves uncertainty and its recovery journ
   await assert.rejects(command, { name: "AbortError" });
   assert.equal(client.state.outcome_uncertain, true);
   assert.ok(client.state.pending_request);
-  assert.ok(pendingStore.getItem("espforge.direct.pending-operation"));
+  assert.ok(pendingStore.getItem("zephyrforge.direct.pending-operation"));
   release();
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(sent.length, 1, "late completion never replays the write or clears its uncertainty");
@@ -169,7 +185,7 @@ test("save commit-mask mismatch is uncertain even after firmware clears staged s
     ble_enabled: false, board: BOARD }), says(/did not confirm/));
   assert.equal(setup.client.state.outcome_uncertain, true);
   await assert.rejects(scan(setup.client), says(/uncertain/));
-  assert.equal(JSON.parse(setup.pendingStore.getItem("espforge.direct.pending-operation")).request.commit_mask, 3);
+  assert.equal(JSON.parse(setup.pendingStore.getItem("zephyrforge.direct.pending-operation")).request.commit_mask, 3);
   await setup.client.disconnect();
 });
 
@@ -184,7 +200,7 @@ test("scan result index/generation mismatch keeps the original query persisted a
   };
   await assert.rejects(setup.client.scanWireless(), says(/generation and index/));
   assert.equal(setup.client.state.outcome_uncertain, true);
-  const request = JSON.parse(setup.pendingStore.getItem("espforge.direct.pending-operation")).request;
+  const request = JSON.parse(setup.pendingStore.getItem("zephyrforge.direct.pending-operation")).request;
   assert.equal(request.scan_generation, 1); assert.equal(request.scan_index, 0);
   await setup.client.disconnect();
 });

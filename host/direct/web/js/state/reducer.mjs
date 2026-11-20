@@ -41,12 +41,15 @@ export const DOMAIN_EVENTS = Object.freeze({
   "command/finished": ["busy", "outcome_uncertain", "error", "settings", "reboot_pending"],
   "lifecycle/settled": ["pending_wireless"],
   "recovery/finished": ["outcome_uncertain", "error", "recovered_opcode", "recovery_message"],
+  "recovery/abandoned": ["outcome_uncertain", "pending_request", "pending_wireless", "error", "recovery_message"],
   "report/received": [...REPORTS, "wireless_poll_error"],
   "report/expired": REPORTS,
   "report/failed": ["error", "wireless_poll_error", "wireless", "wireless_error"],
   "wireless/locked": ["wireless_busy"],
   "session/failed": ["error", "outcome_uncertain"],
 });
+/** @param {string} type @returns {type is keyof typeof DOMAIN_EVENTS} */
+const isDomainEvent = type => Object.hasOwn(DOMAIN_EVENTS, type);
 
 /**
  * @brief Dashboard-only presentation facts written only by the UI layer. `action_error` is the last failed user
@@ -71,7 +74,7 @@ export const UI_KEYS = Object.freeze([
 /**
  * @typedef {object} DashboardState
  * @property {"usb" | "ble"} [link]
- * @property {typeof import("../board/connection.mjs").PHASE[keyof typeof import("../board/connection.mjs").PHASE]} [phase]
+ * @property {import("../board/connection.mjs").Phase} [phase]
  * @property {boolean} [connected]
  * @property {boolean} [reconnecting]
  * @property {boolean} [busy]
@@ -112,6 +115,7 @@ export const UI_KEYS = Object.freeze([
  */
 /** @typedef {StateAction<DashboardState>} DashboardAction */
 
+/** @param {object} object @param {readonly string[]} keys @param {string} label */
 const checkKeys = (object, keys, label) => {
   const unknown = Object.keys(object).filter(key => !keys.includes(key));
   if (unknown.length) throw new Error(`Unknown ${label} keys: ${unknown.join(", ")}`);
@@ -122,20 +126,31 @@ const checkKeys = (object, keys, label) => {
  * @type {(state: DashboardState, action: DashboardAction) => DashboardState}
  */
 export function dashboardReducer(state, action) {
-  if (action.type === "replace") { checkKeys(action.state, DOMAIN_KEYS, "state"); return action.state; }
-  const keys = Object.hasOwn(DOMAIN_EVENTS, action.type) ? DOMAIN_EVENTS[action.type] : null;
-  if (!keys || !("changes" in action)) throw new Error(`Unknown domain event ${action.type}`);
+  if (action.type === "replace") {
+    if (!action.state) throw new Error("Unknown domain event replace");
+    checkKeys(action.state, DOMAIN_KEYS, "state");
+    return action.state;
+  }
+  const keys = isDomainEvent(action.type) ? DOMAIN_EVENTS[action.type] : null;
+  if (!keys || !("changes" in action) || !action.changes) throw new Error(`Unknown domain event ${action.type}`);
   checkKeys(action.changes, keys, action.type);
   return { ...state, ...action.changes };
 }
 
 /**
- * @brief Allowlisted UI snapshots; board facts cannot enter this store.
- * ponytail: one generic patch action is enough for a single UI writer with no state transitions.
+ * @brief Allowlisted UI snapshots; board facts cannot enter this store. One generic patch action suffices because
+ * the dashboard is the only UI writer and UI state has no transitions to enforce.
  * @type {(state: UiState, action: StateAction<UiState>) => UiState}
  */
 export function uiReducer(state, action) {
-  if (action.type === "replace") { checkKeys(action.state, UI_KEYS, "state"); return action.state; }
-  if (action.type === "patch") { checkKeys(action.changes, UI_KEYS, "state"); return { ...state, ...action.changes }; }
+  if (action.type === "replace") {
+    if (!action.state) throw new Error("Unknown state action");
+    checkKeys(action.state, UI_KEYS, "state");
+    return action.state;
+  }
+  if (action.type === "patch" && action.changes) {
+    checkKeys(action.changes, UI_KEYS, "state");
+    return { ...state, ...action.changes };
+  }
   throw new Error("Unknown state action");
 }

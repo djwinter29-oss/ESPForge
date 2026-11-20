@@ -7,17 +7,37 @@
  */
 import { OP, RESULT } from "../protocol/constants.mjs";
 import { BoardError, errorValue, REASON } from "../state/errors.mjs";
-import { commandFailed } from "./commands.mjs";
+import { createCommandFailure } from "./commands.mjs";
 
+/**
+ * @typedef {object} RecoverySession
+ * @property {import("../state/reducer.mjs").DashboardState} state
+ * @property {{recoveryError: import("../state/reducer.mjs").ReasonValue | null,
+ *   pollResult: (device: object | null, request: import("../state/reducer.mjs").PendingRequest,
+ *   signal: AbortSignal) => Promise<ReturnType<typeof import("../protocol/codec.mjs").decodeControlResult>>,
+ *   unconfirmed: (request: import("../state/reducer.mjs").PendingRequest,
+ *   result: ReturnType<typeof import("../protocol/codec.mjs").decodeControlResult>) => string | null,
+ *   retire: (request: import("../state/reducer.mjs").PendingRequest, succeeded: boolean) => void,
+ *   settleWireless: () => void}} commands
+ * @property {{waitLifecycle: (pending: import("../state/reducer.mjs").WirelessLifecycle)
+ *   => Promise<{kind: "completed", result: object} | {kind: "failed", error: Error}>}} polling
+ * @property {(type: string, changes: Partial<import("../state/reducer.mjs").DashboardState>) => void} emit
+ */
+
+/**
+ * @brief Reconcile a journalled operation after reconnect without replaying state-changing requests.
+ */
 export class Recovery {
-  /** @param {import("./session.mjs").BoardSession} session */
+  /**
+   * @param {RecoverySession} session Recovery services.
+   */
   constructor(session) {
     this.session = session;
   }
 
   /**
    * @brief Recover every pending fact after the board identified itself; failures leave the outcome uncertain.
-   * @param device Device the connection was opened on.
+   * @param {object | null} device Device the connection was opened on.
    * @param {AbortSignal} signal Connection signal.
    * @param {() => boolean} current Whether that connection is still the active one.
    */
@@ -30,6 +50,11 @@ export class Recovery {
   }
 
   /** @brief Step 1: read the journalled control result and retire it, or keep it uncertain. */
+  /**
+   * @param {object | null} device
+   * @param {import("../state/reducer.mjs").PendingRequest} request
+   * @param {AbortSignal} signal
+   */
   async recoverRequest(device, request, signal) {
     const s = this.session;
     const commands = s.commands;
@@ -42,7 +67,7 @@ export class Recovery {
       }
       commands.retire(request, succeeded);
       s.emit("recovery/finished", { outcome_uncertain: false,
-        error: succeeded ? null : errorValue(commandFailed(result, false)),
+        error: succeeded ? null : errorValue(createCommandFailure(result, false)),
         recovered_opcode: succeeded ? result.opcode : null,
         recovery_message: !succeeded ? null
           : result.opcode === OP.CANCEL_TEST ? REASON.RECOVERED_CANCEL : REASON.RECOVERED_COMMAND });
@@ -52,6 +77,10 @@ export class Recovery {
   }
 
   /** @brief Step 2: observe the accepted scan/test lifecycle to its outcome and clear its journal record. */
+  /**
+   * @param {import("../state/reducer.mjs").WirelessLifecycle} pending
+   * @param {() => boolean} current
+   */
   async recoverLifecycle(pending, current) {
     const s = this.session;
     try {

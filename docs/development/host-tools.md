@@ -12,7 +12,7 @@ python3 -m pip install --editable host/python -r host/python/tests/requirements.
 python3 -m unittest discover -s host/python/tests -v
 (cd host/python && pyright)
 node host/web/tests/run-tests.mjs
-dotnet test host/dotnet/ESPForge.Tests
+dotnet test host/dotnet/ZephyrForge.Tests
 python3 tools/check_docs.py
 ```
 
@@ -36,29 +36,30 @@ call [hid-permissions-check.sh](../../tools/host/hid-permissions-check.sh) befor
 ## Python host design
 
 The Python host is an installable package with pinned dependencies and separate test tooling.
-Run `espforge`, `python -m espforge`, or the checkout launch script.
+Run `zephyrforge`, `python -m zephyrforge`, or the checkout launch script.
 
 | Layer | Responsibility |
 |---|---|
 | Package identity | Version from the installed distribution, with a development fallback |
 | CLI | `status`, `web` and `reboot` commands with `--serial` / `--device-path` selection |
-| Reports | Pure decoders and encoders for Reports 1, 2, 3, 10, 12 and 20 with ESPForge-specific validation |
+| Reports | Pure USB HID report codecs and ZephyrForge-specific validation; see the [USB HID contract](../reference/usb-hid.md) |
 | HID transport | Device discovery, Feature/Input reads and Control writes |
 | Dashboard services | Loopback Flask app, board discovery, one serialized monitor per board and the HTTP API |
-| Tests | Report codecs, HID device, monitor, boards, wireless, web API, CLI, version and packaging contracts |
+| Tests | Domain-grouped suites and shared fixtures live under `tests/zephyrforge_tests/` |
 
 Package builds require an explicit copy of the shared dashboard assets; there is no custom build hook.
 The staged copy is ignored by Git and included in both wheels and source distributions.
 Source-checkout launches and editable installs need no staging and use the shared dashboard directly.
-Python type-checking runs in strict mode. Runtime dependency pins live in `pyproject.toml`; pip handles installation
+Python type-checking runs in strict mode across the complete runtime package and compile-only API contracts.
+Runtime dependency pins live in `pyproject.toml`; pip handles installation
 without a checked-in lockfile. Hatchling builds the package, and hatch-vcs derives its version from Git tags.
 Editable installs use the same distribution metadata as wheels; reinstall after a commit or tag change to refresh it.
 To stage the current assets and check a wheel locally on Linux/macOS, from the repository root:
 
 ```sh
-rm -rf host/python/src/espforge/web
-mkdir -p host/python/src/espforge/web
-cp -R host/web/src/. host/python/src/espforge/web/
+rm -rf host/python/src/zephyrforge/web
+mkdir -p host/python/src/zephyrforge/web
+cp -R host/web/src/. host/python/src/zephyrforge/web/
 python3 -m pip wheel --no-deps host/python --wheel-dir build/wheels
 python3 -m venv build/wheel-check
 build/wheel-check/bin/python -m pip install build/wheels/*.whl
@@ -66,7 +67,7 @@ build/wheel-check/bin/python -I tools/check_python_wheel.py
 ```
 
 Repeat staging before every checkout package build so deleted or changed assets do not leave stale copies.
-After packaging, remove `host/python/src/espforge/web` to resume serving the shared checkout assets directly.
+After packaging, remove `host/python/src/zephyrforge/web` to resume serving the shared checkout assets directly.
 A source distribution built after staging already contains the assets and needs no external copy when building its wheel.
 
 ## Shared dashboard
@@ -74,7 +75,7 @@ A source distribution built after staging already contains the assets and needs 
 The .NET host uses MinVer with `vMAJOR.MINOR.PATCH` Git tags, patch increments and `dev` prerelease identifiers.
 Builds need Git history and tags to calculate development versions. The dashboard displays the assembly's
 informational version without an SDK-appended commit hash. After a commit, tag or version override change, use
-`dotnet build host/dotnet/ESPForge/ESPForge.csproj --no-incremental` to refresh both the assembly version and
+`dotnet build host/dotnet/ZephyrForge/ZephyrForge.csproj --no-incremental` to refresh both the assembly version and
 cached dependency metadata.
 For an explicit package version, pass `-p:MinVerVersionOverride=1.2.3` to `dotnet publish`.
 
@@ -84,11 +85,15 @@ and .NET includes the assets during build and publication.
 | Layer | Responsibility |
 |---|---|
 | Static assets | Page, icon and styles; no inline code |
-| Application lifecycle | Browser integration and session ownership |
+| Composition | Wires modules to page events; owns no device workflow |
+| Board session | Discovery, selection and stale-status fencing |
+| Command recovery | Per-board acknowledgements, uncertain outcomes and explicit Re-sync |
+| Settings workflow | Boot-settings draft, confirmation and plain or combined wireless save |
+| Device actions | Reboot, USB drive handoff, benchmark and LED commands |
 | API client | Board, status, settings, reboot, re-sync and wireless routes |
 | Presentation | Rendering without device or network I/O |
 | Operation policy | Control eligibility shared by rendering and command handlers |
-| Wireless forms | Wi-Fi scan/test and Control key dialog |
+| Wireless forms | Wi-Fi scan/test requests and dialogs, and the Control key dialog |
 
 Unit tests cover individual responsibilities; integration tests exercise the assembled page and shared status
 contract. Browser checks drive Chromium against both hosts with fake boards.
@@ -100,13 +105,17 @@ npx --yes --package typescript@5.9.3 tsc --project host/web/tsconfig.json
 python3 host/web/tests/browser/run.py   # requires the editable host/python install, the .NET SDK and host/web/tests/browser/requirements.txt
 ```
 
+Chromium also needs its system libraries and at least one font; `python3 -m playwright install-deps chromium`
+installs them on Debian and Ubuntu.
+
 ## Direct dashboard independence
 
 Direct owns its static page, styles, layered browser modules and loopback static server.
 
 - Direct must not import, link or copy at runtime from `host/web/`; `host/web/` must not reference Direct.
 - Browser integration belongs at the application boundary; lower layers receive dependencies by injection.
-- Lower-layer JavaScript is type-checked.
+- All browser modules are type-checked; core utilities and protocol codecs use full TypeScript strict mode.
+  Board lifecycle, recovery, polling, transport and reducer modules also use full strict mode.
 - Unit and architectural contract tests enforce the layer boundaries.
 
 ```sh

@@ -18,7 +18,7 @@ static bool unlink_failure;
 static bool writing;
 static unsigned opens;
 static unsigned deletes;
-static ef_benchmark_t last;
+static zf_benchmark_t last;
 
 void setUp(void)
 {
@@ -30,13 +30,13 @@ void setUp(void)
 
 void tearDown(void) {}
 
-int ef_platform_benchmark_preflight(uint32_t size_mib)
+int zf_platform_benchmark_preflight(uint32_t size_mib)
 {
 	TEST_ASSERT_EQUAL_UINT32(1, size_mib);
-	return exists ? EF_BENCHMARK_ERROR_EXISTS : 0;
+	return exists ? ZF_BENCHMARK_ERROR_EXISTS : 0;
 }
 
-int ef_platform_benchmark_open(bool write)
+int zf_platform_benchmark_open(bool write)
 {
 	++opens;
 	writing = write;
@@ -50,7 +50,7 @@ int ef_platform_benchmark_open(bool write)
 	return 0;
 }
 
-int ef_platform_benchmark_transfer(bool write, uint8_t *data, uint32_t size, uint32_t *count)
+int zf_platform_benchmark_transfer(bool write, uint8_t *data, uint32_t size, uint32_t *count)
 {
 	if (removed) {
 		*count = 0;
@@ -70,12 +70,12 @@ int ef_platform_benchmark_transfer(bool write, uint8_t *data, uint32_t size, uin
 	return 0;
 }
 
-int ef_platform_benchmark_close(void)
+int zf_platform_benchmark_close(void)
 {
 	return removed ? -ENOMEDIUM : close_failure ? -EIO : 0;
 }
 
-int ef_platform_benchmark_remove(void)
+int zf_platform_benchmark_remove(void)
 {
 	++deletes;
 	TEST_ASSERT_TRUE(exists);
@@ -86,25 +86,25 @@ int ef_platform_benchmark_remove(void)
 	return 0;
 }
 
-uint32_t ef_platform_benchmark_time(void)
+uint32_t zf_platform_benchmark_time(void)
 {
 	ticks += 5;
 	return ticks;
 }
 
-bool ef_platform_benchmark_update(const ef_benchmark_t *status)
+bool zf_platform_benchmark_update(const zf_benchmark_t *status)
 {
 	last = *status;
-	if (remove_during_write && position >= EF_BENCHMARK_CHUNK_SIZE) {
+	if (remove_during_write && position >= ZF_BENCHMARK_CHUNK_SIZE) {
 		removed = true;
 	}
-	return !(cancel && writing && position >= EF_BENCHMARK_CHUNK_SIZE);
+	return !(cancel && writing && position >= ZF_BENCHMARK_CHUNK_SIZE);
 }
 
 void test_benchmark_writes_verifies_and_removes_only_its_own_file(void)
 {
-	ef_benchmark_run(1);
-	TEST_ASSERT_EQUAL(EF_BENCHMARK_PASSED, last.state);
+	zf_benchmark_run(1);
+	TEST_ASSERT_EQUAL(ZF_BENCHMARK_PASSED, last.state);
 	TEST_ASSERT_EQUAL_UINT32(sizeof(file), last.target_bytes);
 	TEST_ASSERT_EQUAL_UINT32(sizeof(file), last.written_bytes);
 	TEST_ASSERT_EQUAL_UINT32(sizeof(file), last.read_bytes);
@@ -119,9 +119,9 @@ void test_benchmark_writes_verifies_and_removes_only_its_own_file(void)
 void test_existing_file_is_neither_opened_nor_deleted(void)
 {
 	exists = true;
-	ef_benchmark_run(1);
-	TEST_ASSERT_EQUAL(EF_BENCHMARK_FAILED, last.state);
-	TEST_ASSERT_EQUAL(EF_BENCHMARK_ERROR_EXISTS, last.error);
+	zf_benchmark_run(1);
+	TEST_ASSERT_EQUAL(ZF_BENCHMARK_FAILED, last.state);
+	TEST_ASSERT_EQUAL(ZF_BENCHMARK_ERROR_EXISTS, last.error);
 	TEST_ASSERT_EQUAL_UINT(0, opens);
 	TEST_ASSERT_EQUAL_UINT(0, deletes);
 	TEST_ASSERT_TRUE(exists);
@@ -130,10 +130,10 @@ void test_existing_file_is_neither_opened_nor_deleted(void)
 void test_short_write_is_not_replayed_and_cleanup_is_attempted(void)
 {
 	short_transfer = true;
-	ef_benchmark_run(1);
-	TEST_ASSERT_EQUAL(EF_BENCHMARK_FAILED, last.state);
-	TEST_ASSERT_EQUAL(EF_BENCHMARK_ERROR_IO, last.error);
-	TEST_ASSERT_EQUAL_UINT32(EF_BENCHMARK_CHUNK_SIZE / 2, last.written_bytes);
+	zf_benchmark_run(1);
+	TEST_ASSERT_EQUAL(ZF_BENCHMARK_FAILED, last.state);
+	TEST_ASSERT_EQUAL(ZF_BENCHMARK_ERROR_IO, last.error);
+	TEST_ASSERT_EQUAL_UINT32(ZF_BENCHMARK_CHUNK_SIZE / 2, last.written_bytes);
 	TEST_ASSERT_EQUAL_UINT32(0, last.read_bytes);
 	TEST_ASSERT_EQUAL_UINT(1, opens);
 	TEST_ASSERT_FALSE(exists);
@@ -142,20 +142,20 @@ void test_short_write_is_not_replayed_and_cleanup_is_attempted(void)
 void test_corruption_counts_differing_bytes_and_fails_verification(void)
 {
 	corrupt = true;
-	ef_benchmark_run(1);
-	TEST_ASSERT_EQUAL(EF_BENCHMARK_FAILED, last.state);
-	TEST_ASSERT_EQUAL(EF_BENCHMARK_ERROR_VERIFY, last.error);
+	zf_benchmark_run(1);
+	TEST_ASSERT_EQUAL(ZF_BENCHMARK_FAILED, last.state);
+	TEST_ASSERT_EQUAL(ZF_BENCHMARK_ERROR_VERIFY, last.error);
 	TEST_ASSERT_EQUAL_UINT32(1, last.mismatch_count);
-	TEST_ASSERT_EQUAL_UINT32(EF_BENCHMARK_CHUNK_SIZE, last.read_bytes);
+	TEST_ASSERT_EQUAL_UINT32(ZF_BENCHMARK_CHUNK_SIZE, last.read_bytes);
 	TEST_ASSERT_FALSE(exists);
 }
 
 void test_cancellation_retains_partial_counts_and_removes_the_created_file(void)
 {
 	cancel = true;
-	ef_benchmark_run(1);
-	TEST_ASSERT_EQUAL(EF_BENCHMARK_CANCELLED, last.state);
-	TEST_ASSERT_EQUAL_UINT32(EF_BENCHMARK_CHUNK_SIZE, last.written_bytes);
+	zf_benchmark_run(1);
+	TEST_ASSERT_EQUAL(ZF_BENCHMARK_CANCELLED, last.state);
+	TEST_ASSERT_EQUAL_UINT32(ZF_BENCHMARK_CHUNK_SIZE, last.written_bytes);
 	TEST_ASSERT_EQUAL_UINT32(0, last.read_bytes);
 	TEST_ASSERT_FALSE(exists);
 }
@@ -163,10 +163,10 @@ void test_cancellation_retains_partial_counts_and_removes_the_created_file(void)
 void test_close_failure_does_not_unlink_a_still_open_file(void)
 {
 	close_failure = true;
-	ef_benchmark_run(1);
-	TEST_ASSERT_EQUAL(EF_BENCHMARK_FAILED, last.state);
-	TEST_ASSERT_EQUAL(EF_BENCHMARK_ERROR_IO, last.error);
-	TEST_ASSERT_EQUAL_UINT(EF_BENCHMARK_FILE_REMAINS, last.flags);
+	zf_benchmark_run(1);
+	TEST_ASSERT_EQUAL(ZF_BENCHMARK_FAILED, last.state);
+	TEST_ASSERT_EQUAL(ZF_BENCHMARK_ERROR_IO, last.error);
+	TEST_ASSERT_EQUAL_UINT(ZF_BENCHMARK_FILE_REMAINS, last.flags);
 	TEST_ASSERT_EQUAL_UINT(0, deletes);
 	TEST_ASSERT_TRUE(exists);
 }
@@ -174,21 +174,21 @@ void test_close_failure_does_not_unlink_a_still_open_file(void)
 void test_removal_stops_io_without_reopening_or_unlinking_replacement_media(void)
 {
 	remove_during_write = true;
-	ef_benchmark_run(1);
-	TEST_ASSERT_EQUAL(EF_BENCHMARK_FAILED, last.state);
-	TEST_ASSERT_EQUAL(EF_BENCHMARK_ERROR_CARD, last.error);
-	TEST_ASSERT_EQUAL_UINT32(EF_BENCHMARK_CHUNK_SIZE, last.written_bytes);
+	zf_benchmark_run(1);
+	TEST_ASSERT_EQUAL(ZF_BENCHMARK_FAILED, last.state);
+	TEST_ASSERT_EQUAL(ZF_BENCHMARK_ERROR_CARD, last.error);
+	TEST_ASSERT_EQUAL_UINT32(ZF_BENCHMARK_CHUNK_SIZE, last.written_bytes);
 	TEST_ASSERT_EQUAL_UINT(1, opens);
 	TEST_ASSERT_EQUAL_UINT(0, deletes);
-	TEST_ASSERT_TRUE(last.flags & EF_BENCHMARK_FILE_REMAINS);
+	TEST_ASSERT_TRUE(last.flags & ZF_BENCHMARK_FILE_REMAINS);
 }
 
 void test_cleanup_failure_is_not_reported_as_passed(void)
 {
 	unlink_failure = true;
-	ef_benchmark_run(1);
-	TEST_ASSERT_EQUAL(EF_BENCHMARK_FAILED, last.state);
-	TEST_ASSERT_EQUAL(EF_BENCHMARK_ERROR_CLEANUP, last.error);
+	zf_benchmark_run(1);
+	TEST_ASSERT_EQUAL(ZF_BENCHMARK_FAILED, last.state);
+	TEST_ASSERT_EQUAL(ZF_BENCHMARK_ERROR_CLEANUP, last.error);
 	TEST_ASSERT_EQUAL_UINT32(sizeof(file), last.read_bytes);
-	TEST_ASSERT_TRUE(last.flags & EF_BENCHMARK_FILE_REMAINS);
+	TEST_ASSERT_TRUE(last.flags & ZF_BENCHMARK_FILE_REMAINS);
 }

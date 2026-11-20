@@ -10,18 +10,19 @@ Copyright (c) 2026 Ji Dong
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'">
+    content="default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self';
+      object-src 'none'; base-uri 'none'; form-action 'self'">
   <meta name="referrer" content="no-referrer">
-  <title>ESPForge Dashboard | Direct</title>
+  <title>ZephyrForge Dashboard | Direct</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="stylesheet" href="css/direct.css">
   <script type="module" src="js/app.mjs"></script>
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="./" aria-label="ESPForge Direct status">
-      <span class="brand-mark">EF</span>
-      <span class="brand-copy"><strong>ESPForge</strong>
+    <a class="brand" href="./" aria-label="ZephyrForge Direct status">
+      <span class="brand-mark">ZF</span>
+      <span class="brand-copy"><strong>ZephyrForge</strong>
         <small>Direct · App v<span aria-label="Host application version">0.0.0-debug</span></small>
       </span>
     </a>
@@ -34,6 +35,7 @@ Copyright (c) 2026 Ji Dong
   <main>
     <section class="page-heading">
       <div>
+        <p class="eyebrow">USB HID · authenticated Bluetooth LE</p>
         <h1>Dashboard</h1>
       </div>
     </section>
@@ -41,7 +43,7 @@ Copyright (c) 2026 Ji Dong
     <section aria-labelledby="identity-title">
       <div class="section-heading">
         <h2 id="identity-title">Device information</h2>
-        <div class="actions" aria-label="Board controls">
+        <div class="actions" role="group" aria-label="Board controls">
           <label id="led-control" hidden>Board LED
             <select id="led-colour" aria-label="Board LED colour" disabled>
               <option value="" disabled>--</option>
@@ -61,25 +63,35 @@ Copyright (c) 2026 Ji Dong
             aria-haspopup="dialog">Bluetooth</button>
         </div>
       </div>
-      <div class="identity" aria-label="Hardware identity">
-      <div class="metric"><span>Product</span><strong id="product-name">--</strong></div>
-      <div class="metric"><span>Board model</span><strong id="board-model">--</strong></div>
+      <div class="identity" role="group" aria-label="Hardware identity">
+      <details class="metric identity-details" id="product-information">
+        <summary><span>Product <span aria-hidden="true">i</span></span>
+          <strong id="product-name">--</strong></summary>
+        <div class="identity-popover">
+          <dl>
+            <div><dt>Board</dt><dd id="board-model">--</dd></div>
+            <div><dt>MCU</dt><dd id="board-mcu">--</dd></div>
+          </dl>
+        </div>
+      </details>
       <div class="metric"><span>Serial / UID</span><strong id="serial">--</strong></div>
       <div class="metric"><span>System clock</span><strong id="identity-clock">--</strong></div>
       <div class="metric"><span>Firmware version</span><strong id="firmware-version">--</strong></div>
+      <details class="metric identity-details module-memory" id="module-memory">
+        <summary><span>Module memory <span aria-hidden="true">i</span></span>
+          <strong id="memory-capacity">--</strong></summary>
+        <div class="identity-popover memory-details">
+          <dl>
+            <div><dt>Internal SRAM reserved / total</dt><dd id="ram-usage">--</dd></div>
+            <div><dt>External PSRAM reserved / total</dt><dd id="psram-usage">--</dd></div>
+            <div><dt>Module SPI flash capacity</dt><dd id="flash-capacity">--</dd></div>
+          </dl>
+          <p class="sample-time">Reserved RAM includes linked regions and heap pools, not live usage.
+            SPI flash is external to the ESP32-S3; it has no on-chip flash. PSRAM is RAM, not flash.
+            -- means unavailable or not reported by this firmware.</p>
+        </div>
+      </details>
       </div>
-    </section>
-
-    <section class="runtime" aria-labelledby="memory-inventory-title">
-      <h2 id="memory-inventory-title">Module memory</h2>
-      <dl class="runtime-grid memory-inventory">
-        <div><dt>Internal SRAM reserved / total</dt><dd id="ram-usage">--</dd></div>
-        <div><dt>External PSRAM reserved / total</dt><dd id="psram-usage">--</dd></div>
-        <div><dt>Module SPI flash capacity</dt><dd id="flash-capacity">--</dd></div>
-      </dl>
-      <p class="sample-time">Reserved RAM includes linked regions and heap pools, not live usage.
-        SPI flash is external to the ESP32-S3; it has no on-chip flash. PSRAM is RAM, not flash.
-        -- means unavailable or not reported by this firmware.</p>
     </section>
 
     <section class="runtime" aria-labelledby="settings-title">
@@ -198,14 +210,26 @@ Copyright (c) 2026 Ji Dong
       </div>
     </dialog>
 
+    <dialog class="confirmation-dialog" id="benchmark-start-dialog" aria-labelledby="benchmark-start-dialog-title"
+      aria-describedby="benchmark-start-warning">
+      <h2 id="benchmark-start-dialog-title">Start storage benchmark?</h2>
+      <p class="configuration-warning" id="benchmark-start-warning"></p>
+      <div class="dialog-actions">
+        <button class="button button-cancel" id="cancel-benchmark-start" type="button" autofocus>Cancel</button>
+        <button class="button button-danger" id="confirm-benchmark-start" type="button">Start benchmark</button>
+      </div>
+    </dialog>
+
     <dialog class="confirmation-dialog" id="configuration-dialog" aria-labelledby="configuration-dialog-title"
-      aria-describedby="configuration-dialog-profile configuration-warning direct-configuration-wireless-warning">
+      aria-describedby="configuration-dialog-profile configuration-warning configuration-board-target
+        direct-configuration-wireless-warning">
       <h2 id="configuration-dialog-title">Save and reboot?</h2>
       <p id="configuration-dialog-profile"></p>
       <p class="configuration-warning" id="configuration-warning">
         Firmware saves boot settings, then reboots the board and briefly disconnects USB and Bluetooth.
         Stop external traffic first.
       </p>
+      <p class="configuration-warning" id="configuration-board-target"></p>
       <p class="configuration-warning" id="direct-configuration-wireless-warning" hidden>
         Wi-Fi and Bluetooth credentials are saved with these settings. Keep a copy of the Control key; it cannot be read
         back. Flash credentials are not encrypted.
@@ -217,25 +241,48 @@ Copyright (c) 2026 Ji Dong
     </dialog>
 
     <dialog class="confirmation-dialog" id="reboot-dialog" aria-labelledby="reboot-dialog-title"
-      aria-describedby="reboot-warning reboot-consequence">
+      aria-describedby="reboot-warning reboot-consequence reboot-board-target">
       <h2 id="reboot-dialog-title">Reboot board?</h2>
       <p class="configuration-warning" id="reboot-warning">
         This immediately reboots the board and briefly disconnects USB and Bluetooth.
         Stop external traffic first.
       </p>
       <p id="reboot-consequence"></p>
+      <p class="configuration-warning" id="reboot-board-target"></p>
       <div class="dialog-actions">
         <button class="button button-cancel" id="cancel-reboot" type="button" autofocus>Cancel</button>
         <button class="button button-danger" id="confirm-reboot" type="button">Reboot Board</button>
       </div>
     </dialog>
 
-    <footer class="status-line" role="status" aria-live="polite">
+    <footer class="status-line">
       <span class="status-mark" aria-hidden="true"></span>
-      <span id="status-message">Select an ESPForge device</span>
+      <span id="status-message" role="status" aria-live="polite">Select a ZephyrForge device</span>
       <p class="settings-note" id="settings-note">Connect to read the saved settings.</p>
+      <button class="button button-danger" id="recovery-abandon" type="button" hidden>
+        Abandon unresolved recovery…
+      </button>
     </footer>
   </main>
+  <dialog class="confirmation-dialog" id="recovery-abandon-dialog" aria-labelledby="recovery-abandon-title"
+    aria-describedby="recovery-abandon-warning">
+    <h2 id="recovery-abandon-title">Clear unresolved recovery?</h2>
+    <p class="configuration-warning" id="recovery-abandon-warning"></p>
+    <div class="dialog-actions">
+      <button class="button button-cancel" id="cancel-recovery-abandon" type="button" autofocus>Keep recovering</button>
+      <button class="button button-danger" id="confirm-recovery-abandon" type="button">Clear local record</button>
+    </div>
+  </dialog>
+  <dialog class="confirmation-dialog" id="disconnect-dialog" aria-labelledby="disconnect-title"
+    aria-describedby="disconnect-warning disconnect-target">
+    <h2 id="disconnect-title">Disconnect with unsaved changes?</h2>
+    <p class="configuration-warning" id="disconnect-warning"></p>
+    <p class="configuration-warning" id="disconnect-target"></p>
+    <div class="dialog-actions">
+      <button class="button button-cancel" id="cancel-disconnect" type="button" autofocus>Keep connected</button>
+      <button class="button button-danger" id="confirm-disconnect" type="button">Discard and disconnect</button>
+    </div>
+  </dialog>
   <dialog class="confirmation-dialog" id="usb-connection-dialog" aria-labelledby="usb-connection-title">
     <h2 id="usb-connection-title">Connect through USB</h2>
     <p>Attach your board to this computer, then select it in the browser's USB HID device picker.</p>
@@ -258,23 +305,26 @@ Copyright (c) 2026 Ji Dong
       <button class="button button-secondary" id="bluetooth-connection-close" type="button">Close</button>
     </div>
   </dialog>
-  <dialog class="confirmation-dialog wireless-dialog" id="direct-wifi-dialog" aria-labelledby="direct-wifi-dialog-title">
+  <dialog class="confirmation-dialog wireless-dialog" id="direct-wifi-dialog"
+    aria-labelledby="direct-wifi-dialog-title">
     <h2 id="direct-wifi-dialog-title">Connect to Wi-Fi</h2>
     <p>Scan for nearby networks or enter a network name. A connection test does not save credentials to flash.</p>
     <button class="button button-secondary" id="direct-wifi-scan" type="button">Scan for networks</button>
     <p id="direct-wifi-status" role="status" aria-live="polite"></p>
-    <div id="direct-wifi-networks" class="direct-wifi-networks" role="group" aria-label="Available Wi-Fi networks"></div>
+    <div id="direct-wifi-networks" class="direct-wifi-networks" role="group"
+      aria-label="Available Wi-Fi networks"></div>
     <button class="button button-secondary" id="direct-wifi-other" type="button">Other network…</button>
     <label id="direct-wifi-manual-label" hidden>Network name (SSID)
       <input id="direct-wifi-ssid" maxlength="32" autocomplete="off"></label>
-    <label id="direct-direct-wifi-password-label">Password (leave blank for an open network)
+    <label id="direct-wifi-password-label">Password (leave blank for an open network)
       <input id="direct-wifi-password" type="password" maxlength="63" autocomplete="new-password"></label>
     <div class="dialog-actions">
       <button class="button" id="direct-wifi-connect" type="button">Test connection</button>
       <button class="button button-secondary" id="direct-wifi-cancel" type="button">Cancel</button>
     </div>
   </dialog>
-  <dialog class="confirmation-dialog wireless-dialog" id="direct-ble-dialog" aria-labelledby="direct-ble-dialog-title">
+  <dialog class="confirmation-dialog wireless-dialog" id="direct-ble-dialog"
+    aria-labelledby="direct-ble-dialog-title">
     <h2 id="direct-ble-dialog-title">Bluetooth access</h2>
     <p>Generate a new key and save it with Board configuration. The key authenticates control commands; it does not
       encrypt the Bluetooth connection. The board cannot show a saved key again.</p>

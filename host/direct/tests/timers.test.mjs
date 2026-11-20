@@ -19,6 +19,20 @@ test("page timer scopes cancel child work when an owner is disposed", async () =
   page.dispose();
 });
 
+test("clearing an absent timeout does not pass a null handle to the platform", () => {
+  const original = globalThis.clearTimeout;
+  const cleared = [];
+  globalThis.clearTimeout = handle => cleared.push(handle);
+  const scope = createTimerScope();
+  try {
+    scope.clearTimeout(null);
+    assert.deepEqual(cleared, []);
+  } finally {
+    scope.dispose();
+    globalThis.clearTimeout = original;
+  }
+});
+
 test("timeouts and sleeps abort promptly with the owning connection signal", async () => {
   const controller = new AbortController();
   const pending = new Promise(() => {});

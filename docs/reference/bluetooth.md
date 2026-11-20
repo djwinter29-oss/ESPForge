@@ -52,8 +52,8 @@ is not an exact reason code, and no separate Starting state is published.
 | Advertising type | Connectable undirected (`ADV_IND`) on all three advertising channels. |
 | Interval | 96 units (60 ms) for 30 seconds after startup/disconnect, then 800 units (500 ms). |
 | Address | Selected by the controller stack; the current server does not configure rotating-address privacy. |
-| Advertising data | Flags `0x06` (LE General Discoverable, BR/EDR not supported); complete list of 128-bit service UUIDs containing the ESPForge service. |
-| Scan response | Complete Local Name `ESPForge-<USB serial>`: 16 uppercase hexadecimal digits of the board unique ID, 25 bytes in total. |
+| Advertising data | Flags `0x06` (LE General Discoverable, BR/EDR not supported); complete list of 128-bit service UUIDs containing the ZephyrForge service. |
+| Scan response | Complete Local Name `ZephyrForge-<USB serial>`: 16 uppercase hexadecimal digits of the board unique ID, 25 bytes in total. |
 
 The GAP Device Name characteristic returns the same name without unlocking. Advertising starts when the controller
 reaches the working state and restarts after every disconnect. Fast discovery is temporary; the slower interval
@@ -81,8 +81,8 @@ characteristic. Clients MAY ignore unknown characteristics unless they are requi
 The Generic Attribute service includes Service Changed (`0x2A05`) and Database Hash (`0x2B2A`). The database is
 static during a boot, but firmware updates can change it. These are standard GATT attributes, separate from the
 project's management service.
-Cache invalidation behavior is described below. The GAP Appearance is Unknown; Device Information exposes manufacturer `ESPForge` and the firmware
-revision.
+Cache invalidation behavior is described below. The GAP Appearance is Unknown; Device Information exposes
+manufacturer `ZephyrForge` and the firmware revision.
 
 ### Service Changed and Caching
 
@@ -92,7 +92,7 @@ full-range Service Changed indication on every subscription.
 Clients MUST honor any Service Changed indication they receive and rediscover the database; they MUST NOT reuse cached handles across
 connections. This avoids persisting per-peer cache state.
 
-The Direct client subscribes before ESPForge service discovery when Generic Attribute and Service Changed are
+The Direct client subscribes before ZephyrForge service discovery when Generic Attribute and Service Changed are
 available, then continues without waiting for an indication.
 If lookup or subscription fails with `NotAllowedError`, `NotFoundError`, `NotSupportedError` or `SecurityError`, it
 warns and continues with the platform's own cache behavior; other errors abort setup.
@@ -107,7 +107,7 @@ return ATT error `0x80`.
 | GATT `0x2A05` | Indicate | N/A | 4 | Standard Service Changed; no forced per-subscription indication. |
 | GATT `0x2902` | Read, Write | Read/write | 2 | Service Changed CCCD; `0` disables, `2` enables indications. |
 | GATT `0x2B2A` | Read | Read | 16 | Standard GATT Database Hash. |
-| Device Information `0x2A29` | Read | Read | 8 | Manufacturer name `ESPForge`. |
+| Device Information `0x2A29` | Read | Read | 8 | Manufacturer name `ZephyrForge`. |
 | Device Information `0x2A26` | Read | Read | Variable | Firmware revision, ASCII without NUL. |
 | `0001` | Read | Read | 26 | [Report `1`](usb-hid.md#report-id-1-device-identity--capabilities) identity; carries the UID that proofs bind. |
 | `0002` | Read | Denied (`0x80`) | 17 | [Report `2`](usb-hid.md#report-id-2-board-configuration) board configuration. |
@@ -127,7 +127,7 @@ while storage is busy or USB-owned; see [USB storage arbitration](usb-hid.md#cro
 `0014` is also Write Request only; Write Without Response is not advertised for `0014` or `0101`. Such commands
 are rejected by the stack before the application callback, and Write Without Response has no ATT response for a
 client to inspect. The Control key is exactly 32 raw bytes (64 hexadecimal digits in the dashboard). Report `1`
-UID bytes are at payload offset 3, length 8, in report order. Clients MUST validate the ESPForge identity
+UID bytes are at payload offset 3, length 8, in report order. Clients MUST validate the ZephyrForge identity
 (`product_id = 0x0003`, MCU `3`) as described in the
 [USB identity contract](usb-hid.md#report-id-1-device-identity--capabilities).
 The `0101` proof write is 16 bytes and the `0014`
@@ -262,8 +262,8 @@ Writes to `0014` use a 9-byte form, not a truncated USB Feature `20` report. Sta
 | -----: | ---: | ----- | ------- |
 | 0 | 1 | `version` | `1`. |
 | 1 | 1 | `transaction_id` | Nonzero; independent of the USB sequence. |
-| 2 | 1 | `opcode` | `2` confirmed reboot or `5` save settings and reboot; `1` is recognized but unsupported. |
-| 3 | 1 | `flags` | Opcode `2` requires confirmation bit 0; opcode `5` requires zero (no forced save or wireless commit). |
+| 2 | 1 | `opcode` | `1` RGB LED colour, `2` confirmed reboot or `5` save settings and reboot. |
+| 3 | 1 | `flags` | Opcode `2` requires confirmation bit 0; opcodes `1` and `5` require zero (no forced save or wireless commit). |
 | 4 | 5 | `arguments` | Opcode arguments; unused bytes zero. |
 
 Opcode `1` uses argument byte 0 as an RGB mask `0`-`7`, with flags and other arguments zero, as specified in
@@ -303,14 +303,14 @@ prove which connection produced it.
 4. Opcodes `3`, `4` and `6`-`13` (assigned but USB-only): Unsupported/error `4` in the result slot.
    Unassigned opcodes: Unsupported/error `7`.
 5. Opcodes `1`, `2` and `5` follow the shared [error precedence](usb-hid.md#get-result) for their arguments and
-   state, with ESPForge's unsupported-feature restrictions.
+   state, with ZephyrForge's unsupported-feature restrictions.
    Valid save arguments are checked before USB staging conflicts: opcode `5` returns Busy/error `5` with
    detail `28` while unexpired USB-staged wireless values exist. Opcode `2` also returns Busy/error `5`,
    detail `28` in that case, after validating its arguments and confirmation flag.
    There is no forced USB save implementation.
 
 USB and BLE keep separate result slots and transaction sequences; a request on one never replaces the other's result,
-and BLE authentication state is separate from USB staging. ESPForge has no TCP CLI proofs.
+and BLE authentication state is separate from USB staging. ZephyrForge has no TCP CLI proofs.
 See [Feature `20` result semantics](usb-hid.md#get-result).
 
 ### Uncertain Outcomes
@@ -363,8 +363,18 @@ These security properties and residual risks are accepted tradeoffs for a local 
 ## Operational Notes
 
 Connection interval and supervision timeout are managed by the server and central stacks; this specification does not
-promise a disconnect-detection deadline. Application notifications are intentionally omitted: the
-Direct dashboard polls reports every 250 ms. Standard Service Changed indications are managed by the Bluetooth stack; the Direct subscription is ephemeral
+promise a disconnect-detection deadline. Application notifications are intentionally omitted. The Direct dashboard
+serializes GATT reads and writes, including each proof with its command, and waits 250 ms between status-read rounds.
+Read latency therefore adds to the round period. Wireless status retains its separate polling schedule.
+Queued commands whose write deadline expires are canceled rather than sent later; uncertain outcomes still require
+explicit reconciliation and are never replayed.
+
+Direct marks BLE telemetry stale after 3 seconds without a valid receipt, and storage/benchmark status after 6 seconds.
+These bounded windows allow for multi-characteristic ATT reads; USB Input freshness deadlines are unchanged.
+Invalid reports do not refresh receipt times. Wireless status expires after three of its polling intervals
+(1.5 seconds during a test/scan, 6 seconds otherwise). Disconnect clears connection snapshots immediately.
+
+Standard Service Changed indications are managed by the Bluetooth stack; the Direct subscription is ephemeral
 and used only for cache invalidation. The browser chooses MTU negotiation for Web Bluetooth clients.
 
 BLE cannot stage credentials, test or scan Wi-Fi, produce TCP CLI proofs, run benchmarks, change radio switches,

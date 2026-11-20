@@ -16,16 +16,16 @@ if [ -n "$SOURCE_SHA" ] && [ "$tag_sha" != "$SOURCE_SHA" ]; then
   exit 1
 fi
 mkdir incoming
-gh release download "$RELEASE_TAG" --pattern "espforge-direct-v$version.zip" \
+gh release download "$RELEASE_TAG" --pattern "zephyrforge-direct-v$version.zip" \
   --pattern SHA256SUMS.txt --dir incoming
 cd incoming
-awk -v filename="espforge-direct-v$version.zip" '$2 == filename { print }' SHA256SUMS.txt > direct.sha256
+awk -v filename="zephyrforge-direct-v$version.zip" '$2 == filename { print }' SHA256SUMS.txt > direct.sha256
 if [ "$(wc -l < direct.sha256)" -ne 1 ]; then
   printf 'Error: release checksum manifest must contain exactly one Direct archive entry.\n' >&2
   exit 1
 fi
 sha256sum --check direct.sha256
-unzip "espforge-direct-v$version.zip" -d ../site
+unzip "zephyrforge-direct-v$version.zip" -d ../site
 cd ..
 test -f site/web/index.html
 test -f site/web/favicon.svg
@@ -37,7 +37,7 @@ from host.direct.server import verify_site
 metadata = verify_site(Path("site/web"), os.environ["VERSION"])
 assert metadata["commit"] == os.environ["TAG_SHA"], "Direct build identity differs from published tag"
 PY
-if ! grep -Fxq "ESPForge $version" site/RELEASE.txt ||
+if ! grep -Fxq "ZephyrForge $version" site/RELEASE.txt ||
    ! grep -Fxq "Source: $tag_sha" site/RELEASE.txt; then
   printf 'Error: Direct archive version/source metadata does not match the published tag.\n' >&2
   exit 1

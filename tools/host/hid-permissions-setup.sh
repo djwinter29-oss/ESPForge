@@ -5,14 +5,15 @@
 set -eu
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
-RULE_TARGET="/etc/udev/rules.d/99-espforge-hid.rules"
+RULE_TARGET="/etc/udev/rules.d/99-zephyrforge-hid.rules"
 USB_RULE='SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="cafe", ATTR{idProduct}=="4021", GROUP="plugdev", MODE="0660", TAG+="uaccess"'
 HIDRAW_RULE='SUBSYSTEM=="hidraw", KERNEL=="hidraw*", ATTRS{idVendor}=="cafe", ATTRS{idProduct}=="4021", GROUP="plugdev", MODE="0660", TAG+="uaccess"'
 RULE_CONTENT=$(printf '%s\n%s' "$USB_RULE" "$HIDRAW_RULE")
 
 case "${1:-}" in
     -h|--help)
-        printf 'Usage: tools/host/hid-permissions-setup.sh\nInstall or update the ESPForge Linux HID udev rule. May prompt for sudo.\n'
+        printf '%s\n' 'Usage: tools/host/hid-permissions-setup.sh' \
+            'Install or update the ZephyrForge Linux HID udev rule. May prompt for sudo.'
         exit 0
         ;;
     "")
@@ -25,17 +26,17 @@ case "${1:-}" in
 esac
 
 if [ "$(uname -s)" != "Linux" ]; then
-    echo "ESPForge HID udev permissions are only needed on Linux."
+    echo "ZephyrForge HID udev permissions are only needed on Linux."
     exit 0
 fi
 
 if ! command -v udevadm >/dev/null 2>&1; then
-    echo "udevadm is required to configure ESPForge HID permissions." >&2
+    echo "udevadm is required to configure ZephyrForge HID permissions." >&2
     exit 1
 fi
 if [ "$(id -u)" -ne 0 ]; then
     if ! command -v sudo >/dev/null 2>&1; then
-        echo "sudo is required to install the ESPForge HID udev rule." >&2
+        echo "sudo is required to install the ZephyrForge HID udev rule." >&2
         exit 1
     fi
     exec sudo "$SCRIPT_DIR/hid-permissions-setup.sh" "$@"
@@ -44,7 +45,7 @@ fi
 if [ -f "$RULE_TARGET" ]; then
     INSTALLED_RULE=$(cat "$RULE_TARGET")
     if [ "$INSTALLED_RULE" != "$RULE_CONTENT" ]; then
-        echo "Existing udev rule differs from the ESPForge rule; refusing to overwrite $RULE_TARGET." >&2
+        echo "Existing udev rule differs from the ZephyrForge rule; refusing to overwrite $RULE_TARGET." >&2
         echo "Review and merge the rule manually." >&2
         exit 1
     fi
@@ -61,4 +62,4 @@ udevadm control --reload-rules
 udevadm trigger --subsystem-match=usb --attr-match=idVendor=cafe --attr-match=idProduct=4021
 udevadm trigger --subsystem-match=hidraw
 udevadm settle
-echo "ESPForge HID permissions applied. Reconnect the board if access is still denied."
+echo "ZephyrForge HID permissions applied. Reconnect the board if access is still denied."

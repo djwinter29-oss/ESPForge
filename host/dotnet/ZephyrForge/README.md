@@ -1,0 +1,52 @@
+# ZephyrForge .NET Host
+
+The .NET 10 host monitors the ZephyrForge vendor HID interface (`0xCAFE:0x4021`) and serves the shared local dashboard
+at `http://127.0.0.1:8002/` by default. Override the port with `--port PORT`; only one dashboard server can bind to a
+port at a time.
+
+Python and .NET share their own frontend, but must not share any code with Direct. See the
+[host tools guide](../../../docs/development/host-tools.md).
+
+```sh
+dotnet run --project host/dotnet/ZephyrForge/ZephyrForge.csproj
+```
+
+Select a default board at launch with `--serial SERIAL` (the 16 hex-digit Report 1 UID) or `--device-path HID_PATH`.
+The options are mutually exclusive; without either, the first discovered board is selected. Use **Rescan** to refresh
+the board list. On Linux, grant HID access once with
+[hid-permissions-setup.sh](../../../tools/host/hid-permissions-setup.sh), then reconnect the board.
+[run-dotnet.sh](../../../tools/host/run-dotnet.sh) checks those permissions and runs this project.
+
+The host follows the [USB HID specification](../../../docs/reference/usb-hid.md).
+Identity, configuration or storage reports outside that contract are rejected as invalid.
+
+## HTTP API
+
+Python and .NET implement the [shared dashboard HTTP API](../../web/README.md#http-api).
+That contract owns routes, request fields, reserved status values and unsupported operations.
+Run with `ASPNETCORE_ENVIRONMENT=Development` to expose `/openapi/v1.json`.
+
+Serial-identified boards retain their monitor for at least 30 seconds after disappearing from a successful rescan,
+allowing brief USB reconnects without losing selection. Active commands postpone retirement; uncertain outcomes keep
+the monitor until confirmed re-sync or shutdown. Boards without serial numbers use their HID device path as identity.
+If a HID write times out or its result cannot be matched, the dashboard marks the command outcome uncertain and blocks
+further writes rather than replaying or overwriting the result. Persistent errors, invalid reports, and permission
+failures remain errors.
+
+## Host behavior
+
+Build and publish always copy the current `host/web/src` assets into `wwwroot`; the .NET host serves those files,
+not a separate dashboard implementation. Saved radio switches refresh after a settings save or reconnect.
+Tested saves commit the staged pair without restaging it.
+
+Board monitoring starts asynchronously on first access, so the first status response can briefly show that it is
+waiting for HID. The monitor polls every 100 ms.
+
+## Tests
+
+```sh
+dotnet test host/dotnet/ZephyrForge.Tests/ZephyrForge.Tests.csproj
+```
+
+The xunit tests cover the HID protocol, monitor, and dashboard API with fake devices; asset checks require the source
+checkout. They do not validate physical USB detach/reconnect.

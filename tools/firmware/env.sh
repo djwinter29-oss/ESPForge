@@ -69,6 +69,19 @@ if [[ ! -f "$workspace/.west/config" ]]; then
 	printf 'Initializing Zephyr workspace at %s.\n' "$workspace"
 	python -m west init -l "$root"
 fi
+manifest_path="$(python -m west config --local manifest.path)"
+if [[ ! -e "$workspace/$manifest_path" &&
+	"$root" == "$workspace/"* && -f "$root/west.yml" ]]; then
+	for cache in "$root/build/firmware/CMakeCache.txt" "$root/build/firmware-sd-spi/CMakeCache.txt"; do
+		if [[ -f "$cache" ]] &&
+			grep -Fxq "APPLICATION_SOURCE_DIR:PATH=$workspace/$manifest_path/firmware" "$cache"; then
+			checkout="${root#"$workspace"/}"
+			printf 'Updating moved manifest checkout from %s to %s.\n' "$manifest_path" "$checkout"
+			python -m west config --local manifest.path "$checkout"
+			break
+		fi
+	done
+fi
 # Keep dependencies aligned with the pinned manifest; west preserves local working-tree changes.
 python -m west update --narrow -o=--depth=1
 zephyr="$(python -m west list zephyr -f '{abspath}')"
@@ -82,6 +95,7 @@ done
 python -m pip install --disable-pip-version-check --no-input \
 	-r "$zephyr/scripts/requirements-base.txt" -r "$espressif/zephyr/requirements.txt"
 export ZEPHYR_BASE="$zephyr"
+bash "$root/tools/firmware/apply-zephyr-patches.sh" "$zephyr"
 python -m west blobs fetch hal_espressif
 
 sdk=""

@@ -24,7 +24,7 @@ test("LED commands use reported colour, ignore SD readiness and never replay unc
   emit(device, 3, status);
   await assert.rejects(client.setLedColour(6));
   assert.equal(client.state.outcome_uncertain, true);
-  assert.equal(JSON.parse(pendingStore.getItem("espforge.direct.pending-operation")).request.led_colour, 6);
+  assert.equal(JSON.parse(pendingStore.getItem("zephyrforge.direct.pending-operation")).request.led_colour, 6);
   device.receiveFeatureReport = receive;
   await client.disconnect();
   await client.connect();
@@ -44,6 +44,8 @@ test("benchmark admission invalidates snapshots and uncertain starts are never r
   assert.deepEqual(sent[0].slice(0, 10), [20, 1, 1, 4, 0, 1, 8, 0, 0, 0]);
   assert.equal(client.state.self_test, null);
   assert.equal(client.state.memory, null);
+  assert.equal(client.state.freshness[11], "stale");
+  assert.equal(client.state.freshness[10], "stale");
   const active = idle.slice(); active[2] = 3;
   new DataView(active.buffer).setUint32(4, 8 * 1024 ** 2, true);
   const busy = new Uint8Array(34); busy[0] = busy[2] = 1;
@@ -57,7 +59,7 @@ test("benchmark admission invalidates snapshots and uncertain starts are never r
     return receive(id);
   };
   await assert.rejects(client.benchmark(true, 8, true));
-  const pending = JSON.parse(pendingStore.getItem("espforge.direct.pending-operation"));
+  const pending = JSON.parse(pendingStore.getItem("zephyrforge.direct.pending-operation"));
   assert.deepEqual(pending.request, { transaction_id: 3, opcode: 4,
     benchmark_start: true, benchmark_size_mib: 8 });
   await assert.rejects(client.benchmark(true, 8, true));
@@ -65,7 +67,8 @@ test("benchmark admission invalidates snapshots and uncertain starts are never r
   await client.disconnect();
 });
 
-for (const spi of [false, true]) test(`MSC over ${spi ? "SPI" : "SDMMC"} requires eject and never replays writes`, async () => {
+for (const spi of [false, true]) test(`MSC over ${spi ? "SPI" : "SDMMC"} requires eject and never replays writes`,
+  async () => {
   const { client, device, sent, pendingStore } = fakeConnection({ capabilities: spi ? 0x8e : 0x96 });
   const receive = device.receiveFeatureReport;
   device.receiveFeatureReport = async id => {
@@ -96,7 +99,7 @@ for (const spi of [false, true]) test(`MSC over ${spi ? "SPI" : "SDMMC"} require
     return receive(id);
   };
   await assert.rejects(client.setMsc(true));
-  const pending = JSON.parse(pendingStore.getItem("espforge.direct.pending-operation"));
+  const pending = JSON.parse(pendingStore.getItem("zephyrforge.direct.pending-operation"));
   assert.deepEqual(pending.request, { transaction_id: 4, opcode: 3, msc_enabled: true });
   await assert.rejects(client.setMsc(true));
   assert.equal(sent.length, 4);
@@ -110,7 +113,8 @@ test("stale storage and capability gates stop reboot and settings writes", async
   await assert.rejects(client.reboot(true), says(/Fresh storage status/));
   emit(device, 3, telemetry()); emit(device, 10, storage());
   await assert.rejects(client.reboot(true), says(/capability/));
-  await assert.rejects(client.saveSettings({ system_clock_mhz: 160, sdcard_profile: 0, radios: 0 }), says(/capability/));
+  await assert.rejects(client.saveSettings({ system_clock_mhz: 160, sdcard_profile: 0, radios: 0 }),
+    says(/capability/));
   await client.disconnect();
   const stale = fakeConnection({ now: () => now });
   await stale.client.connect();
@@ -122,7 +126,7 @@ test("stale storage and capability gates stop reboot and settings writes", async
   await stale.client.disconnect();
 });
 
-test("settings save sends ESPForge clocks and switch bits and verifies them", async () => {
+test("settings save sends ZephyrForge clocks and switch bits and verifies them", async () => {
   const { client, device, sent } = fakeConnection();
   await client.connect();
   emit(device, 10, storage());
@@ -163,9 +167,9 @@ test("configuration save selects the wireless workflow from the board link and i
   };
   const operations = new Operations(session);
   const settings = { system_clock_mhz: 0, sdcard_profile: 0, radios: 3 };
-  const wireless = { ssid: "ESPForge" };
+  const wireless = { ssid: "ZephyrForge" };
 
-  assert.deepEqual(await operations.saveConfiguration({ settings, wireless }), { ssid: "ESPForge" });
+  assert.deepEqual(await operations.saveConfiguration({ settings, wireless }), { ssid: "ZephyrForge" });
   assert.deepEqual(calls, [["wireless", { ...wireless, wifi_enabled: true, ble_enabled: true, board: settings }]]);
 
   calls.length = 0;
@@ -213,7 +217,7 @@ test("tested pair saves without restaging, key staging retains test, "
   assert.equal(saved.ssid, "A\\x00\\xFF");
   assert.equal(setup.client.state.reboot_pending, true);
   assert.equal(setup.client.state.outcome_uncertain, false);
-  assert.equal(setup.pendingStore.getItem("espforge.direct.pending-operation"), null);
+  assert.equal(setup.pendingStore.getItem("zephyrforge.direct.pending-operation"), null);
   await setup.client.disconnect();
 });
 

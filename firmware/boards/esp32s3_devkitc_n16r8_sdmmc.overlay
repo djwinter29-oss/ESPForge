@@ -1,0 +1,104 @@
+#include <zephyr/dt-bindings/gpio/gpio.h>
+#include <zephyr/dt-bindings/pinctrl/esp32s3-pinctrl.h>
+#include <zephyr/dt-bindings/led/led.h>
+
+/ {
+	aliases {
+		zephyrforge-sd = &sdhc0;
+	};
+	zephyr,user {
+		sd-detect-gpios = <&gpio0 8 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+	};
+};
+
+/*
+ * ESP32-S3-DevKitC-1 N16R8 (ESP32-S3-WROOM-1-N16R8): 16 MB quad flash and 8 MB octal PSRAM.
+ * The upstream board DTS describes the N8 module with the 4 MB partition table, so replace both.
+ */
+&flash0 {
+	reg = <0x0 DT_SIZE_M(16)>;
+	/delete-node/ partitions;
+};
+
+#include <espressif/partitions_0x0_amp_16M.dtsi>
+
+&psram0 {
+	size = <DT_SIZE_M(8)>;
+};
+
+/* Native USB OTG on the DevKitC USB connector (GPIO19 D-, GPIO20 D+). */
+&usb_otg {
+	status = "okay";
+	zephyrforge_hid: hid_dev_0 {
+		compatible = "zephyr,hid-device";
+		label = "ZephyrForge";
+		protocol-code = "none";
+		in-report-size = <64>;
+		in-polling-period-us = <4000>;
+	};
+};
+
+&coretemp {
+	status = "okay";
+};
+
+&pinctrl {
+	zephyrforge_led_default: zephyrforge_led_default {
+		mosi {
+			pinmux = <SPIM2_MOSI_GPIO48>;
+			bias-pull-down;
+		};
+	};
+	/* The 20 mA reset-default pad drive caused SD write CRC errors on tested hand wiring; 10 mA passed. */
+	zephyrforge_sd_default: zephyrforge_sd_default {
+		clock {
+			pinmux = <SDHC0_CLKOUT_GPIO12>;
+			drive-strength = <10>;
+		};
+		command_data {
+			pinmux = <SDHC0_CMD_GPIO11>, <SDHC0_DATA0_GPIO13>,
+				 <SDHC0_DATA1_GPIO14>, <SDHC0_DATA2_GPIO15>, <SDHC0_DATA3_GPIO10>;
+			bias-pull-up;
+			drive-strength = <10>;
+		};
+	};
+};
+
+&sdhc {
+	status = "okay";
+};
+
+zephyrforge_sd: &sdhc0 {
+	status = "okay";
+	pinctrl-0 = <&zephyrforge_sd_default>;
+	pinctrl-names = "default";
+	bus-width = <4>;
+	max-bus-freq = <40000000>;
+	mmc {
+		compatible = "zephyr,sdmmc-disk";
+		disk-name = "SD";
+		status = "okay";
+	};
+};
+
+&spi2 {
+	status = "okay";
+	line-idle-low;
+	pinctrl-0 = <&zephyrforge_led_default>;
+	pinctrl-names = "default";
+	zephyrforge_led: led-strip@0 {
+		compatible = "worldsemi,ws2812-spi";
+		reg = <0>;
+		spi-max-frequency = <6400000>;
+		spi-zero-frame = <0xc0>;
+		spi-one-frame = <0xf0>;
+		chain-length = <1>;
+		color-mapping = <LED_COLOR_ID_GREEN LED_COLOR_ID_RED LED_COLOR_ID_BLUE>;
+		reset-delay = <350>;
+	};
+};
+
+/* SPI3's default pins overlap the module's internal flash/PSRAM signals (octal PSRAM uses GPIO33-37). */
+&spi3 {
+	status = "disabled";
+};

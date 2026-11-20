@@ -32,7 +32,7 @@ There is no CDC ACM interface. Hosts identify HID by its usage collection, not a
 | HID usage page | `0xFF00` |
 | HID usage | `0x01` |
 | Manufacturer string | `djwinter29` |
-| Product string | `ESPForge` |
+| Product string | `ZephyrForge` |
 | Serial string | Report `1` UID as 16 uppercase hexadecimal digits, in byte order |
 
 Management uses the board's native **USB** connector. The **UART** connector is for a diagnostic shell/log output and
@@ -114,7 +114,7 @@ Read after connection. Identity and capabilities remain stable for that boot.
 | Offset | Size | Field | Meaning |
 | -----: | ---: | ----- | ------- |
 | 0 | 1 | `version` | Layout version, `1` |
-| 1 | 2 | `product_id` | Product-family ID, `0x0003` for ESPForge |
+| 1 | 2 | `product_id` | Product-family ID, `0x0003` for ZephyrForge |
 | 3 | 8 | `device_uid` | Opaque identity bytes in USB serial-string order |
 | 11 | 1 | `firmware_major` | Firmware semantic-version major |
 | 12 | 1 | `firmware_minor` | Firmware semantic-version minor |
@@ -143,7 +143,7 @@ Board model `1` requires MCU `3`; model `0` makes no board claim.
 | Product ID | Meaning |
 | ---------: | ------- |
 | `0x0000` | Reserved / unspecified |
-| `0x0003` | ESPForge |
+| `0x0003` | ZephyrForge |
 | Other | Not a supported project identity |
 
 | Capability bit | Meaning | Current device |
@@ -208,7 +208,7 @@ Settings describe the next boot, while GPIOs describe configured board facts.
 | 13 | 1 | `board_flags` | Flags below |
 | 14 | 1 | `reset_cause` | Reset enum below |
 | 15 | 1 | `led_gpio` | Configured RGB data GPIO; `255` if unallocated |
-| 16 | 1 | `card_detect_gpio` | `8`, active-high card-detect input; `255` on older firmware without detection |
+| 16 | 1 | `card_detect_gpio` | `8`, active-low card-detect input; `255` on older firmware without detection |
 | **Total** | **17** | | **18 bytes including report ID** |
 
 | Board flag bit | Meaning | Current device |
@@ -258,10 +258,10 @@ failed submissions can therefore leave gaps. Sequences are not delivery acknowle
 | 14 | 2 | `core1_service_load_basis_points` | `65535`; second core not running this application |
 | 16 | 4 | `system_clock_hz` | Current CPU clock, nonzero |
 | 20 | 1 | `sequence` | Publication sequence, modulo 256 |
-| 21 | 1 | `espforge_flags` | USB and sensor-valid flags below |
+| 21 | 1 | `zephyrforge_flags` | USB and sensor-valid flags below |
 | **Total** | **22** | | **23 bytes including report ID** |
 
-`espforge_flags`: bit 0 USB configured; bit 1 reserved CDC-open indication, always clear; bit 2 temperature valid;
+`zephyrforge_flags`: bit 0 USB configured; bit 1 reserved CDC-open indication, always clear; bit 2 temperature valid;
 bit 3 LED driver available; bits 4-7 zero. Unavailable LEDs transmit a zero colour mask.
 Masks 0-7 mean Off, Red, Green, Yellow, Blue, Purple, Cyan and White. Driver availability and successful transmission
 do not prove an LED is fitted, the selected data GPIO is correct, or the physical colour.
@@ -286,12 +286,12 @@ It reflects the storage worker's detection, mount and ownership state; it perfor
 | 0 | 1 | `version` | Layout version, `1` |
 | 1 | 1 | `sequence` | Publication sequence |
 | 2 | 1 | `sd_flags` | Flags below |
-| 3 | 1 | `component_type` | `0` unavailable; `1` SD card after successful mount |
-| 4 | 1 | `bus_mode` | `0` unavailable; `2` SPI or `3` native SDMMC after successful mount, matching identity |
-| 5 | 4 | `bus_clock_hz` | Configured storage bus ceiling after successful mount; zero otherwise |
-| 9 | 1 | `speed_mode` | `0` unavailable; `1` Standard after successful mount |
+| 3 | 1 | `component_type` | `0` unavailable; `1` SD card after hardware initialization |
+| 4 | 1 | `bus_mode` | `0` unavailable; `2` SPI or `3` native SDMMC after hardware initialization, matching identity |
+| 5 | 4 | `bus_clock_hz` | Configured storage bus ceiling after hardware initialization; zero otherwise |
+| 9 | 1 | `speed_mode` | `0` unavailable; `1` Standard after hardware initialization |
 | 10 | 4 | `block_count` | 512-byte sectors; zero unless capacity is valid |
-| 14 | 16 | `cid` | Zero; CID unavailable through the current disk API |
+| 14 | 16 | `cid` | Raw SD identification register in wire byte order; zero unless CID-valid |
 | 30 | 1 | `filesystem_format` | Firmware mount format: enum below; current firmware clears it when unavailable |
 | 31 | 1 | `msc_enabled` | Boolean: USB currently owns the medium |
 | 32 | 1 | `msc_transition_pending` | Boolean: ownership request queued or storage worker busy |
@@ -303,31 +303,36 @@ It reflects the storage worker's detection, mount and ownership state; it perfor
 | 0 | Storage configured |
 | 1 | Presence known |
 | 2 | Present |
-| 3 | Initialized |
-| 4 | CID valid; always clear in the current device |
+| 3 | Hardware initialized; independent of filesystem mounting |
+| 4 | CID valid |
 | 5 | Capacity valid |
 | 6 | Storage sample valid |
 | 7 | Reserved, zero |
 
-An idle absent card reports `sd_flags = 0x43`; an inserted card whose mount failed reports `0x47`.
-Both have zero component/bus/clock/speed/capacity/CID fields and unknown filesystem.
+An idle absent card reports `sd_flags = 0x43`; an inserted card whose hardware initialization failed reports `0x47`.
+Both have zero component/bus/clock/speed/capacity/CID fields and unknown filesystem. A hardware-initialized card with
+valid CID and capacity reports `0x7F` even if mounting fails; its filesystem remains unknown (`0`).
 Detection errors invalidate presence rather than claiming absence. Mount errors are logged to UART.
 During USB ownership or worker activity, sample-valid is clear and only the configured SD flag may remain set.
 Component/bus/clock/speed/capacity/CID fields MUST be zero when sample-valid is clear.
 
-A successful mount sets bits 0-3 and 6, component type `1`, bus mode `3`, speed mode `1`, and the configured
-25 MHz ceiling. This clock is not a measured runtime frequency. Capacity-valid is set only when the sector-count
+A successful hardware initialization sets bits 0-3 and 6, component type `1`, bus mode `3`, speed mode `1`, and the
+configured 25 MHz ceiling. This clock is not a measured runtime frequency. Capacity-valid is set only when the sector-count
 query returns a nonzero count; geometry validation failure releases the medium and reports initialization failure.
 Capacity is `block_count * 512` bytes, not free filesystem space.
+The retained CID supplies manufacturer ID, OEM ID, product name/revision, serial number and manufacturing date.
+It is sampled during SD initialization, not recovered by filesystem access or fabricated after an error.
+Only a nonzero filesystem format indicates a currently mounted firmware volume. Benchmarks require that mount;
+explicit raw USB export requires initialized hardware and valid geometry, not a mount.
 
 Hosts MUST require initialized status for valid capacity, zero capacity when invalid, and zero CID while
 CID-valid is clear. Reserved flags, unsupported bus/speed values and nonboolean MSC bytes are invalid.
 USB ownership or a pending transition MUST NOT coexist with a valid firmware SD sample.
 Detection is debounced; a fresh report is not a guarantee against subsequent physical unplugging.
 
-Filesystem enum: `0` Unknown, `1` FAT12, `2` FAT16, `3` FAT32, `4` reserved exFAT encoding.
-The default firmware does not enable exFAT. A format enum does not imply support for creating or mounting that
-format. There is no automatic formatting, repair or management file-transfer API.
+Filesystem enum: `0` Unknown, `1` FAT12, `2` FAT16, `3` FAT32, `4` exFAT.
+Older firmware may not mount exFAT. A format enum does not imply support for creating that format.
+There is no automatic formatting, repair or management file-transfer API.
 See [SD storage](sdcard.md) for mount lifecycle and data-safety rules.
 
 ## Report ID 11: Storage Benchmark Status
@@ -562,7 +567,7 @@ Error enum: `0` none; `1` malformed flags/unused arguments; `2` missing confirma
 | `3` | Benchmark size invalid | Invalid/error `3`, opcode `4` |
 | `4` | Card unavailable | Failed/error `6`, opcode `4` |
 | `5`-`9` | Reserved command details; Report `11` execution errors are separate | - |
-| `10` | Mount unavailable | Failed/error `6`, opcode `4` |
+| `10` | Reserved in the Feature `20` detail namespace | - |
 | `11`-`15` | Reserved | - |
 | `16` | Invalid SSID length | Invalid/error `3`, opcode `6` |
 | `17` | Invalid password length/characters | Invalid/error `3`, opcode `7` |
@@ -580,17 +585,20 @@ Error enum: `0` none; `1` malformed flags/unused arguments; `2` missing confirma
 | `29`-`255` | Reserved | - |
 
 Details are zero for Idle, Pending, Completed and Unsupported. Report `12` has a separate Wi-Fi detail namespace.
+Report `11` separately uses execution error `10` for an unavailable firmware filesystem mount.
 
 | USB opcode | Current terminal statuses |
 | --- | --- |
-| `1`, `4`, `13` | Unsupported/error `4` |
+| `1` | Completed (queued), Invalid/error `1` or `3`, Busy, Failed |
 | `2` | Completed, Invalid/error `1` or `2`, Busy, Failed |
 | `3` | Completed (admitted), Invalid/error `1`, `2` or `3`, Busy, Failed; older firmware Unsupported/error `4` |
+| `4` | Completed (admitted), Invalid/error `1` or `3`, Busy, Failed; Unsupported/error `4` without capability bit 5 |
 | `5` | Completed, Invalid/error `1` or `3`, Unsupported/error `4`, Busy, Failed |
 | `6`-`8` | Completed, Invalid/error `1` or `3`, Busy |
 | `9`, `11` | Completed, Invalid/error `1` or `3`, Busy, Failed |
 | `10` | Completed, Invalid/error `1` |
 | `12` | Completed, Invalid/error `1` or `3`, Busy |
+| `13` | Unsupported/error `4` |
 | Unassigned | Unsupported/error `7` |
 
 Validation follows these rules:
@@ -754,12 +762,13 @@ See [qualification gaps](../validation/qualification-gaps.md) and the
 
 ## Implementation and Integration
 
-The native USB interface uses Zephyr's `udc_dwc2` driver. Feature GET supports IDs `1`, `2`, `12`, `20`;
-Input GET supports `3`, `10`. Unsupported type/ID or an insufficient GET buffer is rejected.
+The native USB interface uses Zephyr's `udc_dwc2` driver. Feature GET supports IDs `1`, `2`, `12`, `13`, `20`;
+Input GET supports `3`, `10`, and `11` when the benchmark is built in. Unsupported type/ID or an insufficient GET
+buffer is rejected.
 SET requires Feature `20`, exactly 69 bytes including ID, and a valid envelope.
 The callback rejects invalid envelopes before the status stage completes, leaving the prior result readable.
 
-Input publication is scheduled from the main loop, nominally 250 ms telemetry / 500 ms storage.
+Input publication is scheduled from the main loop, nominally 250 ms telemetry / 500 ms storage and benchmark.
 One transfer is in flight at a time, so intervals are not delivery guarantees.
 USB callbacks run in the stack thread; shared control access holds the application mutex.
 Python (`hidapi`), .NET (`HidSharp`) and Direct (WebHID) implement the same payload contract.

@@ -1,18 +1,24 @@
-# ESPForge Shared Web Dashboard
+# ZephyrForge Shared Web Dashboard
 
 The browser frontend served by both the [Python host](../python/README.md) and the
-[.NET host](../dotnet/ESPForge/README.md). It uses static assets and browser ES modules without a build step.
+[.NET host](../dotnet/ZephyrForge/README.md). It uses static assets and browser ES modules without a build step.
 The independent Direct dashboard does not share this code.
+Dashboard modules live under `src/js/dashboard/`; the standalone terminal lives under `src/js/console/`.
+Unit, integration and type checks follow the same split under `tests/dashboard/` and `tests/console/`;
+shared browser, CSS and fixture checks stay at the test root.
 
-Choose **Configure…** in the Wi-Fi or Bluetooth dropdown to open its provisioning dialog without changing
-the radio's Enabled/Disabled selection. Wireless edits are saved with **Save&Reboot**.
+Use **Configure Wi-Fi** or **Configure Bluetooth** beside the radio switch to open its provisioning dialog without
+changing the radio's Enabled/Disabled selection. Wireless edits are saved with **Save&Reboot**.
 
 ## HTTP API
 
-Both hosts must serve the same ESPForge routes and JSON field names.
+Both hosts must serve the same ZephyrForge routes and JSON field names.
 Board-scoped routes take `?board=ID` from `/api/boards`.
 
-The Module memory panel separates internal SRAM, external PSRAM and module SPI flash. `/api/status` adds
+Device information shows compact, aligned values. Product exposes separate Board and MCU rows in its detail pop-up;
+Module memory summarizes flash and PSRAM capacities, with SRAM and reservation accounting in its details.
+Hover or focus either item to see its details; click or tap to toggle them, or press Escape to close.
+The details separate internal SRAM, external PSRAM and module SPI flash. `/api/status` adds
 `hardware.psram_total_bytes`, `psram_reserved_bytes` and `flash_total_bytes`, in bytes, when the firmware advertises
 [memory inventory](../../docs/reference/usb-hid.md#report-id-13-module-memory-inventory).
 Unsupported or unavailable values are `null` or absent and display `--`. RAM reservation is linked accounting,
@@ -31,14 +37,16 @@ including heap pools, not live usage; flash capacity is not free space. No capac
 | `POST /api/reboot` | Confirmed reboot, with `{"confirm":true}` |
 | `POST /api/led` | Volatile onboard RGB colour |
 | `POST /api/msc` | Explicitly enable USB storage or return it after confirmed OS eject |
+| `POST /api/benchmark` | Explicitly start or cancel the temporary-file storage benchmark |
 | `POST /api/control/resync` | Explicitly reconcile an uncertain command outcome |
 | `POST /api/wireless` | Save Wi-Fi credentials, Control key and radio switches |
 | `POST /api/wireless/scan` | Scan for Wi-Fi networks |
 | `POST /api/wireless/test` | Test candidate credentials |
 | `POST /api/wireless/cancel` | Cancel a test and clear temporary credentials |
 
-Settings requests with `confirm_data_loss:true` are refused (HTTP 400 in Python, HTTP 409 in .NET);
-there is no forced-save workflow.
+Settings requests with `confirm_data_loss:true` are refused with HTTP 409 and the same error body on both hosts;
+there is no forced-save workflow. Successful settings saves return the confirmed values as
+`{"settings":{"system_clock_mhz":240,"sdcard_profile":0,"radios":0}}` on both hosts.
 Wireless requests may omit `tcp_cli_enabled` or supply `false`, never `true`. Omitted credentials are not
 restaged. Opaque SSIDs use `ssid_hex` alongside an escaped display label; test/save requests may use the hex
 form to preserve network bytes.
@@ -47,8 +55,8 @@ MSC requests use `{"enabled":true}` to export or `{"enabled":false,"confirm_ejec
 `enabled` is required and boolean; optional `confirm_ejected` is boolean and defaults to false. Extra fields,
 nonboolean values and unconfirmed return are HTTP 400. Unavailable/stale/busy ownership is HTTP 409; transport
 failure is HTTP 503 and may leave an uncertain outcome. HTTP 200 acknowledges admission, not completed handoff:
-Python includes `control_result`, while .NET returns `{}`. Poll `/api/status` for `memory.msc.transition_pending`,
-`enabled` and `request_rejected`; do not automatically replay. See the
+both hosts return `{"accepted":true}`. Poll `/api/status` for `memory.msc.transition_pending`, `enabled` and
+`request_rejected`; do not automatically replay. See the
 [SD handoff contract](../../docs/reference/sdcard.md#usb-drive-handoff) for OS eject, reconnect and safety limitations.
 
 Unsupported routes are not served: `/api/msc/force-return` and `/api/self-test`. The UI never requests them.
@@ -57,7 +65,8 @@ Unsupported routes are not served: `/api/msc/force-return` and `/api/self-test`.
 `{"start":false,"size_mib":0}`. Start requires 1–1024 MiB and explicit write confirmation.
 Fields are strictly typed, extras are rejected (HTTP 400), and cancel requires zero size.
 Unavailable/stale/busy admission is HTTP 409; transport errors are HTTP 503 and may require explicit resync.
-HTTP 200 acknowledges admission (Python `control_result`, .NET `{}`), not a passing run.
+HTTP 200 acknowledges admission, not a passing run. Both hosts return `{"accepted":true}`; this does not indicate
+benchmark completion.
 Poll `self_test` and `self_test_stale` for [Report 11](../../docs/reference/usb-hid.md#report-id-11-storage-benchmark-status)
 progress/result. `self_test` is null when absent or stale; zero-duration throughput is null.
 Controls remain hidden without capability bit 5 or detected storage; BLE is read-only.
@@ -76,10 +85,24 @@ Diagnostic tiles expand to fill each responsive row, including rows with fewer v
 Commands are serialized per board. A timeout or disconnect can leave the outcome uncertain; further writes
 remain blocked until explicit reconciliation. Clients must not replay a state-changing request.
 Both hosts remain loopback-only and require local request origins.
+Host-reported uncertainty is shown with its recovery action even after a dashboard reload. Switching boards with
+unsaved settings or wireless edits requires explicit discard confirmation; browser reload or close warns while those
+edits remain, including Wi-Fi names and passwords entered before connection testing. Untested credentials remain
+ineligible to save. Save confirmation identifies the target board, boot and radio changes, and summarizes whether
+Wi-Fi credentials or the Control key are unchanged, replaced or erased. A replacement Wi-Fi action names the tested
+network; credentials are never displayed. Safety warnings are included only when relevant. Failed status polls remain
+visible in open wireless dialogs, including guidance when a generated Bluetooth key is still locally available.
+Wi-Fi test progress is shown without repeatedly announcing its countdown. The dashboard reports the age of the last
+successful status fetch until a poll recovers.
+Reboot confirmation expires on disconnect and identifies the selected board.
+After a confirmed reboot, writes remain blocked until the dashboard observes a disconnect/reconnect or a host-reported
+reboot-pending transition followed by clear. A fresh lower uptime also confirms a restart when the tab missed the
+disconnect. If controls remain blocked after reconnection, reload the dashboard to reconcile with the host.
 
 ## Browser shell
 
-Fresh connected Wi-Fi status becomes a link opening the [diagnostic shell](../../docs/guides/console.md) in a new tab.
+Fresh connected Wi-Fi status exposes a labeled **Open Wi-Fi shell** link to the
+[diagnostic shell](../../docs/guides/console.md) in a new tab.
 Wi-Fi connectivity does not establish that TCP port 2323 is listening; connection failures are explicit.
 
 `POST /api/console?board=ID` accepts exactly `{}`. The host obtains the address from that board's monitor, sends
@@ -120,5 +143,6 @@ The browser checks need Playwright for Python and the .NET SDK because they serv
 
 `POST /api/led` accepts only `{"colour":0..7}` with an integer additive RGB mask: red=1, green=2, blue=4,
 zero=Off. Capability and fresh available-driver telemetry are required; storage activity does not block it.
-Success means queued transmission, not physical verification or persistence. The shared dropdown beside Device
-information displays reported colour and uses the existing explicit Re-sync flow after an uncertain outcome.
+Success returns `{"accepted":true}` and means queued transmission, not physical verification or persistence. The shared
+dropdown beside Device information displays reported colour and uses the existing explicit Re-sync flow after an
+uncertain outcome.

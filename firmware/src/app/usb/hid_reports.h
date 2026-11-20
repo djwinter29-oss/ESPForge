@@ -1,75 +1,73 @@
 /**
  * @file hid_reports.h
- * @brief Encoders for the ESPForge HID/GATT report payloads.
+ * @brief Encoders for the ZephyrForge HID/GATT report payloads.
  *
  * Payloads exclude the USB report ID. Portable: the Zephyr glue samples the board and fills these structs.
  */
-#ifndef ESPFORGE_HID_REPORTS_H
-#define ESPFORGE_HID_REPORTS_H
+#ifndef ZEPHYRFORGE_HID_REPORTS_H
+#define ZEPHYRFORGE_HID_REPORTS_H
 
 #include <stdbool.h>
 #include <stdint.h>
 #include "app/storage/benchmark.h"
+#include "wireless_limits.h"
 
-#define EF_REPORT_IDENTITY 1u
-#define EF_REPORT_CONFIG 2u
-#define EF_REPORT_TELEMETRY 3u
-#define EF_REPORT_STORAGE 10u
-#define EF_REPORT_BENCHMARK 11u
-#define EF_REPORT_WIRELESS 12u
+#define ZF_REPORT_IDENTITY 1u
+#define ZF_REPORT_CONFIG 2u
+#define ZF_REPORT_TELEMETRY 3u
+#define ZF_REPORT_STORAGE 10u
+#define ZF_REPORT_BENCHMARK 11u
+#define ZF_REPORT_WIRELESS 12u
 /** Read-only boot memory inventory Feature report. */
-#define EF_REPORT_MEMORY 13u
-#define EF_REPORT_CONTROL 20u
+#define ZF_REPORT_MEMORY 13u
+#define ZF_REPORT_CONTROL 20u
 
-#define EF_IDENTITY_SIZE 26u
-#define EF_CONFIG_SIZE 17u
-#define EF_TELEMETRY_SIZE 22u
-#define EF_STORAGE_SIZE 34u
+#define ZF_IDENTITY_SIZE 26u
+#define ZF_CONFIG_SIZE 17u
+#define ZF_TELEMETRY_SIZE 22u
+#define ZF_STORAGE_SIZE 34u
 /** Benchmark Input payload size, excluding report ID. */
-#define EF_BENCHMARK_SIZE 32u
-#define EF_WIRELESS_SIZE 48u
+#define ZF_BENCHMARK_SIZE 32u
+#define ZF_WIRELESS_SIZE 48u
 /** Memory inventory payload size, excluding report ID. */
-#define EF_MEMORY_SIZE 16u
+#define ZF_MEMORY_SIZE 16u
 /** Identity extension flag: Report 13 memory inventory is available. */
-#define EF_EXT_MEMORY 0x01u
-#define EF_CONTROL_SIZE 68u
-#define EF_BLE_CONTROL_SIZE 9u
+#define ZF_EXT_MEMORY 0x01u
+#define ZF_CONTROL_SIZE 68u
+#define ZF_BLE_CONTROL_SIZE 9u
 
-#define EF_PRODUCT_ID 0x0003u
-#define EF_MCU_ESP32S3 3u
-#define EF_BOARD_DEVKITC 1u
+#define ZF_PRODUCT_ID 0x0003u
+#define ZF_MCU_ESP32S3 3u
+#define ZF_BOARD_DEVKITC 1u
 
-#define EF_CAP_LED 0x01u
-#define EF_CAP_REBOOT 0x02u
-#define EF_CAP_SETTINGS 0x04u
+#define ZF_CAP_LED 0x01u
+#define ZF_CAP_REBOOT 0x02u
+#define ZF_CAP_SETTINGS 0x04u
 /** SD memory-card transport over SPI, mutually exclusive with native SDMMC. */
-#define EF_CAP_SPI 0x08u
-#define EF_CAP_SDMMC 0x10u
+#define ZF_CAP_SPI 0x08u
+#define ZF_CAP_SDMMC 0x10u
 /** Build-selected storage transport; portable tests default to native SDMMC. */
-#ifndef EF_STORAGE_SPI
-#define EF_STORAGE_SPI 0
+#ifndef ZF_STORAGE_SPI
+#define ZF_STORAGE_SPI 0
 #endif
 /** Exactly one storage capability is advertised by each firmware image. */
-#define EF_CAP_STORAGE (EF_STORAGE_SPI ? EF_CAP_SPI : EF_CAP_SDMMC)
+#define ZF_CAP_STORAGE (ZF_STORAGE_SPI ? ZF_CAP_SPI : ZF_CAP_SDMMC)
 /** Optional temporary-file benchmark capability. */
-#define EF_CAP_BENCHMARK 0x20u
-#define EF_CAP_WIRELESS 0x80u
-#define EF_CAPABILITIES (EF_CAP_LED | EF_CAP_REBOOT | EF_CAP_SETTINGS | EF_CAP_STORAGE | EF_CAP_WIRELESS | \
-			(EF_ENABLE_STORAGE_BENCHMARK ? EF_CAP_BENCHMARK : 0))
+#define ZF_CAP_BENCHMARK 0x20u
+#define ZF_CAP_WIRELESS 0x80u
+#define ZF_CAPABILITIES (ZF_CAP_LED | ZF_CAP_REBOOT | ZF_CAP_SETTINGS | ZF_CAP_STORAGE | ZF_CAP_WIRELESS | \
+			(ZF_ENABLE_STORAGE_BENCHMARK ? ZF_CAP_BENCHMARK : 0))
 
-#define EF_UID_SIZE 8u
-#define EF_SSID_MAX 32u
-#define EF_LOAD_UNAVAILABLE 0xFFFFu
-#define EF_GPIO_UNASSIGNED 0xFFu
-/** Report 2 board flag: native USB mass storage with explicit owner handoff is available. */
-#define EF_CONFIG_FLAG_MSC 0x40u
+#define ZF_UID_SIZE 8u
+#define ZF_LOAD_UNAVAILABLE 0xFFFFu
+#define ZF_GPIO_UNASSIGNED 0xFFu
 
 typedef struct {
-	uint8_t uid[EF_UID_SIZE];
+	uint8_t uid[ZF_UID_SIZE];
 	uint8_t firmware[3];
 	uint32_t ram_total_bytes;
 	uint32_t ram_reserved_bytes;
-} ef_identity_t;
+} zf_identity_t;
 
 /** Boot-sampled physical capacities and linker-reserved external RAM, not live heap usage. */
 typedef struct {
@@ -78,12 +76,12 @@ typedef struct {
 	uint32_t psram_total_bytes; /**< Detected PSRAM chip capacity. */
 	uint32_t psram_reserved_bytes; /**< Linked PSRAM regions, including permanent heap pools. */
 	uint32_t flash_total_bytes; /**< Detected module SPI flash capacity; not free filesystem space. */
-} ef_memory_inventory_t;
+} zf_memory_inventory_t;
 
 /** Saved configuration and hardware pin allocation. */
 typedef struct {
 	uint16_t stored_clock_mhz; /**< Next-boot clock profile in MHz; zero selects the build default. */
-	uint8_t stored_radios; /**< EF_WIRELESS_WIFI / EF_WIRELESS_BLE bits. */
+	uint8_t stored_radios; /**< ZF_WIRELESS_WIFI / ZF_WIRELESS_BLE bits. */
 	uint8_t reset_cause; /**< Boot-sampled reset reason in the management wire enum. */
 	bool card_detect_available; /**< A physical card-present GPIO is allocated. */
 	uint8_t card_detect_gpio; /**< Board card-present input, valid when allocated. */
@@ -91,7 +89,7 @@ typedef struct {
 	bool led_available; /**< Addressable RGB LED is allocated in hardware configuration. */
 	uint8_t led_gpio; /**< LED data pin, valid when allocated. */
 	uint8_t storage_gpios[6]; /**< Native CLK/CMD/DAT0-DAT3 or SPI SCK/MOSI/MISO/CS/255/255. */
-} ef_config_t;
+} zf_config_t;
 
 typedef struct {
 	bool temperature_valid;
@@ -103,7 +101,7 @@ typedef struct {
 	bool usb_configured;
 	bool led_available; /**< Last LED transmission succeeded. */
 	uint8_t led_colour; /**< Last transmitted RGB bitmask: red=1, green=2, blue=4. */
-} ef_telemetry_t;
+} zf_telemetry_t;
 
 /** Coherent storage snapshot; invalid samples carry no live SD fields on the wire. */
 typedef struct {
@@ -112,8 +110,10 @@ typedef struct {
 	bool presence_known; /**< Debounced presence is known. */
 	bool present; /**< Debounced card-present state. */
 	bool sample_valid; /**< Firmware-owned, non-busy SD sample is available. */
-	bool initialized; /**< The current medium was initialized successfully. */
+	bool initialized; /**< Hardware initialization succeeded, independently of filesystem mounting. */
 	bool capacity_valid; /**< Sector count belongs to the current medium. */
+	bool cid_valid; /**< CID belongs to the initialized current medium. */
+	uint8_t cid[16]; /**< Raw SD CID in wire byte order. */
 	uint32_t bus_clock_hz; /**< Configured bus ceiling, not a measured clock. */
 	uint32_t block_count; /**< Whole-card capacity in 512-byte sectors. */
 	uint8_t filesystem_format; /**< Mounted FAT format, or zero when unknown. */
@@ -121,7 +121,7 @@ typedef struct {
 	bool msc_transition_pending; /**< An admitted ownership handoff is pending. */
 	bool msc_request_rejected; /**< Last admitted handoff failed or was cancelled. */
 	bool busy; /**< Storage worker is manipulating the medium; not encoded separately. */
-} ef_storage_t;
+} zf_storage_t;
 
 typedef struct {
 	uint8_t wifi_state;
@@ -130,31 +130,31 @@ typedef struct {
 	uint8_t flags;
 	uint8_t ipv4[4];
 	uint8_t ssid_length;
-	uint8_t ssid[EF_SSID_MAX];
+	uint8_t ssid[ZF_SSID_MAX_BYTES];
 	uint8_t scan_state;
 	uint16_t scan_generation;
 	uint8_t scan_count;
 	uint8_t test_generation;
 	uint8_t staged_state;
-} ef_wireless_t;
+} zf_wireless_t;
 
-void ef_report_identity(const ef_identity_t *identity, uint8_t out[EF_IDENTITY_SIZE]);
+void zf_report_identity(const zf_identity_t *identity, uint8_t out[ZF_IDENTITY_SIZE]);
 /** Encode the boot memory inventory; unavailable components have zero wire values. */
-void ef_report_memory(const ef_memory_inventory_t *memory, uint8_t out[EF_MEMORY_SIZE]);
-void ef_report_config(const ef_config_t *config, uint8_t out[EF_CONFIG_SIZE]);
-void ef_report_telemetry(const ef_telemetry_t *telemetry, uint8_t out[EF_TELEMETRY_SIZE]);
-void ef_report_storage(const ef_storage_t *storage, uint8_t out[EF_STORAGE_SIZE]);
+void zf_report_memory(const zf_memory_inventory_t *memory, uint8_t out[ZF_MEMORY_SIZE]);
+void zf_report_config(const zf_config_t *config, uint8_t out[ZF_CONFIG_SIZE]);
+void zf_report_telemetry(const zf_telemetry_t *telemetry, uint8_t out[ZF_TELEMETRY_SIZE]);
+void zf_report_storage(const zf_storage_t *storage, uint8_t out[ZF_STORAGE_SIZE]);
 /** Encode a coherent benchmark snapshot. */
-void ef_report_benchmark(const ef_benchmark_t *status, uint8_t out[EF_BENCHMARK_SIZE]);
-void ef_report_wireless(const ef_wireless_t *wireless, uint8_t out[EF_WIRELESS_SIZE]);
+void zf_report_benchmark(const zf_benchmark_t *status, uint8_t out[ZF_BENCHMARK_SIZE]);
+void zf_report_wireless(const zf_wireless_t *wireless, uint8_t out[ZF_WIRELESS_SIZE]);
 
 /** Format the UID as the 16-character uppercase hex USB serial string, NUL-terminated. */
-void ef_uid_hex(const uint8_t uid[EF_UID_SIZE], char out[2 * EF_UID_SIZE + 1]);
+void zf_uid_hex(const uint8_t uid[ZF_UID_SIZE], char out[2 * ZF_UID_SIZE + 1]);
 
 /** Map Zephyr hwinfo reset-cause bits to the Report 2 enum. */
-uint8_t ef_reset_cause(uint32_t hwinfo_cause);
+uint8_t zf_reset_cause(uint32_t hwinfo_cause);
 
-/** Service load in basis points from busy and total cycle deltas; EF_LOAD_UNAVAILABLE without a window. */
-uint16_t ef_load_basis_points(uint64_t busy_cycles, uint64_t total_cycles);
+/** Service load in basis points from busy and total cycle deltas; ZF_LOAD_UNAVAILABLE without a window. */
+uint16_t zf_load_basis_points(uint64_t busy_cycles, uint64_t total_cycles);
 
 #endif

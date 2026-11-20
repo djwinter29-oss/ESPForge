@@ -1,8 +1,9 @@
 /*
  * Vendor HID management interface on the native USB OTG port.
  */
-#include "app/espforge.h"
+#include "app/zephyrforge.h"
 #include "app/control/control.h"
+#include "app/storage/storage.h"
 
 #include <errno.h>
 #include <string.h>
@@ -12,10 +13,10 @@
 #include <zephyr/usb/class/usbd_hid.h>
 #include <zephyr/usb/usbd.h>
 
-LOG_MODULE_REGISTER(ef_usb, LOG_LEVEL_INF);
+LOG_MODULE_REGISTER(zf_usb, LOG_LEVEL_INF);
 
-#define EF_USB_VID 0xCAFE
-#define EF_USB_PID 0x4021
+#define ZF_USB_VID 0xCAFE
+#define ZF_USB_PID 0x4021
 #define TELEMETRY_PERIOD_MS 250
 #define STORAGE_PERIOD_MS 500
 
@@ -29,29 +30,29 @@ static const uint8_t report_descriptor[] = {
 	0x15, 0x00,
 	0x26, 0xFF, 0x00,
 	0x75, 0x08,
-	FEATURE(EF_REPORT_IDENTITY, EF_IDENTITY_SIZE),
-	FEATURE(EF_REPORT_CONFIG, EF_CONFIG_SIZE),
-	FEATURE(EF_REPORT_MEMORY, EF_MEMORY_SIZE),
-	INPUT(EF_REPORT_TELEMETRY, EF_TELEMETRY_SIZE),
-	INPUT(EF_REPORT_STORAGE, EF_STORAGE_SIZE),
-#if EF_ENABLE_STORAGE_BENCHMARK
-	INPUT(EF_REPORT_BENCHMARK, EF_BENCHMARK_SIZE),
+	FEATURE(ZF_REPORT_IDENTITY, ZF_IDENTITY_SIZE),
+	FEATURE(ZF_REPORT_CONFIG, ZF_CONFIG_SIZE),
+	FEATURE(ZF_REPORT_MEMORY, ZF_MEMORY_SIZE),
+	INPUT(ZF_REPORT_TELEMETRY, ZF_TELEMETRY_SIZE),
+	INPUT(ZF_REPORT_STORAGE, ZF_STORAGE_SIZE),
+#if ZF_ENABLE_STORAGE_BENCHMARK
+	INPUT(ZF_REPORT_BENCHMARK, ZF_BENCHMARK_SIZE),
 #endif
-	FEATURE(EF_REPORT_CONTROL, EF_CONTROL_SIZE),
-	FEATURE(EF_REPORT_WIRELESS, EF_WIRELESS_SIZE),
+	FEATURE(ZF_REPORT_CONTROL, ZF_CONTROL_SIZE),
+	FEATURE(ZF_REPORT_WIRELESS, ZF_WIRELESS_SIZE),
 	0xC0,
 };
 
-USBD_DEVICE_DEFINE(espforge_usbd, DEVICE_DT_GET(DT_NODELABEL(zephyr_udc0)), EF_USB_VID, EF_USB_PID);
-USBD_DESC_LANG_DEFINE(espforge_lang);
-USBD_DESC_MANUFACTURER_DEFINE(espforge_manufacturer, "djwinter29");
-USBD_DESC_PRODUCT_DEFINE(espforge_product, "ESPForge");
-USBD_DESC_CONFIG_DEFINE(espforge_config_name, "HID + SD storage");
-USBD_CONFIGURATION_DEFINE(espforge_config, 0, 100, &espforge_config_name);
+USBD_DEVICE_DEFINE(zephyrforge_usbd, DEVICE_DT_GET(DT_NODELABEL(zephyr_udc0)), ZF_USB_VID, ZF_USB_PID);
+USBD_DESC_LANG_DEFINE(zephyrforge_lang);
+USBD_DESC_MANUFACTURER_DEFINE(zephyrforge_manufacturer, "djwinter29");
+USBD_DESC_PRODUCT_DEFINE(zephyrforge_product, "ZephyrForge");
+USBD_DESC_CONFIG_DEFINE(zephyrforge_config_name, "HID + SD storage");
+USBD_CONFIGURATION_DEFINE(zephyrforge_config, 0, 100, &zephyrforge_config_name);
 
 /* The serial is Report 1's 8-byte UID; Zephyr's hwinfo serial would carry only the 6-byte MAC. */
-static uint8_t serial_ascii[2 * EF_UID_SIZE + 1];
-static struct usbd_desc_node espforge_serial = {
+static uint8_t serial_ascii[2 * ZF_UID_SIZE + 1];
+static struct usbd_desc_node zephyrforge_serial = {
 	.str = {
 		.utype = USBD_DUT_STRING_SERIAL_NUMBER,
 		.ascii7 = true,
@@ -61,11 +62,11 @@ static struct usbd_desc_node espforge_serial = {
 	.bDescriptorType = USB_DESC_STRING,
 };
 
-static const struct device *const hid = DEVICE_DT_GET(DT_NODELABEL(espforge_hid));
+static const struct device *const hid = DEVICE_DT_GET(DT_NODELABEL(zephyrforge_hid));
 
 static atomic_t ready;
 static atomic_t in_flight;
-static uint8_t input[1 + EF_STORAGE_SIZE] __aligned(4);
+static uint8_t input[1 + MAX(ZF_STORAGE_SIZE, MAX(ZF_TELEMETRY_SIZE, ZF_BENCHMARK_SIZE))] __aligned(4);
 static uint8_t telemetry_sequence;
 static uint8_t storage_sequence;
 static uint8_t benchmark_sequence;
@@ -88,16 +89,16 @@ static int get_report(const struct device *dev, const uint8_t type, const uint8_
 
 	ARG_UNUSED(dev);
 	if (type == HID_REPORT_TYPE_FEATURE) {
-		size = id == EF_REPORT_IDENTITY ? EF_IDENTITY_SIZE :
-		       id == EF_REPORT_CONFIG	? EF_CONFIG_SIZE :
-		       id == EF_REPORT_MEMORY	? EF_MEMORY_SIZE :
-		       id == EF_REPORT_WIRELESS ? EF_WIRELESS_SIZE :
-		       id == EF_REPORT_CONTROL	? EF_CONTROL_SIZE : 0;
+		size = id == ZF_REPORT_IDENTITY ? ZF_IDENTITY_SIZE :
+		       id == ZF_REPORT_CONFIG	? ZF_CONFIG_SIZE :
+		       id == ZF_REPORT_MEMORY	? ZF_MEMORY_SIZE :
+		       id == ZF_REPORT_WIRELESS ? ZF_WIRELESS_SIZE :
+		       id == ZF_REPORT_CONTROL	? ZF_CONTROL_SIZE : 0;
 	} else if (type == HID_REPORT_TYPE_INPUT) {
-		size = id == EF_REPORT_TELEMETRY ? EF_TELEMETRY_SIZE : id == EF_REPORT_STORAGE ? EF_STORAGE_SIZE : 0;
-#if EF_ENABLE_STORAGE_BENCHMARK
-		if (id == EF_REPORT_BENCHMARK) {
-			size = EF_BENCHMARK_SIZE;
+		size = id == ZF_REPORT_TELEMETRY ? ZF_TELEMETRY_SIZE : id == ZF_REPORT_STORAGE ? ZF_STORAGE_SIZE : 0;
+#if ZF_ENABLE_STORAGE_BENCHMARK
+		if (id == ZF_REPORT_BENCHMARK) {
+			size = ZF_BENCHMARK_SIZE;
 		}
 #endif
 	} else {
@@ -109,33 +110,33 @@ static int get_report(const struct device *dev, const uint8_t type, const uint8_
 
 	buf[0] = id;
 	switch (id) {
-	case EF_REPORT_IDENTITY:
-		ef_identity_report(buf + 1);
+	case ZF_REPORT_IDENTITY:
+		zf_identity_report(buf + 1);
 		break;
-	case EF_REPORT_CONFIG:
-		ef_config_report(buf + 1);
+	case ZF_REPORT_CONFIG:
+		zf_config_report(buf + 1);
 		break;
-	case EF_REPORT_MEMORY:
-		ef_memory_report(buf + 1);
+	case ZF_REPORT_MEMORY:
+		zf_memory_report(buf + 1);
 		break;
-	case EF_REPORT_WIRELESS:
-		ef_wireless_report(buf + 1);
+	case ZF_REPORT_WIRELESS:
+		zf_wireless_report(buf + 1);
 		break;
-	case EF_REPORT_CONTROL:
-		ef_lock();
-		ef_control_usb_get(buf + 1);
-		ef_unlock();
-		ef_storage_result_read(buf[2]);
+	case ZF_REPORT_CONTROL:
+		zf_lock();
+		zf_control_usb_get(buf + 1);
+		zf_unlock();
+		zf_storage_result_read(buf[2]);
 		break;
-	case EF_REPORT_TELEMETRY:
+	case ZF_REPORT_TELEMETRY:
 		/* GET_REPORT samples carry sequence 0; only published Input reports advance the sequence. */
-		ef_telemetry_report(0, buf + 1);
+		zf_telemetry_report(0, buf + 1);
 		break;
-	case EF_REPORT_BENCHMARK:
-		ef_benchmark_report(0, buf + 1);
+	case ZF_REPORT_BENCHMARK:
+		zf_benchmark_report(0, buf + 1);
 		break;
-	default:
-		ef_storage_report(0, buf + 1);
+	case ZF_REPORT_STORAGE:
+		zf_storage_report(0, buf + 1);
 		break;
 	}
 	return size + 1;
@@ -147,13 +148,13 @@ static int set_report(const struct device *dev, const uint8_t type, const uint8_
 	bool accepted;
 
 	ARG_UNUSED(dev);
-	if (type != HID_REPORT_TYPE_FEATURE || id != EF_REPORT_CONTROL || len != EF_CONTROL_SIZE + 1 ||
-	    buf[0] != EF_REPORT_CONTROL) {
+	if (type != HID_REPORT_TYPE_FEATURE || id != ZF_REPORT_CONTROL || len != ZF_CONTROL_SIZE + 1 ||
+	    buf[0] != ZF_REPORT_CONTROL) {
 		return -ENOTSUP;
 	}
-	ef_lock();
-	accepted = ef_control_usb_set(buf + 1, EF_CONTROL_SIZE, k_uptime_get());
-	ef_unlock();
+	zf_lock();
+	accepted = zf_control_usb_set(buf + 1, ZF_CONTROL_SIZE, k_uptime_get());
+	zf_unlock();
 	/* A rejected envelope stalls the status stage and leaves the previous result readable. */
 	return accepted ? 0 : -EINVAL;
 }
@@ -180,15 +181,15 @@ static bool submit(uint8_t id)
 		return false;
 	}
 	input[0] = id;
-	if (id == EF_REPORT_TELEMETRY) {
-		ef_telemetry_report(++telemetry_sequence, input + 1);
-		size = 1 + EF_TELEMETRY_SIZE;
-	} else if (id == EF_REPORT_BENCHMARK) {
-		ef_benchmark_report(++benchmark_sequence, input + 1);
-		size = 1 + EF_BENCHMARK_SIZE;
+	if (id == ZF_REPORT_TELEMETRY) {
+		zf_telemetry_report(++telemetry_sequence, input + 1);
+		size = 1 + ZF_TELEMETRY_SIZE;
+	} else if (id == ZF_REPORT_BENCHMARK) {
+		zf_benchmark_report(++benchmark_sequence, input + 1);
+		size = 1 + ZF_BENCHMARK_SIZE;
 	} else {
-		ef_storage_report(++storage_sequence, input + 1);
-		size = 1 + EF_STORAGE_SIZE;
+		zf_storage_report(++storage_sequence, input + 1);
+		size = 1 + ZF_STORAGE_SIZE;
 	}
 	if (hid_device_submit_report(hid, size, input) != 0) {
 		atomic_clear(&in_flight);
@@ -197,34 +198,34 @@ static bool submit(uint8_t id)
 	return true;
 }
 
-void ef_usb_poll(void)
+void zf_usb_poll(void)
 {
 	int64_t now = k_uptime_get();
 
 	if (!atomic_get(&ready)) {
 		return;
 	}
-	if (now - telemetry_at >= TELEMETRY_PERIOD_MS && submit(EF_REPORT_TELEMETRY)) {
+	if (now - telemetry_at >= TELEMETRY_PERIOD_MS && submit(ZF_REPORT_TELEMETRY)) {
 		telemetry_at = now;
-	} else if (now - storage_at >= STORAGE_PERIOD_MS && submit(EF_REPORT_STORAGE)) {
+	} else if (now - storage_at >= STORAGE_PERIOD_MS && submit(ZF_REPORT_STORAGE)) {
 		storage_at = now;
-	} else if (EF_ENABLE_STORAGE_BENCHMARK && now - benchmark_at >= STORAGE_PERIOD_MS && submit(EF_REPORT_BENCHMARK)) {
+	} else if (ZF_ENABLE_STORAGE_BENCHMARK && now - benchmark_at >= STORAGE_PERIOD_MS && submit(ZF_REPORT_BENCHMARK)) {
 		benchmark_at = now;
 	}
 }
 
-bool ef_usb_configured(void)
+bool zf_usb_configured(void)
 {
 	return atomic_get(&ready) != 0;
 }
 
-int ef_storage_usb_refresh(void)
+int zf_storage_usb_refresh(void)
 {
-	int err = usbd_disable(&espforge_usbd);
+	int err = usbd_disable(&zephyrforge_usbd);
 
 	if (err == 0) {
 		k_sleep(K_MSEC(250));
-		err = usbd_enable(&espforge_usbd);
+		err = usbd_enable(&zephyrforge_usbd);
 	}
 	if (err != 0) {
 		LOG_ERR("USB storage refresh failed: %d", err);
@@ -232,7 +233,7 @@ int ef_storage_usb_refresh(void)
 	return err;
 }
 
-int ef_usb_init(void)
+int zf_usb_init(void)
 {
 	int err;
 
@@ -244,21 +245,21 @@ int ef_usb_init(void)
 	if (err) {
 		return err;
 	}
-	memcpy(serial_ascii, ef_board_serial(), sizeof(serial_ascii));
+	memcpy(serial_ascii, zf_board_serial(), sizeof(serial_ascii));
 
-	err = usbd_add_descriptor(&espforge_usbd, &espforge_lang);
-	err = err ? err : usbd_add_descriptor(&espforge_usbd, &espforge_manufacturer);
-	err = err ? err : usbd_add_descriptor(&espforge_usbd, &espforge_product);
-	err = err ? err : usbd_add_descriptor(&espforge_usbd, &espforge_serial);
-	err = err ? err : usbd_add_configuration(&espforge_usbd, USBD_SPEED_FS, &espforge_config);
-	err = err ? err : usbd_register_all_classes(&espforge_usbd, USBD_SPEED_FS, 1, NULL);
+	err = usbd_add_descriptor(&zephyrforge_usbd, &zephyrforge_lang);
+	err = err ? err : usbd_add_descriptor(&zephyrforge_usbd, &zephyrforge_manufacturer);
+	err = err ? err : usbd_add_descriptor(&zephyrforge_usbd, &zephyrforge_product);
+	err = err ? err : usbd_add_descriptor(&zephyrforge_usbd, &zephyrforge_serial);
+	err = err ? err : usbd_add_configuration(&zephyrforge_usbd, USBD_SPEED_FS, &zephyrforge_config);
+	err = err ? err : usbd_register_all_classes(&zephyrforge_usbd, USBD_SPEED_FS, 1, NULL);
 	if (err) {
 		LOG_ERR("USB device setup failed: %d", err);
 		return err;
 	}
-	usbd_device_set_code_triple(&espforge_usbd, USBD_SPEED_FS, 0, 0, 0);
-	err = usbd_init(&espforge_usbd);
-	err = err ? err : usbd_enable(&espforge_usbd);
+	usbd_device_set_code_triple(&zephyrforge_usbd, USBD_SPEED_FS, 0, 0, 0);
+	err = usbd_init(&zephyrforge_usbd);
+	err = err ? err : usbd_enable(&zephyrforge_usbd);
 	if (err) {
 		LOG_ERR("USB enable failed: %d", err);
 	}

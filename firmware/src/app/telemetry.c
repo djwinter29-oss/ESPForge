@@ -1,9 +1,7 @@
-#include "app/espforge.h"
-#include "platform/ef_platform.h"
+#include "app/zephyrforge.h"
+#include "platform/zf_platform.h"
 
 #include <zephyr/device.h>
-#include <zephyr/drivers/clock_control.h>
-#include <zephyr/drivers/clock_control/esp32_clock_control.h>
 #include <zephyr/drivers/sensor.h>
 #include <zephyr/kernel.h>
 
@@ -15,23 +13,11 @@ static const struct device *const temperature_sensor = DEVICE_DT_GET_OR_NULL(DT_
 static bool temperature_valid;
 static int16_t temperature_centi_c;
 static int64_t temperature_at;
-static uint16_t core0_load = EF_LOAD_UNAVAILABLE;
+static uint16_t core0_load = ZF_LOAD_UNAVAILABLE;
 static uint64_t window_busy;
 static uint64_t window_total;
 static int64_t window_at;
 K_MUTEX_DEFINE(telemetry_lock);
-
-uint32_t system_clock_hz(void)
-{
-	const struct device *clock = DEVICE_DT_GET(DT_NODELABEL(clock));
-	uint32_t rate = 0;
-
-	if (!device_is_ready(clock) ||
-	    clock_control_get_rate(clock, (clock_control_subsys_t)ESP32_CLOCK_CONTROL_SUBSYS_CPU, &rate) != 0) {
-		return DT_PROP(DT_NODELABEL(cpu0), clock_frequency);
-	}
-	return rate;
-}
 
 static bool cpu_cycles(uint64_t *busy, uint64_t *total)
 {
@@ -65,7 +51,7 @@ static void read_temperature(void)
 	k_mutex_unlock(&telemetry_lock);
 }
 
-void ef_telemetry_init(void)
+void zf_telemetry_init(void)
 {
 	window_at = k_uptime_get();
 	(void)cpu_cycles(&window_busy, &window_total);
@@ -73,14 +59,14 @@ void ef_telemetry_init(void)
 	temperature_at = window_at;
 }
 
-void ef_telemetry_poll(void)
+void zf_telemetry_poll(void)
 {
 	int64_t now = k_uptime_get();
 	uint64_t busy;
 	uint64_t total;
 
 	if (now - window_at >= LOAD_WINDOW_MS && cpu_cycles(&busy, &total)) {
-		uint16_t load = ef_load_basis_points(busy - window_busy, total - window_total);
+		uint16_t load = zf_load_basis_points(busy - window_busy, total - window_total);
 
 		k_mutex_lock(&telemetry_lock, K_FOREVER);
 		core0_load = load;
@@ -95,13 +81,13 @@ void ef_telemetry_poll(void)
 	}
 }
 
-void ef_telemetry_report(uint8_t sequence, uint8_t out[EF_TELEMETRY_SIZE])
+void zf_telemetry_report(uint8_t sequence, uint8_t out[ZF_TELEMETRY_SIZE])
 {
-	ef_telemetry_t telemetry = {
+	zf_telemetry_t telemetry = {
 		.uptime_ms = (uint64_t)k_uptime_get(),
-		.system_clock_hz = system_clock_hz(),
+		.system_clock_hz = zf_system_clock_hz(),
 		.sequence = sequence,
-		.usb_configured = ef_usb_configured(),
+		.usb_configured = zf_usb_configured(),
 	};
 
 	k_mutex_lock(&telemetry_lock, K_FOREVER);
@@ -109,6 +95,6 @@ void ef_telemetry_report(uint8_t sequence, uint8_t out[EF_TELEMETRY_SIZE])
 	telemetry.temperature_centi_c = temperature_centi_c;
 	telemetry.core0_load = core0_load;
 	k_mutex_unlock(&telemetry_lock);
-	ef_platform_led_status(&telemetry.led_colour, &telemetry.led_available);
-	ef_report_telemetry(&telemetry, out);
+	zf_platform_led_status(&telemetry.led_colour, &telemetry.led_available);
+	zf_report_telemetry(&telemetry, out);
 }

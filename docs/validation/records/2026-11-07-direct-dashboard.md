@@ -4,7 +4,7 @@
 
 Compared the local PicoForge Direct HTML, shared dashboard CSS and Direct guide.
 Adapted its light topbar, full-width metric sections and collapsible pin tables
-to ESPForge's actual protocol rather than copying PicoForge's unsupported controls.
+to the project's actual protocol rather than copying PicoForge's unsupported controls.
 The UI remains shared by Direct, Python and .NET.
 
 ## Observed checks

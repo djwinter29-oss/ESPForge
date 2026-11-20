@@ -7,12 +7,12 @@ Keep hardware-dependent integration separate from portable management logic.
 
 | Directory | Contents |
 | --- | --- |
-| `src/config/` | Board identity, UID/serial, reset cause and board facts |
-| `src/platform/` | Boot settings, flash access, CPU clock and platform hooks |
-| `src/app/` | Shared services and telemetry |
+| `src/config/` | Board identity, UID/serial, reset cause, memory inventory, board facts, app lock and delayed reboot |
+| `src/platform/` | Portable boot settings and platform hooks; Zephyr settings flash, CPU clock, RGB LED, SD worker, USB drive disk and benchmark file backend |
+| `src/app/` | Shared Zephyr service interface and telemetry |
 | `src/app/control/` | Portable Report 20 control dispatcher shared by USB and BLE |
 | `src/app/usb/` | USB HID integration and portable report encoding |
-| `src/app/storage/` | SD-card mount and Storage report |
+| `src/app/storage/` | Portable SD presence, mount-retry and ownership policy, and the optional benchmark engine |
 | `src/app/wireless/` | Portable staging, command authentication and SHA-256/HMAC |
 | `src/app/wireless/bluetooth/` | BLE GATT service and advertising |
 | `src/app/wireless/wifi/` | Wi-Fi saved-network joins, candidate tests and scans |
@@ -21,7 +21,7 @@ Native tests are grouped by the same service roles.
 
 ## Host-native unit tests
 
-ESPForge uses Ceedling 1.1.10 with Unity and CMock. Install Ruby 3.3,
+ZephyrForge uses Ceedling 1.1.10 with Unity and CMock. Install Ruby 3.3,
 Bundler 2.6.9 and a native GCC toolchain (`gcc` on PATH). These tests need neither
 Zephyr nor an ESP32-S3 board. From the repository root:
 
@@ -50,8 +50,9 @@ Zephyr stack integration, hardware sampling, SD mounting, flash access and clock
 
 | Suite | Production logic exercised |
 | --- | --- |
-| Control | Shared opcode dispatcher: status/error replies, Wi-Fi base/key staging, test/cancel/scan, settings, reboot, resync and unsupported opcodes |
+| Control | Shared opcode dispatcher: status/error replies, LED, MSC and benchmark admission, Wi-Fi base/key staging, test/cancel/scan, settings, reboot, resync and unsupported opcodes |
 | Reports | Exact USB HID/BLE report byte layouts, little-endian fields and flags |
+| Storage | SD presence debounce, paced mount retry, USB/firmware ownership handoff and card-change cancellation over mocked media operations |
 | Benchmark | Temporary-file write/read verification and cancellation/cleanup safety over an in-memory backend |
 | Authentication | HMAC-SHA-256 command authentication, nonces, replay rejection and key-change handling |
 | Wireless staging | Staged Wi-Fi credentials, password rules, expiry, tested flag and key-only commits |
@@ -73,13 +74,23 @@ Both must pass for firmware changes; a native test pass is not target-build or h
 
 ## Zephyr target build
 
-`EF_ENABLE_STORAGE_BENCHMARK` is a CMake option defaulting to `OFF`. The build wrapper currently supplies
-`-DEF_ENABLE_STORAGE_BENCHMARK=ON`; it enables dashboard-controlled runs, not automatic writes.
-For a manual build, choose `west build ... -- -DEF_ENABLE_STORAGE_BENCHMARK=OFF` to omit it.
+`ZF_ENABLE_STORAGE_BENCHMARK` is a CMake option defaulting to `OFF`. The build wrapper currently supplies
+`-DZF_ENABLE_STORAGE_BENCHMARK=ON`; it enables dashboard-controlled runs, not automatic writes.
+For a manual build, choose `west build ... -- -DZF_ENABLE_STORAGE_BENCHMARK=OFF` to omit it.
 An existing CMake cache retains its chosen value, so use a fresh build directory to verify the default.
 See the [benchmark contract](../reference/sdcard.md#optional-storage-benchmark) before authorizing card writes.
 
 Zephyr 4.3.2 and imported module commits are selected by `west.yml`; SDK 0.17.4 is the toolchain.
+Workspace setup applies the tracked patches under `patches/zephyr/v4.3.2/` to that pinned Zephyr checkout.
+The SD patch retains the genuine initialization CID and adds public `DISK_IOCTL_GET_SD_CID` (16-byte buffer in wire
+byte order; `-ENODATA` without an initialized CID). It also propagates SPI CID/CSD read failures.
+The pinctrl patch adds an optional Espressif `drive-strength` pin-group property (5, 10, 20 or 40 mA) for output
+pads; omitted groups keep their current drive. Only ESP32-S3 builds are exercised.
+Application uses a forward `git apply --check`, or a reverse check for an already-applied patch; mismatches stop setup.
+For an already-initialized workspace, activate its venv and run
+`bash tools/firmware/apply-zephyr-patches.sh "$(west list zephyr -f '{abspath}')"` before a manual target build.
+The helper verifies the workspace checkout and exact pinned commit, including shallow workspaces without tags;
+it never selects an arbitrary dependency checkout.
 The wrappers bootstrap missing prerequisites on Debian/Ubuntu-compatible Linux, including Raspberry Pi OS.
 Missing host packages are installed through `apt-get` with `sudo` when not root; a password may be requested.
 On other systems, install the reported host prerequisites with your package manager and rerun the script.
@@ -99,14 +110,12 @@ Run from the checkout:
 
 ```sh
 bash tools/firmware/build.sh
-python3 tools/check_firmware_config.py
 ```
 
-The default image uses native four-bit SDMMC. Build and check the alternate SD-over-SPI image with:
+The default image uses native four-bit SDMMC. Build the alternate SD-over-SPI image with:
 
 ```sh
 bash tools/firmware/build.sh --storage sd-spi
-python3 tools/check_firmware_config.py --storage sd-spi
 ```
 
 Outputs are separate: `build/firmware/zephyr/zephyr.bin` (native) and
@@ -114,27 +123,22 @@ Outputs are separate: `build/firmware/zephyr/zephyr.bin` (native) and
 Both retain card detection, FAT mounting and explicit USB drive handoff; neither formats a card.
 Use the matching [SD wiring](../reference/sdcard.md#pin-allocation) and disconnect card power when changing buses.
 
-Host Validation also compiles the report tests for SPI with benchmarking enabled:
+Host Validation also compiles the report and control tests for SPI with benchmarking enabled:
 
 ```sh
-bundle exec ceedling --mixin '={project: {build_root: build/ceedling-sd-spi}, defines: {test: [EF_STORAGE_SPI=1, EF_ENABLE_STORAGE_BENCHMARK=1]}}' test:test_hid_reports
+bundle exec ceedling --mixin '={project: {build_root: build/ceedling-sd-spi}, defines: {test: [ZF_STORAGE_SPI=1, ZF_ENABLE_STORAGE_BENCHMARK=1]}}' test:test_hid_reports test:test_control
 ```
 
 For changes to board/configuration selection, use a pristine build from the workspace:
 
 ```sh
-west build -p always -b esp32s3_devkitc/esp32s3/procpu espforge/firmware \
-  -d espforge/build/firmware -- -DDTC_OVERLAY_FILE=boards/esp32s3_devkitc.overlay
+west build -p always -b esp32s3_devkitc/esp32s3/procpu zephyrforge/firmware \
+  -d zephyrforge/build/firmware -- -DDTC_OVERLAY_FILE=boards/esp32s3_devkitc_n16r8_sdmmc.overlay
 ```
 
 Inspect generated `build/firmware/zephyr/.config` and `zephyr.dts`, not just source intent.
-Required defaults include Wi-Fi, BLE, software coexistence, native Espressif SDHC, SDMMC disk, FatFs and
-the `device_next` USB stack with HID/MSC, and UART/raw TCP diagnostic shells. Both FAT mkfs options must remain disabled.
-The configuration check also verifies native slot 0, four-bit width, the 25 MHz ceiling,
-GPIO12/11/13/14/15/10 in CLK/CMD/DAT0-DAT3 order, and command/data pull-up configuration.
-For SPI it instead verifies the SPI SD driver, disabled native slot, SPI3 SCK/MOSI/MISO on GPIO12/11/13
-and active-low CS on GPIO10. Both require active-high GPIO8 card detection with a pull-down.
-Manual SPI builds use `boards/esp32s3_devkitc_sd_spi.overlay` and a separate build directory.
+Both FAT mkfs options must remain disabled. A successful build does not qualify card wiring or mounting.
+Manual SPI builds use `boards/esp32s3_devkitc_n16r8_sd_spi.overlay` and a separate build directory.
 The management protocol runs over the ESP32-S3 native USB connector (USB HID, VID:PID `CAFE:4021`)
 and BLE GATT.
 The UART connector carries the Zephyr diagnostic shell/log output and the ROM bootloader used for flashing;
@@ -143,7 +147,7 @@ it has no dashboard management protocol. Shell commands and TCP exposure are def
 
 The reusable build also freezes the resolved west manifest and attaches binaries, configuration,
 dependency licenses and software-only flashing instructions. PRs and tagged releases use this same
-build path. An optional `ESPFORGE_VERSION=MAJOR.MINOR.PATCH` environment override sets the firmware
+build path. An optional `ZEPHYRFORGE_VERSION=MAJOR.MINOR.PATCH` environment override sets the firmware
 version for release builds; an empty/unset override preserves the development default.
 Invalid overrides fail configuration rather than silently using another version.
 See [release automation](../deployment/release.md) for package contents and preflight.
@@ -167,3 +171,10 @@ Software-only wrapper tests use mocked installers and runners:
 Do not connect an SD card or run storage tests for software-only setup.
 Compilation does not validate initialization, USB enumeration, BLE/Wi-Fi coexistence, or filesystem reliability.
 Record software evidence separately from future hardware observations in [validation records](../validation/records/README.md).
+
+## Target qualification
+
+Use the [firmware qualification procedure](../validation/firmware-qualification.md) for opt-in USB target checks,
+SD/MSC card matrices and USB/BLE/Wi-Fi lifecycle stress. Its runner reuses the installed Python host package;
+software-only safety tests run with `python3 -m unittest discover -s firmware/tests/hardware -v`.
+Neither these safety tests nor successful target builds supply physical qualification evidence.

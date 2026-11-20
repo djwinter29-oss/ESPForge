@@ -5,17 +5,19 @@ Copyright (c) 2026 Ji Dong -->
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ESPForge Wi-Fi shell | {{ dashboard_type }}</title>
+  <title>ZephyrForge Wi-Fi shell | {{ dashboard_type }}</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="stylesheet" href="/css/dashboard.css">
   <link rel="stylesheet" href="/css/console.css">
-  <script type="module" src="/js/console.mjs"></script>
+  <script type="module" src="/js/console/app.mjs"></script>
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="/" aria-label="ESPForge dashboard">
-      <span class="brand-mark">EF</span>
-      <span class="brand-copy"><strong>ESPForge</strong><small>{{ dashboard_type }} · App v{{ app_version }}</small></span>
+    <a class="brand" href="/" aria-label="ZephyrForge dashboard">
+      <span class="brand-mark">ZF</span>
+      <span class="brand-copy">
+        <strong>ZephyrForge</strong><small>{{ dashboard_type }} · App v{{ app_version }}</small>
+      </span>
     </a>
     <button id="console-toggle" type="button">Connect</button>
   </header>

@@ -2,12 +2,13 @@
  * Wi-Fi station: saved-network join with paced retries, candidate tests and scans (Report 12, opcodes 9-12).
  *
  * Uses the ESP32-S3 Wi-Fi driver through Zephyr net_mgmt. Driver events are queued by the callback and applied in
- * ef_wifi_poll(); net_mgmt requests are issued from the poll without holding the application lock.
+ * zf_wifi_poll(); net_mgmt requests are issued from the poll without holding the application lock.
  */
-#include "app/espforge.h"
+#include "app/zephyrforge.h"
 #include "platform/boot_config.h"
 #include "app/control/control.h"
-#include "platform/ef_platform.h"
+#include "platform/zf_platform.h"
+#include "wireless_limits.h"
 
 #include <errno.h>
 #include <string.h>
@@ -17,7 +18,7 @@
 #include <zephyr/net/net_mgmt.h>
 #include <zephyr/net/wifi_mgmt.h>
 
-LOG_MODULE_REGISTER(ef_wifi, LOG_LEVEL_INF);
+LOG_MODULE_REGISTER(zf_wifi, LOG_LEVEL_INF);
 
 #define CONNECT_TIMEOUT_MS 30000
 #define RETRY_DELAY_MS 5000
@@ -79,13 +80,13 @@ enum event {
 };
 
 struct network {
-	uint8_t ssid[EF_SSID_MAX];
+	uint8_t ssid[ZF_SSID_MAX_BYTES];
 	uint8_t ssid_length;
-	char password[EF_WIFI_PASSWORD_SIZE];
+	char password[ZF_WIFI_PASSWORD_SIZE];
 };
 
 struct scan_entry {
-	uint8_t ssid[EF_SSID_MAX];
+	uint8_t ssid[ZF_SSID_MAX_BYTES];
 	uint8_t ssid_length;
 	int8_t rssi;
 	uint8_t security;
@@ -172,7 +173,7 @@ static void link_up(int64_t now)
 	if (owner == OWNER_TEST && command == COMMAND_TESTING) {
 		command = COMMAND_JOINED;
 		join_detail = DETAIL_NONE;
-		ef_control_test_joined(now);
+		zf_control_test_joined(now);
 		LOG_INF("Wi-Fi test joined");
 	} else if (owner == OWNER_SAVED) {
 		wifi_state = STATE_CONNECTED;
@@ -212,7 +213,7 @@ static void link_down(int64_t now)
 
 static void finish_scan(void)
 {
-	if (scan_state != EF_SCAN_RUNNING) {
+	if (scan_state != ZF_SCAN_RUNNING) {
 		return;
 	}
 	for (uint8_t i = 1; i < scan_count; ++i) {
@@ -224,7 +225,7 @@ static void finish_scan(void)
 		}
 		scan[j] = entry;
 	}
-	scan_state = EF_SCAN_COMPLETE;
+	scan_state = ZF_SCAN_COMPLETE;
 }
 
 static uint8_t security_bits(enum wifi_security_type security)
@@ -248,10 +249,10 @@ static uint8_t security_bits(enum wifi_security_type security)
 /* Keep the strongest result per SSID and the strongest SCAN_MAX SSIDs overall. */
 static void add_scan_result(const struct wifi_scan_result *result)
 {
-	uint8_t length = MIN(result->ssid_length, EF_SSID_MAX);
+	uint8_t length = MIN(result->ssid_length, ZF_SSID_MAX_BYTES);
 	struct scan_entry *slot = NULL;
 
-	if (scan_state != EF_SCAN_RUNNING || length == 0) {
+	if (scan_state != ZF_SCAN_RUNNING || length == 0) {
 		return;
 	}
 	for (uint8_t i = 0; i < scan_count; ++i) {
@@ -308,9 +309,9 @@ static void event_handler(struct net_mgmt_event_callback *cb, uint64_t mgmt_even
 		break;
 	case NET_EVENT_WIFI_SCAN_RESULT:
 		if (cb->info != NULL && cb->info_length >= sizeof(struct wifi_scan_result)) {
-			ef_lock();
+			zf_lock();
 			add_scan_result(cb->info);
-			ef_unlock();
+			zf_unlock();
 		}
 		break;
 	case NET_EVENT_WIFI_SCAN_DONE:
@@ -358,8 +359,8 @@ static void apply_timeouts(int64_t now)
 			LOG_WRN("Wi-Fi connect timed out");
 		}
 	}
-	if (scan_state == EF_SCAN_RUNNING && !scan_pending && now >= scan_deadline) {
-		scan_state = EF_SCAN_FAILED;
+	if (scan_state == ZF_SCAN_RUNNING && !scan_pending && now >= scan_deadline) {
+		scan_state = ZF_SCAN_FAILED;
 		scan_count = 0;
 		LOG_WRN("Wi-Fi scan timed out");
 	}
@@ -411,7 +412,7 @@ static enum action next_action(int64_t now, struct network *network)
 		return ACTION_CONNECT;
 	}
 	if (saved_enabled && iface != NULL && owner == OWNER_NONE && link == LINK_DOWN &&
-	    command != COMMAND_TESTING && command != COMMAND_JOINED && scan_state != EF_SCAN_RUNNING && retry_at != 0 &&
+	    command != COMMAND_TESTING && command != COMMAND_JOINED && scan_state != ZF_SCAN_RUNNING && retry_at != 0 &&
 	    now >= retry_at) {
 		retry_at = 0;
 		wifi_state = STATE_CONNECTING;
@@ -439,18 +440,18 @@ static int connect(const struct network *network)
 	return net_mgmt(NET_REQUEST_WIFI_CONNECT, iface, &params, sizeof(params));
 }
 
-void ef_wifi_poll(void)
+void zf_wifi_poll(void)
 {
 	int64_t now = k_uptime_get();
 	struct network network;
 	enum action action;
 	int err = 0;
 
-	ef_lock();
+	zf_lock();
 	apply_events(now);
 	apply_timeouts(now);
 	action = iface != NULL ? next_action(now, &network) : ACTION_NONE;
-	ef_unlock();
+	zf_unlock();
 
 	switch (action) {
 	case ACTION_DISCONNECT:
@@ -471,7 +472,7 @@ void ef_wifi_poll(void)
 	}
 
 	LOG_ERR("Wi-Fi request %d failed: %d", action, err);
-	ef_lock();
+	zf_lock();
 	if (action == ACTION_DISCONNECT) {
 		link = LINK_DOWN;
 	} else if (action == ACTION_CONNECT) {
@@ -481,24 +482,24 @@ void ef_wifi_poll(void)
 		} else if (owner == OWNER_SAVED) {
 			saved_failed(DETAIL_NONE, now);
 		}
-	} else if (scan_state == EF_SCAN_RUNNING) {
-		scan_state = EF_SCAN_FAILED;
+	} else if (scan_state == ZF_SCAN_RUNNING) {
+		scan_state = ZF_SCAN_FAILED;
 		scan_count = 0;
 	}
-	ef_unlock();
+	zf_unlock();
 }
 
-void ef_wifi_init(bool enabled)
+void zf_wifi_init(bool enabled)
 {
-	ef_lock();
-	saved.ssid_length = ef_boot_config_wifi_ssid_bytes(saved.ssid);
-	ef_boot_config_wifi_password(saved.password);
+	zf_lock();
+	saved.ssid_length = zf_boot_config_wifi_ssid_bytes(saved.ssid);
+	zf_boot_config_wifi_password(saved.password);
 	saved_enabled = enabled && saved.ssid_length != 0;
 	iface = net_if_get_first_wifi();
 	if (iface == NULL) {
 		wifi_state = enabled ? STATE_FAILED : STATE_OFF;
 		saved_detail = enabled ? DETAIL_RADIO : DETAIL_NONE;
-		ef_unlock();
+		zf_unlock();
 		LOG_ERR("No Wi-Fi interface");
 		return;
 	}
@@ -508,27 +509,27 @@ void ef_wifi_init(bool enabled)
 		wifi_state = STATE_CONNECTING;
 		retry_at = k_uptime_get();
 	}
-	ef_unlock();
+	zf_unlock();
 }
 
-bool ef_wifi_test_active(void)
+bool zf_wifi_test_active(void)
 {
 	return command == COMMAND_TESTING;
 }
 
-bool ef_wifi_scan_active(void)
+bool zf_wifi_scan_active(void)
 {
-	return scan_state == EF_SCAN_RUNNING;
+	return scan_state == ZF_SCAN_RUNNING;
 }
 
-int ef_wifi_test_start(const uint8_t *ssid, uint8_t ssid_length, const char *password)
+int zf_wifi_test_start(const uint8_t *ssid, uint8_t ssid_length, const char *password)
 {
 	if (++test_generation == 0) {
 		++test_generation;
 	}
 	wipe(&test);
-	memcpy(test.ssid, ssid, MIN(ssid_length, EF_SSID_MAX));
-	test.ssid_length = MIN(ssid_length, EF_SSID_MAX);
+	memcpy(test.ssid, ssid, MIN(ssid_length, ZF_SSID_MAX_BYTES));
+	test.ssid_length = MIN(ssid_length, ZF_SSID_MAX_BYTES);
 	strncpy(test.password, password, sizeof(test.password) - 1);
 	if (iface == NULL) {
 		command = COMMAND_FAILED;
@@ -544,7 +545,7 @@ int ef_wifi_test_start(const uint8_t *ssid, uint8_t ssid_length, const char *pas
 	return 0;
 }
 
-void ef_wifi_test_cancel(void)
+void zf_wifi_test_cancel(void)
 {
 	command = COMMAND_IDLE;
 	test_join_pending = false;
@@ -559,7 +560,7 @@ void ef_wifi_test_cancel(void)
 	}
 }
 
-int ef_wifi_scan_start(void)
+int zf_wifi_scan_start(void)
 {
 	if (iface == NULL) {
 		return -ENODEV;
@@ -569,33 +570,33 @@ int ef_wifi_scan_start(void)
 	}
 	memset(scan, 0, sizeof(scan));
 	scan_count = 0;
-	scan_state = EF_SCAN_RUNNING;
+	scan_state = ZF_SCAN_RUNNING;
 	scan_pending = true;
 	scan_deadline = k_uptime_get() + SCAN_TIMEOUT_MS;
 	return 0;
 }
 
-uint8_t ef_wifi_scan_state(void)
+uint8_t zf_wifi_scan_state(void)
 {
 	return scan_state;
 }
 
-uint16_t ef_wifi_scan_generation(void)
+uint16_t zf_wifi_scan_generation(void)
 {
 	return scan_generation;
 }
 
-uint8_t ef_wifi_scan_count(void)
+uint8_t zf_wifi_scan_count(void)
 {
-	return scan_state == EF_SCAN_COMPLETE ? scan_count : 0;
+	return scan_state == ZF_SCAN_COMPLETE ? scan_count : 0;
 }
 
-int ef_wifi_scan_entry(uint8_t index, uint8_t *ssid, uint8_t *ssid_length, int8_t *rssi, uint8_t *security)
+int zf_wifi_scan_entry(uint8_t index, uint8_t *ssid, uint8_t *ssid_length, int8_t *rssi, uint8_t *security)
 {
-	if (scan_state != EF_SCAN_COMPLETE || index >= scan_count) {
+	if (scan_state != ZF_SCAN_COMPLETE || index >= scan_count) {
 		return -EINVAL;
 	}
-	memcpy(ssid, scan[index].ssid, EF_SSID_MAX);
+	memcpy(ssid, scan[index].ssid, ZF_SSID_MAX_BYTES);
 	*ssid_length = scan[index].ssid_length;
 	*rssi = scan[index].rssi;
 	*security = scan[index].security;
@@ -611,13 +612,13 @@ static void ipv4_address(uint8_t out[4])
 	}
 }
 
-void ef_wireless_report(uint8_t out[EF_WIRELESS_SIZE])
+void zf_wireless_report(uint8_t out[ZF_WIRELESS_SIZE])
 {
-	ef_wireless_t status = {0};
+	zf_wireless_t status = {0};
 	const struct network *shown;
 	uint8_t stage_flags = 0;
 
-	ef_lock();
+	zf_lock();
 	switch (command) {
 	case COMMAND_TESTING:
 		status.wifi_state = 4;
@@ -631,12 +632,12 @@ void ef_wireless_report(uint8_t out[EF_WIRELESS_SIZE])
 		break;
 	default:
 		status.wifi_state = wifi_state;
-		status.detail = saved_detail != DETAIL_NONE ? saved_detail : ef_ble_failed() ? DETAIL_RADIO : DETAIL_NONE;
+		status.detail = saved_detail != DETAIL_NONE ? saved_detail : zf_ble_failed() ? DETAIL_RADIO : DETAIL_NONE;
 		break;
 	}
-	status.ble_state = ef_ble_state();
-	ef_control_stage_status(&stage_flags, &status.staged_state);
-	status.flags = (uint8_t)((saved.ssid_length ? 0x01u : 0u) | (ef_boot_config_ble_key_configured() ? 0x02u : 0u) |
+	status.ble_state = zf_ble_state();
+	zf_control_stage_status(&stage_flags, &status.staged_state);
+	status.flags = (uint8_t)((saved.ssid_length ? 0x01u : 0u) | (zf_boot_config_ble_key_configured() ? 0x02u : 0u) |
 				 (stage_flags & 0xF0u));
 	if (link == LINK_UP && iface != NULL) {
 		ipv4_address(status.ipv4);
@@ -646,8 +647,8 @@ void ef_wireless_report(uint8_t out[EF_WIRELESS_SIZE])
 	memcpy(status.ssid, shown->ssid, shown->ssid_length);
 	status.scan_state = scan_state;
 	status.scan_generation = scan_generation;
-	status.scan_count = ef_wifi_scan_count();
+	status.scan_count = zf_wifi_scan_count();
 	status.test_generation = test_generation;
-	ef_unlock();
-	ef_report_wireless(&status, out);
+	zf_unlock();
+	zf_report_wireless(&status, out);
 }

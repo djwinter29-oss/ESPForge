@@ -40,13 +40,15 @@ test("Direct dashboard shows live Wi-Fi and Bluetooth state without treating una
     for (const [wireless, expected] of [
       [{ ble_enabled: false, ble_key_configured: true, ble_state: "advertising" }, "Disabled"],
       [{ ble_enabled: true, ble_key_configured: false, ble_state: "off" }, "Off (no control key)"],
-      [{ ble_enabled: true, ble_key_configured: true, ble_state: "off" }, "ESPForge-892BA313F9BB56E1 (starting)"],
+      [{ ble_enabled: true, ble_key_configured: true, ble_state: "off" }, "ZephyrForge-892BA313F9BB56E1 (starting)"],
       [{ ble_enabled: true, ble_key_configured: true, ble_state: "advertising" },
-        "ESPForge-892BA313F9BB56E1 (advertising)"],
-      [{ ble_enabled: true, ble_key_configured: true, ble_state: "connected" }, "ESPForge-892BA313F9BB56E1 (connected)"],
-      [{ ble_enabled: true, ble_key_configured: false, ble_state: "connected" }, "ESPForge-892BA313F9BB56E1 (connected)"],
+        "ZephyrForge-892BA313F9BB56E1 (advertising)"],
+      [{ ble_enabled: true, ble_key_configured: true, ble_state: "connected" },
+        "ZephyrForge-892BA313F9BB56E1 (connected)"],
+      [{ ble_enabled: true, ble_key_configured: false, ble_state: "connected" },
+        "ZephyrForge-892BA313F9BB56E1 (connected)"],
       [{ ble_enabled: true, ble_key_configured: false, ble_state: "advertising" },
-        "ESPForge-892BA313F9BB56E1 (advertising)"],
+        "ZephyrForge-892BA313F9BB56E1 (advertising)"],
       [null, "--"],
     ]) {
       render({ ...state, wireless });
@@ -55,7 +57,7 @@ test("Direct dashboard shows live Wi-Fi and Bluetooth state without treating una
     }
     render({ ...state, hardware: { capabilities: 128 },
       wireless: { ble_enabled: true, ble_state: "connected" } });
-    assert.equal(el("#direct-ble-state").textContent, "ESPForge (connected)");
+    assert.equal(el("#direct-ble-state").textContent, "ZephyrForge (connected)");
     render({ ...state, wireless_error: "Wi-Fi status read failed: disconnected" });
     assert.equal(el("#direct-ble-state").textContent, "Unavailable");
     assert.equal(el("#direct-wifi-state").textContent, "Unavailable");
@@ -81,7 +83,7 @@ test("keyless Bluetooth reports that a control key is needed; unavailable report
     assert.equal(element("#direct-ble-state").textContent, "Off (no control key)");
     assert.doesNotMatch(element("#direct-wifi-state").textContent, /key/);
     renderWirelessStatus({ ...snapshot, wireless: { ...snapshot.wireless, ble_key_configured: true } });
-    assert.equal(element("#direct-ble-state").textContent, "ESPForge-AB (starting)");
+    assert.equal(element("#direct-ble-state").textContent, "ZephyrForge-AB (starting)");
     renderWirelessStatus({ ...snapshot, connected: false });
     assert.equal(element("#direct-wifi-state").textContent, "--");
     renderWirelessStatus({ ...snapshot, wireless_error: "Read failed" });
@@ -90,37 +92,39 @@ test("keyless Bluetooth reports that a control key is needed; unavailable report
   } finally { globalThis.document = previous; }
 });
 
-test("without a local relay connected Wi-Fi status remains plain text", () => {
+test("fresh connected Wi-Fi links to the local shell over USB and BLE only while available", () => {
   const previous = globalThis.document;
   const { document, element } = createDocument();
   const wifi = element("#direct-wifi-state");
   globalThis.document = document;
   try {
-    renderWirelessStatus({ connected: true, hardware: { capabilities: 128 },
-      wireless: { wifi_enabled: true, wifi_state: "connected", ssid: "HomeDev", ipv4: "192.168.1.9",
-        ble_enabled: false } });
-    assert.equal(wifi.textContent, "HomeDev (192.168.1.9)");
-    assert.equal(wifi.children.length, 0);
-    assert.equal(wifi.title, "");
-  } finally { globalThis.document = previous; }
-});
-
-test("local Wi-Fi shell link requires fresh address ownership and disappears on disconnect", () => {
-  const previous = globalThis.document;
-  const { document, element } = createDocument();
-  globalThis.document = document;
-  const state = { connected: true, hardware: { capabilities: 128, serial_number: "board-a" }, freshness: { 6: "fresh" },
-    wireless: { wifi_enabled: true, wifi_state: "connected", ssid: "<script>", ipv4: "192.168.1.9" } };
-  try {
-    renderWirelessStatus(state, "/console.html?source=owner");
-    const wifi = element("#direct-wifi-state");
-    assert.equal(wifi.children.length, 1);
-    assert.equal(wifi.children[0].href, "/console.html?source=owner");
-    assert.equal(wifi.children[0].textContent, "<script> (192.168.1.9)");
-    for (const changed of [{ ...state, connected: false }, { ...state, freshness: { 6: "stale" } },
-      { ...state, wireless: { ...state.wireless, ipv4: "127.0.0.1" } }]) {
-      renderWirelessStatus(changed, "/console.html?source=owner");
-      assert.equal(wifi.children.length, 0);
+    for (const link of ["usb", "ble"]) {
+      const state = { connected: true, link, hardware: { capabilities: 128, serial_number: "board-a" },
+        freshness: { 12: "fresh" },
+        wireless: { wifi_enabled: true, wifi_state: "connected", ssid: "<script>", ipv4: "192.168.1.9",
+          ble_enabled: false } };
+      const url = "/console.html?source=owner&serial=board-a&ipv4=192.168.1.9";
+      renderWirelessStatus(state, url);
+      assert.equal(wifi.children.length, 1);
+      const shell = wifi.children[0];
+      renderWirelessStatus(state, url);
+      assert.equal(wifi.children[0], shell, "polling renders keep the focused link element");
+      assert.equal(wifi.children[0].textContent, "<script> (192.168.1.9)");
+      assert.equal(wifi.children[0].href, url);
+      assert.equal(wifi.children[0].target, "_blank");
+      assert.equal(wifi.children[0].rel, "noopener noreferrer");
+      for (const changed of [{ ...state, connected: false }, { ...state, wireless_error: "Read failed" },
+        { ...state, freshness: { 12: "stale" } },
+        { ...state, wireless: { ...state.wireless, wifi_enabled: false } },
+        { ...state, wireless: { ...state.wireless, wifi_state: "connecting" } },
+        { ...state, wireless: { ...state.wireless, ipv4: "0.0.0.0" } }]) {
+        renderWirelessStatus(changed, url);
+        assert.equal(wifi.children.length, 0);
+      }
+      renderWirelessStatus(state, url);
+      renderWirelessStatus(state);
+      assert.equal(wifi.textContent, "<script> (192.168.1.9)");
+      assert.equal(wifi.children.length, 0, "static hosting must not offer a broken shell link");
     }
   } finally { globalThis.document = previous; }
 });

@@ -19,7 +19,8 @@ test("advertised memory inventory is required at connection and legacy firmware 
   assert.ok(broken.client.state.error);
 });
 
-test("mandatory connection reads reject malformed identity/config failures and ignore unknown input reports", async () => {
+test("mandatory connection reads reject malformed identity/config failures and ignore unknown input reports",
+  async () => {
   const { client, device, reads } = fakeConnection({ capabilities: 2 | 4 | 16 });
   await client.connect();
   assert.deepEqual(reads, [1, 2]);
@@ -45,6 +46,23 @@ test("mandatory connection reads reject malformed identity/config failures and i
   assert.match(describe(missing.client.state.error), /missing config/);
 });
 
+test("connection failure keeps both the initialization and transport-cleanup diagnostics", async () => {
+  const { client, device } = fakeConnection();
+  const receive = device.receiveFeatureReport;
+  device.receiveFeatureReport = async id => {
+    if (id === 2) throw new Error("Configuration read failed");
+    return receive(id);
+  };
+  device.close = async () => { throw new Error("USB handle cleanup failed"); };
+
+  await client.connect();
+
+  assert.equal(client.state.connected, false);
+  assert.equal(describe(client.state.error),
+    "Unexpected error: Configuration read failed; closing the transport failed: "
+      + "Unexpected error: USB handle cleanup failed");
+});
+
 test("re-enumeration reconnects by Feature 1 UID, not a non-standard serialNumber property", async () => {
   const { client, device, hid } = fakeConnection();
   assert.equal("serialNumber" in device, false);
@@ -60,7 +78,7 @@ test("re-enumeration reconnects by Feature 1 UID, not a non-standard serialNumbe
   device.receiveFeatureReport = id => id === 1 ? otherIdentity : receive(id);
   hid.dispatchEvent(Object.assign(new Event("connect"), { device }));
   await new Promise(resolve => setImmediate(resolve));
-  assert.equal(client.state.connected, false, "another ESPForge device must not be attached");
+  assert.equal(client.state.connected, false, "another ZephyrForge device must not be attached");
   assert.equal(client.state.reconnecting, true);
 
   device.receiveFeatureReport = receive;
