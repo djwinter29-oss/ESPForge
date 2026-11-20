@@ -85,6 +85,9 @@ Diagnostic tiles expand to fill each responsive row, including rows with fewer v
 Commands are serialized per board. A timeout or disconnect can leave the outcome uncertain; further writes
 remain blocked until explicit reconciliation. Clients must not replay a state-changing request.
 Both hosts remain loopback-only and require local request origins.
+After a confirmed reboot, writes remain blocked until the dashboard observes a disconnect/reconnect or a host-reported
+reboot-pending transition followed by clear. A fresh lower uptime also confirms a restart when the tab missed the
+disconnect. If controls remain blocked after reconnection, reload the dashboard to reconcile with the host.
 
 ## Browser shell
 

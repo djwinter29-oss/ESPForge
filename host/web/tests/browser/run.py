@@ -265,16 +265,38 @@ def check_accessibility_smoke(page: Page, origin: str, host_name: str) -> None:
     expect(page.locator("#settings-clock")).to_be_enabled()
 
     def check_focus() -> None:
-        assert page.evaluate("""() => {
+        focus = page.evaluate("""() => {
             const element = document.activeElement;
-            if (element === document.body) return true;
+            if (element === document.body) return {visible: true, contrasts: []};
             const rect = element.getBoundingClientRect(), style = getComputedStyle(element);
             const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
-            return rect.width > 0 && rect.height > 0 && rect.top >= 0 && rect.left >= 0
+            const visible = rect.width > 0 && rect.height > 0 && rect.top >= 0 && rect.left >= 0
                 && rect.bottom <= innerHeight && rect.right <= innerWidth
                 && style.outlineStyle !== 'none' && parseFloat(style.outlineWidth) > 0
                 && (hit === element || element.contains(hit));
-        }"""), "Keyboard focus must have a visible outline and remain in-view and unobscured"
+            const rgb = colour => colour.match(/[\\d.]+/g).slice(0, 3).map(Number);
+            const luminance = colour => {
+                const channels = rgb(colour).map(value => value / 255).map(value =>
+                    value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
+                return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
+            };
+            const outline = luminance(style.outlineColor);
+            const contrasts = [];
+            for (let surface = element.parentElement; surface; surface = surface.parentElement) {
+                const background = getComputedStyle(surface).backgroundColor;
+                if (!background.endsWith(', 0)')) {
+                    const value = luminance(background);
+                    contrasts.push((Math.max(outline, value) + 0.05) / (Math.min(outline, value) + 0.05));
+                    break;
+                }
+            }
+            return {visible, contrasts};
+        }""")
+        assert focus["visible"], "Keyboard focus must have a visible outline and remain in-view and unobscured"
+        assert not focus["contrasts"] or min(focus["contrasts"]) >= 3, (
+            "The focus indicator must have at least 3:1 contrast against adjacent surfaces",
+            focus["contrasts"],
+        )
 
     def tab_to(selector: str, reverse: bool = False) -> None:
         for _ in range(40):

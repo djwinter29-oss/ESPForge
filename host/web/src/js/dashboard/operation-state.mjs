@@ -12,7 +12,8 @@
  * @property {boolean} [reboot_pending]
  * @property {boolean} [telemetry_stale]
  * @property {boolean} [storage_stale]
- * @property {{led_available?: boolean, led_colour?: number | null} | null} [runtime]
+ * @property {{led_available?: boolean, led_colour?: number | null, uptime_milliseconds?: number,
+ * uptime_ms?: number} | null} [runtime]
  * @property {boolean} [self_test_stale]
  * @property {{active?: boolean} | null} [self_test]
  * @property {{capabilities?: number} | null} [hardware]
@@ -71,12 +72,13 @@ export function commandSettled(command, snapshot) {
  * @typedef {object} BoardCommandState
  * @property {UncertainCommand | null} uncertainCommand
  * @property {"requested" | "observed" | "disconnected" | null} rebootPending
+ * @property {number | null} rebootUptimeMs
  * @property {{opcode: number, message: string} | null} commandFailure
  */
 
 /** @returns {BoardCommandState} */
 export function createCommandState() {
-  return { uncertainCommand: null, rebootPending: null, commandFailure: null };
+  return { uncertainCommand: null, rebootPending: null, rebootUptimeMs: null, commandFailure: null };
 }
 
 /** Update board-owned lifecycle state from a status poll, returning the settled recovery reason.
@@ -87,13 +89,25 @@ export function createCommandState() {
 export function observeCommandStatus(state, snapshot) {
   const command = state.uncertainCommand;
   if (state.rebootPending !== null) {
+    const uptime = reportedUptime(snapshot);
     if (snapshot.connected === false) state.rebootPending = "disconnected";
     else if (snapshot.reboot_pending) state.rebootPending = "observed";
-    else if (snapshot.connected === true && state.rebootPending !== "requested") state.rebootPending = null;
+    else if (snapshot.connected === true && state.rebootPending === "requested"
+      && state.rebootUptimeMs !== null && uptime !== null && uptime < state.rebootUptimeMs) {
+      state.rebootPending = null;
+      state.rebootUptimeMs = null;
+    } else if (snapshot.connected === true && state.rebootPending !== "requested") state.rebootPending = null;
+    if (state.rebootPending === null) state.rebootUptimeMs = null;
   }
   const settled = commandSettled(command, snapshot) ? command : null;
   if (settled) state.uncertainCommand = null;
   return settled;
+}
+
+/** @param {OperationSnapshot} snapshot */
+function reportedUptime(snapshot) {
+  const uptime = snapshot.runtime?.uptime_milliseconds ?? snapshot.runtime?.uptime_ms;
+  return typeof uptime === "number" && Number.isFinite(uptime) && uptime >= 0 ? uptime : null;
 }
 
 /** Terminal acknowledgement and lifecycle effects; MSC completion acknowledges admission, not settled ownership.

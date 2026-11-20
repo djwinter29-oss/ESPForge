@@ -3,7 +3,10 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createCommandLifecycle } from "../../src/js/dashboard/command-lifecycle.mjs";
+import { DashboardError } from "../../src/js/dashboard/api.mjs";
+import {
+  createCommandLifecycle, hasUnknownOutcome, isUncertainOutcome, uncertainMessage,
+} from "../../src/js/dashboard/command-lifecycle.mjs";
 
 test("command lifecycle always begins and finishes without hiding non-Error throws", async () => {
   const calls = [];
@@ -18,4 +21,15 @@ test("command lifecycle always begins and finishes without hiding non-Error thro
   await assert.rejects(lifecycle({}, async () => { throw "unexpected"; },
     () => calls.push("failed")), error => error === "unexpected");
   assert.deepEqual(calls, ["begin:always", "failed", "finish:always", "begin:undefined", "finish:undefined"]);
+});
+
+test("outcome classifiers separate lost replies from definite rejections", () => {
+  assert.equal(hasUnknownOutcome(new TypeError("network")), true);
+  assert.equal(hasUnknownOutcome(Object.assign(new Error("deadline"), { name: "TimeoutError" })), true);
+  assert.equal(hasUnknownOutcome(new DashboardError("busy", 409, false)), false);
+  assert.equal(isUncertainOutcome(new DashboardError("Outcome is uncertain", 503, false)), false,
+    "an explicit host flag overrides message wording");
+  const reported = new DashboardError("Reboot outcome is uncertain; not resent", 503, true);
+  assert.equal(uncertainMessage(reported, "fallback"), reported.message);
+  assert.equal(uncertainMessage(new TypeError("network"), "fallback"), "fallback");
 });

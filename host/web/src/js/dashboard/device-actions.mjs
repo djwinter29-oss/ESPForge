@@ -53,6 +53,15 @@ export function createDeviceActions({
       `Reboot endpoint returned HTTP ${response.status}`, true), 2));
   }
 
+  /** Open the reboot confirmation with the consequence for unsaved edits.
+   * @param {boolean} unsavedChanges
+   */
+  function confirmReboot(unsavedChanges) {
+    element("reboot-consequence").textContent = unsavedChanges
+      ? "Unsaved dashboard changes will be lost." : "Saved next-boot settings will be applied.";
+    /** @type {HTMLDialogElement} */ (element("reboot-dialog")).showModal();
+  }
+
   async function rebootDevice() {
     const dialog = /** @type {HTMLDialogElement} */ (element("reboot-dialog"));
     if (!dialog.open) return;
@@ -153,5 +162,5 @@ export function createDeviceActions({
     });
   }
 
-  return { benchmark, rebootDevice, requestMsc, setLed, setMsc };
+  return { benchmark, confirmReboot, rebootDevice, requestMsc, setLed, setMsc };
 }

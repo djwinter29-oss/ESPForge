@@ -186,6 +186,33 @@ export function renderStatus(snapshot, operations = operationState(snapshot, {
   }
 }
 
+/** Preview one identity panel on mouse hover or keyboard focus; pointer clicks keep native toggling. */
+export function bindIdentityPreviews() {
+  const panels = ["#product-information", "#module-memory"]
+    .map(selector => /** @type {HTMLDetailsElement} */ (element(selector)));
+  for (const details of panels) {
+    const show = () => {
+      for (const other of panels) other.open = other === details;
+    };
+    details.addEventListener("pointerenter", event => {
+      if (event.pointerType === "mouse") show();
+    });
+    details.addEventListener("pointerleave", () => {
+      if (!details.contains(document.activeElement)) details.open = false;
+    });
+    details.addEventListener("focusin", () => {
+      // Pointer focus precedes the native summary toggle; only keyboard focus opens a preview.
+      if (document.activeElement?.matches(":focus-visible")) show();
+    });
+    details.addEventListener("focusout", () => {
+      if (!details.matches(":hover")) details.open = false;
+    });
+    details.addEventListener("keydown", event => {
+      if (event.key === "Escape") details.open = false;
+    });
+  }
+}
+
 /** Project accepted settings plus owned field drafts into the controls. */
 /** @param {DashboardView} snapshot */
 export function initializeSettings(snapshot) {

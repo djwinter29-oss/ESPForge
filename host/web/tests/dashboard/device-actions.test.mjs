@@ -10,6 +10,9 @@ function setup(context, fetchReply = async () => ({ ok: true, status: 200, json:
     ["#benchmark-size", { value: "32" }],
     ["#led-colour", { value: "5" }],
     ["#msc-dialog", { open: false, showModal() { this.open = true; }, close() { this.open = false; } }],
+    ["#msc-dialog-title", { textContent: "" }],
+    ["#msc-warning", { textContent: "" }],
+    ["#confirm-msc", { textContent: "" }],
   ]);
   const previous = { document: globalThis.document, window: globalThis.window };
   globalThis.document = { querySelector: selector => elements.get(selector) ?? null };
@@ -22,10 +25,12 @@ function setup(context, fetchReply = async () => ({ ok: true, status: 200, json:
   const uncertain = [];
   const messages = [];
   const snapshot = { connected: true };
-  let operations = { canStartBenchmark: true, canCancelBenchmark: true, canSetLed: true };
+  let operations = { canStartBenchmark: true, canCancelBenchmark: true, canSetLed: true,
+    canEnableMsc: true, canReturnMsc: true };
+  let selectedBoard = "board-a";
   const actions = createDeviceActions({
     getCurrentSnapshot: () => snapshot,
-    getSelectedBoard: () => "board-a",
+    getSelectedBoard: () => selectedBoard,
     operationState: () => operations,
     runCommandLifecycle: async (_options, run, failed) => {
       try { await run(); }
@@ -47,6 +52,7 @@ function setup(context, fetchReply = async () => ({ ok: true, status: 200, json:
   return {
     actions, calls, confirmations, elements, messages, published, snapshot, uncertain,
     setOperations: next => { operations = next; },
+    selectBoard: board => { selectedBoard = board; },
   };
 }
 
@@ -102,4 +108,41 @@ test("uncertain benchmark admission is surfaced without retrying", async context
   assert.equal(uncertain[0].error, failure);
   assert.deepEqual(uncertain[0].recovery, { kind: "resync" });
   assert.equal(uncertain[0].boardId, "board-a");
+});
+
+test("MSC handoff requires dialog confirmation and sends explicit enable/return payloads", async context => {
+  const { actions, calls, elements, published, snapshot } = setup(context);
+  const dialog = elements.get("#msc-dialog");
+  await actions.setMsc();
+  assert.equal(calls.length, 0, "a closed dialog sends nothing");
+
+  actions.requestMsc(true);
+  assert.equal(dialog.open, true);
+  assert.equal(elements.get("#confirm-msc").textContent, "Enable USB drive");
+  await actions.setMsc();
+  assert.equal(dialog.open, false);
+  assert.equal(calls[0].url, "/api/msc?board=board-a");
+  assert.deepEqual(JSON.parse(calls[0].options.body), { enabled: true, confirm_ejected: false });
+  assert.deepEqual(published[0], { opcode: 3, status: "completed" });
+  assert.equal(snapshot.storage_stale, true);
+
+  actions.requestMsc(false);
+  assert.match(elements.get("#msc-warning").textContent, /Safely eject/);
+  await actions.setMsc();
+  assert.deepEqual(JSON.parse(calls[1].options.body), { enabled: false, confirm_ejected: true });
+});
+
+test("MSC confirmation is discarded after a board change or lost admission", async context => {
+  const { actions, calls, elements, selectBoard, setOperations } = setup(context);
+  actions.requestMsc(true);
+  selectBoard("board-b");
+  await actions.setMsc();
+  assert.equal(calls.length, 0, "a dialog opened for another board never sends");
+  assert.equal(elements.get("#msc-dialog").open, true);
+
+  actions.requestMsc(true);
+  setOperations({ canEnableMsc: false, canReturnMsc: false });
+  await actions.setMsc();
+  assert.equal(calls.length, 0);
+  assert.equal(elements.get("#msc-dialog").open, false);
 });

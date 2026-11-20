@@ -917,6 +917,48 @@ test("mounted Re-sync locks selection, preserves failure, and resets disconnecte
   }
 });
 
+test("a fresh uptime reset settles an acknowledged reboot missed while the dashboard was hidden", async context => {
+  const { state, connected, handlers, elements, requestedUrls } = await appFixture(context);
+  connected.runtime.uptime_milliseconds = 120000;
+  await state.tick();
+  await settle();
+
+  await handlers.get("#reboot-control:click")();
+  await handlers.get("#confirm-reboot:click")();
+  assert.equal(elements.get("#reboot-control").disabled, true);
+  assert.equal(elements.get("#settings-clock").disabled, true);
+
+  globalThis.document.hidden = true;
+  connected.connected = false;
+  connected.reboot_pending = true;
+  await state.tick();
+  connected.connected = true;
+  connected.reboot_pending = false;
+  connected.runtime.uptime_milliseconds = 1000;
+  await state.tick();
+
+  globalThis.document.hidden = false;
+  await handlers.get("document:visibilitychange")();
+  assert.equal(elements.get("#connection-label").textContent, "Connected");
+  assert.equal(elements.get("#reboot-control").disabled, false);
+  assert.equal(elements.get("#settings-clock").disabled, false);
+  assert.equal(elements.get("#settings-note").textContent, "");
+  assert.equal(requestedUrls.filter(url => url.startsWith("/api/reboot?")).length, 1,
+    "recovery observes the restart; it never resends the command");
+});
+
+test("reboot waiting guidance explains recovery when uptime is unavailable", async context => {
+  const { state, connected, handlers, elements } = await appFixture(context);
+  delete connected.runtime.uptime_milliseconds;
+  await state.tick();
+  await handlers.get("#reboot-control:click")();
+  await handlers.get("#confirm-reboot:click")();
+
+  await handlers.get("document:visibilitychange")();
+  assert.equal(elements.get("#reboot-control").disabled, true);
+  assert.match(elements.get("#settings-note").textContent, /reload the dashboard to reconcile/);
+});
+
 test("acknowledged rebooting operations remain gated across old polls and board switches", async context => {
   for (const operation of ["save", "reboot", "resync"]) {
     await context.test(operation, async context => {

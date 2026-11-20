@@ -212,7 +212,9 @@ test("tagged uncertainty settles only on the matching fresh evidence", () => {
 
 test("board command state tracks reboot progress and clears only settled uncertainty", () => {
   const state = createCommandState();
-  assert.deepEqual(state, { uncertainCommand: null, rebootPending: null, commandFailure: null });
+  assert.deepEqual(state, {
+    uncertainCommand: null, rebootPending: null, rebootUptimeMs: null, commandFailure: null,
+  });
   assert.notStrictEqual(createCommandState(), state, "each board owns independent state");
   state.rebootPending = "requested";
   assert.equal(observeCommandStatus(state, ready), null);
@@ -233,6 +235,19 @@ test("board command state tracks reboot progress and clears only settled uncerta
   for (const snapshot of [ready, { connected: false }, { ...ready, reboot_pending: true }])
     assert.equal(observeCommandStatus(state, snapshot), null);
   assert.equal(state.uncertainCommand.kind, "resync", "only explicit Re-sync clears resync obligations");
+});
+
+test("a fresh uptime reset settles an acknowledged reboot when the disconnect was missed", () => {
+  const state = createCommandState();
+  state.rebootPending = "requested";
+  state.rebootUptimeMs = 120000;
+
+  observeCommandStatus(state, { connected: true, runtime: { uptime_milliseconds: 120001 } });
+  assert.equal(state.rebootPending, "requested", "a continuing uptime cannot release a pending reboot");
+
+  observeCommandStatus(state, { connected: true, runtime: { uptime_milliseconds: 1000 } });
+  assert.equal(state.rebootPending, null);
+  assert.equal(state.rebootUptimeMs, null);
 });
 
 test("known wireless cleanup blocks writes without inventing transaction uncertainty or locking selection", () => {

@@ -23,6 +23,9 @@
     "src/js/dashboard/board-session.mjs",
     "src/js/dashboard/command-lifecycle.mjs",
     "src/js/dashboard/device-actions.mjs",
+    "src/js/dashboard/command-recovery.mjs",
+    "src/js/dashboard/settings-workflow.mjs",
+    "src/js/dashboard/wireless-transport.mjs",
     "src/js/dashboard/app.mjs",
     "src/js/dashboard/view.mjs",
     "tests/dashboard/types/dashboard-types.mjs"

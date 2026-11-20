@@ -85,11 +85,15 @@ and .NET includes the assets during build and publication.
 | Layer | Responsibility |
 |---|---|
 | Static assets | Page, icon and styles; no inline code |
-| Application lifecycle | Browser integration and session ownership |
+| Composition | Wires modules to page events; owns no device workflow |
+| Board session | Discovery, selection and stale-status fencing |
+| Command recovery | Per-board acknowledgements, uncertain outcomes and explicit Re-sync |
+| Settings workflow | Boot-settings draft, confirmation and plain or combined wireless save |
+| Device actions | Reboot, USB drive handoff, benchmark and LED commands |
 | API client | Board, status, settings, reboot, re-sync and wireless routes |
 | Presentation | Rendering without device or network I/O |
 | Operation policy | Control eligibility shared by rendering and command handlers |
-| Wireless forms | Wi-Fi scan/test and Control key dialog |
+| Wireless forms | Wi-Fi scan/test requests and dialogs, and the Control key dialog |
 
 Unit tests cover individual responsibilities; integration tests exercise the assembled page and shared status
 contract. Browser checks drive Chromium against both hosts with fake boards.
@@ -100,6 +104,9 @@ node host/web/tests/run-tests.mjs
 npx --yes --package typescript@5.9.3 tsc --project host/web/tsconfig.json
 python3 host/web/tests/browser/run.py   # requires the editable host/python install, the .NET SDK and host/web/tests/browser/requirements.txt
 ```
+
+Chromium also needs its system libraries and at least one font; `python3 -m playwright install-deps chromium`
+installs them on Debian and Ubuntu.
 
 ## Direct dashboard independence
 
