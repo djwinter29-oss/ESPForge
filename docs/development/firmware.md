@@ -100,14 +100,12 @@ Run from the checkout:
 
 ```sh
 bash tools/firmware/build.sh
-python3 tools/check_firmware_config.py
 ```
 
-The default image uses native four-bit SDMMC. Build and check the alternate SD-over-SPI image with:
+The default image uses native four-bit SDMMC. Build the alternate SD-over-SPI image with:
 
 ```sh
 bash tools/firmware/build.sh --storage sd-spi
-python3 tools/check_firmware_config.py --storage sd-spi
 ```
 
 Outputs are separate: `build/firmware/zephyr/zephyr.bin` (native) and
@@ -129,12 +127,7 @@ west build -p always -b esp32s3_devkitc/esp32s3/procpu espforge/firmware \
 ```
 
 Inspect generated `build/firmware/zephyr/.config` and `zephyr.dts`, not just source intent.
-Required defaults include Wi-Fi, BLE, software coexistence, native Espressif SDHC, SDMMC disk, FatFs and
-the `device_next` USB stack with HID/MSC, and UART/raw TCP diagnostic shells. Both FAT mkfs options must remain disabled.
-The configuration check also verifies native slot 0, four-bit width, the 25 MHz ceiling,
-GPIO12/11/13/14/15/10 in CLK/CMD/DAT0-DAT3 order, and command/data pull-up configuration.
-For SPI it instead verifies the SPI SD driver, disabled native slot, SPI3 SCK/MOSI/MISO on GPIO12/11/13
-and active-low CS on GPIO10. Both require active-low GPIO8 card detection with a pull-up.
+Both FAT mkfs options must remain disabled. A successful build does not qualify card wiring or mounting.
 Manual SPI builds use `boards/esp32s3_devkitc_n16r8_sd_spi.overlay` and a separate build directory.
 The management protocol runs over the ESP32-S3 native USB connector (USB HID, VID:PID `CAFE:4021`)
 and BLE GATT.

@@ -68,7 +68,7 @@ Octal PSRAM occupies GPIO33-37, so those pins are not available on N16R8.
 Leave boot-strapping and onboard flash/PSRAM pins alone. Consult your exact board schematic.
 The requested SD bus ceiling is 25 MHz for either image; this is not a measured bus frequency or throughput claim.
 
-Prepare an existing FAT16/FAT32 volume on your computer and back up its data.
+Prepare an existing FAT16, FAT32 or exFAT volume on your computer and back up its data.
 Cards may be inserted after startup or replaced; detection mounts them for firmware, not automatically for USB.
 Power switching is not implemented. Power-cycle the card when switching between native SDMMC and SPI images;
 a board-only reset may leave the card in SPI mode.

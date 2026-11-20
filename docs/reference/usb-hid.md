@@ -325,9 +325,9 @@ CID-valid is clear. Reserved flags, unsupported bus/speed values and nonboolean 
 USB ownership or a pending transition MUST NOT coexist with a valid firmware SD sample.
 Detection is debounced; a fresh report is not a guarantee against subsequent physical unplugging.
 
-Filesystem enum: `0` Unknown, `1` FAT12, `2` FAT16, `3` FAT32, `4` reserved exFAT encoding.
-The default firmware does not enable exFAT. A format enum does not imply support for creating or mounting that
-format. There is no automatic formatting, repair or management file-transfer API.
+Filesystem enum: `0` Unknown, `1` FAT12, `2` FAT16, `3` FAT32, `4` exFAT.
+Older firmware may not mount exFAT. A format enum does not imply support for creating that format.
+There is no automatic formatting, repair or management file-transfer API.
 See [SD storage](sdcard.md) for mount lifecycle and data-safety rules.
 
 ## Report ID 11: Storage Benchmark Status

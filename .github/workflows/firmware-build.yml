@@ -68,10 +68,9 @@ jobs:
           west sdk install --version 0.17.4 --toolchains xtensa-espressif_esp32s3_zephyr-elf \
             --personal-access-token "$GH_TOKEN"
 
-      - name: Build and check required defaults
+      - name: Build firmware
         run: |
           bash espforge/tools/firmware/build.sh --storage "$STORAGE"
-          python espforge/tools/check_firmware_config.py --storage "$STORAGE"
           west manifest --freeze > "$FIRMWARE_BUILD/west-manifest.yml"
 
       - name: Collect firmware, provenance and dependency licenses

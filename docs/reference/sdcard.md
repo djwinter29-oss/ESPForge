@@ -82,8 +82,8 @@ The native image selects `CONFIG_SDHC_ESP32`; the SPI image selects `CONFIG_SPI_
 Both `CONFIG_FS_FATFS_MOUNT_MKFS` and `CONFIG_FS_FATFS_MKFS` are explicitly
 disabled: the application cannot automatically format a failed mount or call FatFs mkfs through these options.
 
-Prepare an existing FAT16/FAT32 volume on a computer and back up its data before use. exFAT is not enabled
-in the default firmware. The report format reserves a value for exFAT; that does not imply filesystem support.
+Prepare an existing FAT16, FAT32 or exFAT volume on a computer and back up its data before use. exFAT support
+covers mounting existing volumes, such as factory-formatted SDXC cards; the firmware still cannot create one.
 
 ## Boot and runtime mount lifecycle
 
