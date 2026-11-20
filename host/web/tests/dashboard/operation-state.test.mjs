@@ -59,6 +59,27 @@ test("benchmark gates require capability and freshness, but cancel allows busy s
   assert.equal(operationState(active, { uncertain: true }).canCancelBenchmark, false);
 });
 
+test("disabled operation guidance comes from the same policy as action eligibility", () => {
+  const led = operationState({ ...ready, telemetry_stale: false,
+    hardware: { capabilities: 0x96 }, runtime: { led_available: true, led_colour: 0 } });
+  assert.equal(led.canSetLed, false);
+  assert.match(led.ledBlockReason, /does not support board LED control/);
+
+  const reboot = operationState({ ...ready, hardware: { capabilities: 0x94 } });
+  assert.equal(reboot.canReboot, false);
+  assert.match(reboot.rebootBlockReason, /does not support rebooting/);
+
+  const msc = operationState({ ...ready, board_configuration: { board_flags: 0 } });
+  assert.equal(msc.mscSupported, false);
+  assert.match(msc.mscEnableBlockReason, /does not support USB storage/);
+  assert.match(msc.mscReturnBlockReason, /does not support USB storage/);
+
+  const benchmark = operationState(ready);
+  assert.equal(benchmark.canStartBenchmark, false);
+  assert.match(benchmark.benchmarkStartBlockReason, /does not support storage benchmarks/);
+  assert.match(benchmark.benchmarkCancelBlockReason, /does not support storage benchmarks/);
+});
+
 test("capability bits match the ESPForge profile", () => {
   assert.deepEqual([CAPABILITY_REBOOT, CAPABILITY_SETTINGS, CAPABILITY_SDMMC, CAPABILITY_WIRELESS], [2, 4, 16, 128]);
   assert.equal(CAPABILITY_REBOOT | CAPABILITY_SETTINGS | CAPABILITY_SDMMC | CAPABILITY_WIRELESS, 0x96);

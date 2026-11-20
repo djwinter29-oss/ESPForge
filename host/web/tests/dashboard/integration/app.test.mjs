@@ -25,7 +25,7 @@ test("server dashboard presents expected USB reconnection without hiding real er
     assert.equal(element("#settings-note").textContent, "Waiting for an ESPForge connection.");
     assert.equal(element("#status-message").hidden, true);
     renderStatus({ connected: false, reconnecting: true, error: "read error" });
-    assert.equal(element("#connection-label").textContent, "Attention");
+    assert.equal(element("#connection-label").textContent, "Reconnecting");
     assert.equal(element("#status-message").textContent, "read error");
     assert.equal(element(".status-line").dataset.error, "true");
     assert.equal(element("#status-message").hidden, false);
@@ -38,6 +38,9 @@ test("server dashboard presents expected USB reconnection without hiding real er
     assert.equal(element("#settings-save").disabled, true);
     assert.equal(element("#settings-note").textContent, "Waiting for fresh storage status.");
     assert.equal(element("#settings-save").title, element("#settings-note").textContent);
+    assert.equal(element("#settings-dirty-indicator").hidden, false);
+    renderStatus({ ...stale, storage_stale: true, settings_dirty: true });
+    assert.equal(element("#settings-dirty-indicator").hidden, false);
     renderStatus({ ...stale, storage_stale: false });
     assert.equal(element("#settings-save").disabled, false);
     assert.equal(element("#settings-save").title, "");
@@ -72,9 +75,16 @@ test("startup polling and drafts recover after status and scan failures", async 
   assert.equal(elements.get("#settings-clock").value, "80", "a transient status error preserves settings drafts");
   assert.equal(elements.get("#settings-clock").disabled, true, "commands stay disabled while status is stale");
   assert.match(elements.get("#status-message").textContent, /Status unavailable/);
+  assert.equal(elements.get("#status-freshness").hidden, false);
+  assert.match(elements.get("#status-freshness").textContent, /Last successful status fetch/);
+  elements.get("#settings-clock").value = "160";
+  handlers.get("#settings-clock:change")();
+  assert.match(elements.get("#status-message").textContent, /Status unavailable/,
+    "local edits must not replace a failed status-read warning");
   state.statusFails = false;
   await state.tick();
-  assert.equal(elements.get("#settings-clock").value, "80");
+  assert.equal(elements.get("#settings-clock").value, "160");
+  assert.equal(elements.get("#status-freshness").hidden, true);
   const scansBefore = requestedUrls.filter(url => url === "/api/boards").length;
   state.statusUnknownBoard = true;
   await state.tick();
@@ -137,6 +147,20 @@ test("settings presentation waits for fresh storage status", async context => {
   assert.equal(elements.get("#settings-save").disabled, false);
   assert.equal(elements.get("#settings-note").textContent, "");
   assert.equal(elements.get("#settings-note").hidden, true);
+});
+
+test("host-owned uncertain commands explain the write gate without changing connection health", async context => {
+  const { connected, state, elements } = await appFixture(context);
+  connected.command_outcome_uncertain = true;
+  connected.command_resync_supported = true;
+  await state.tick();
+  assert.equal(elements.get("#connection-label").textContent, "Connected");
+  assert.match(elements.get("#status-message").textContent, /previous command outcome is uncertain.*Re-sync/i);
+  assert.equal(elements.get(".status-line").dataset.error, "true");
+  assert.equal(elements.get("#settings-save").disabled, true);
+  assert.equal(elements.get("#reboot-control").disabled, true);
+  assert.equal(elements.get("#command-resync").hidden, false);
+  assert.equal(elements.get("#command-resync").disabled, false);
 });
 
 test("ESP32-S3 clock choices are fixed and storage stays on the Standard profile", async context => {
@@ -293,7 +317,7 @@ test("settings and reboot recovery preserve per-board command ownership", async 
   const beforeCancel = requestedUrls.length;
   await handlers.get("#settings-save:click")();
   assert.equal(elements.get("#configuration-dialog").open, true);
-  assert.match(elements.get("#configuration-dialog-profile").textContent, /^System clock: 80 MHz\.$/);
+  assert.match(elements.get("#configuration-dialog-profile").textContent, /240 MHz to 80 MHz/);
   handlers.get("#cancel-configuration:click")();
   assert.equal(elements.get("#configuration-dialog").open, false);
   await handlers.get("#reboot-control:click")();
@@ -592,9 +616,7 @@ test("wireless provisioning and cancellation preserve draft and uncertainty inva
   await state.tick();
   await saveAndConfirm();
   assert.equal(wirelessSettings.length, 3);
-  elements.get("#board-select").value = "board-a";
-  handlers.get("#board-select:change")();
-  await new Promise(resolve => setImmediate(resolve));
+  await switchBoard("board-a");
   assert.equal(elements.get("#wifi-password").value, "");
   assert.equal(elements.get("#ble-secret").value, "");
   const firstBoard = boardStatuses.get("board-a");
@@ -617,9 +639,7 @@ test("wireless provisioning and cancellation preserve draft and uncertainty inva
   await state.tick();
   await saveAndConfirm();
   assert.equal(wirelessSettings.length, 4);
-  elements.get("#board-select").value = "board-b";
-  handlers.get("#board-select:change")();
-  await new Promise(resolve => setImmediate(resolve));
+  await switchBoard("board-b");
   assert.equal(elements.get("#wifi-connect").disabled, true, "board B retains its earlier unresolved save");
   connected.command_outcome_uncertain = true;
   connected.command_resync_supported = true;

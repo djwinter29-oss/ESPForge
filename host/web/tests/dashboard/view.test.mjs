@@ -65,6 +65,14 @@ test("presentation uses the supplied operation projection consistently without r
     assert.equal(el("#command-resync").hidden, false);
   }));
 
+test("unsupported hidden controls do not leave their blocker guidance visible", () => withDocument(el => {
+  const state = snapshot();
+  renderServerStatus(state);
+  for (const id of ["#led-control", "#msc-controls", "#benchmark-controls",
+    "#led-help", "#msc-help", "#benchmark-help"])
+    assert.equal(el(id).hidden, true, `${id} should be hidden when its feature is unsupported`);
+}));
+
 test("missing-card guidance uses reported board wiring, not a fixed GPIO", () => withDocument(el => {
   for (const gpio of [3, 9, 255, undefined]) {
     renderServerStatus({ ...snapshot(), board_configuration: { ...snapshot().settings, card_detect_gpio: gpio },

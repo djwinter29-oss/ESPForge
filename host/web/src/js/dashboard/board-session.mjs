@@ -33,6 +33,8 @@ export function createBoardSession({
   let scanWarning = null;
   /** @type {string | null} */
   let statusError = null;
+  /** @type {number | null} */
+  let lastStatusAt = null;
   let statusReading = false;
   let selectionVersion = 0;
   let commandVersion = 0;
@@ -51,8 +53,17 @@ export function createBoardSession({
 
   function state() {
     return {
-      selectedBoard, scanning, scanWarning, statusError, statusReading, selectionVersion, commandVersion,
+      selectedBoard, selectedBoardLabel, scanning, scanWarning, statusError, lastStatusAt, statusReading,
+      selectionVersion, commandVersion,
     };
+  }
+
+  /** @param {string | null} boardId */
+  function describeBoard(boardId) {
+    const board = knownBoards.find(candidate => candidate.id === boardId);
+    if (board) return boardLabel(board);
+    return boardId === selectedBoard ? selectedBoardLabel || boardId || "No board selected"
+      : boardId || "No board selected";
   }
 
   function updateControls() {
@@ -75,7 +86,9 @@ export function createBoardSession({
     if (nextBoard === selectedBoard) return;
     selectedBoard = nextBoard;
     const selected = knownBoards.find(board => board.id === selectedBoard);
-    selectedBoardLabel = selected ? boardLabel(selected) : selectedBoardLabel;
+    selectedBoardLabel = selected ? boardLabel(selected) : "";
+    statusError = null;
+    lastStatusAt = null;
     selectionVersion++;
     onSelectionChanged(selectedBoard, "select");
     void updateStatus();
@@ -92,6 +105,7 @@ export function createBoardSession({
         await responseJson(response, `Status endpoint returned HTTP ${response.status}`)));
       if (version !== selectionVersion || command !== commandVersion || statusBlocked()) return;
       statusError = null;
+      lastStatusAt = Date.now();
       onStatus(snapshot);
     } catch (error) {
       if (!(error instanceof Error)) throw error;
@@ -145,6 +159,8 @@ export function createBoardSession({
       }
       boardSelect.value = selectedBoard || "";
       if (previousBoard !== selectedBoard) {
+        statusError = null;
+        lastStatusAt = null;
         selectionVersion++;
         onSelectionChanged(selectedBoard, "scan");
       }
@@ -158,5 +174,5 @@ export function createBoardSession({
     }
   }
 
-  return { boardUrl, commandChanged, selectBoard, state, updateControls, updateStatus, rescanBoards };
+  return { boardUrl, commandChanged, describeBoard, selectBoard, state, updateControls, updateStatus, rescanBoards };
 }

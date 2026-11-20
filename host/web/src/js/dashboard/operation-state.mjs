@@ -39,6 +39,7 @@
  * @property {boolean} [radiosDirty]
  * @property {boolean} [settingsDirty]
  * @property {boolean} [wirelessDirty]
+ * @property {boolean} [wirelessDraftDirty]
  * @property {string | null} [wirelessBlockReason]
  *
  * @typedef {{kind: "reconnect" | "resync"}
@@ -161,6 +162,8 @@ export function operationState(snapshot, activity = {}) {
     : cleanupRequired ? "cleanup" : null;
   const canProvisionWireless = Boolean(snapshot?.connected && capabilities & CAPABILITY_WIRELESS
     && wirelessStatusReady && !busy && !storageCommandPending && snapshot?.storage_stale === false);
+  const settingsBusy = Boolean(activity.resyncing || activity.saving || activity.wirelessInFlight || rebootPending
+    || outcomeUncertain || cleanupRequired || activity.statusFailed);
   const saveBlockReason = !snapshot?.connected ? "Waiting for an ESPForge connection."
     : !snapshot.settings_supported || !snapshot.settings
       ? snapshot.settings_message || "Boot settings unavailable; update device firmware."
@@ -170,30 +173,73 @@ export function operationState(snapshot, activity = {}) {
             ?? (activity.radiosDirty && !wirelessStatusReady ? wirelessBlockReason : null)
             ?? activity.wirelessBlockReason
             ?? (activity.wirelessDirty && !canProvisionWireless ? "Wait for fresh wireless and storage status before saving."
-              : !activity.settingsDirty && !activity.wirelessDirty ? "No unsaved settings changes." : null);
-  const settingsBusy = Boolean(activity.resyncing || activity.saving || activity.wirelessInFlight || rebootPending
-    || outcomeUncertain || cleanupRequired || activity.statusFailed);
+              : !activity.settingsDirty && !activity.wirelessDirty && activity.wirelessDraftDirty
+                ? "Test Wi-Fi details before saving; untested credentials are not sent."
+                : !activity.settingsDirty && !activity.wirelessDirty ? "No unsaved settings changes." : null);
   const canManageMsc = Boolean(snapshot?.connected && mscSupported && storageStatusReady
     && !snapshot.msc?.transition_pending && !benchmarkPending && !busy && !settingsBusy);
+  const canSetLed = Boolean(snapshot?.connected && capabilities & 1 && snapshot.telemetry_stale === false
+    && snapshot.runtime?.led_available && Number.isInteger(snapshot.runtime.led_colour) && !busy && !settingsBusy);
+  const canReboot = Boolean(snapshot?.connected && capabilities & CAPABILITY_REBOOT && !settingsBusy
+    && !storageCommandPending);
+  const canStartBenchmark = Boolean(snapshot?.connected && benchmarkSupported && benchmarkFresh && !settingsBusy
+    && !busy && !storageCommandPending && snapshot?.memory?.initialized);
+  const canCancelBenchmark = Boolean(snapshot?.connected && benchmarkSupported && benchmarkFresh && !settingsBusy
+    && !busy && snapshot?.self_test?.active);
+  const canEnableMsc = canManageMsc && !snapshot?.msc?.enabled && snapshot?.memory?.initialized === true;
+  const canReturnMsc = canManageMsc && snapshot?.msc?.enabled === true;
+  const rebootBlockReason = canReboot ? null : !snapshot?.connected
+    ? "Connect to an ESPForge board before rebooting."
+    : !(capabilities & CAPABILITY_REBOOT) ? "Firmware does not support rebooting."
+      : settingsBusy ? "Finish the pending operation or recovery before rebooting."
+        : storageBlockReason ?? "Wait for storage to become idle before rebooting.";
+  const ledBlockReason = canSetLed ? null : !snapshot?.connected
+    ? "Connect to an ESPForge board to control its LED."
+    : !(capabilities & 1) ? "Firmware does not support board LED control."
+      : snapshot.telemetry_stale !== false ? "Waiting for fresh status before controlling the LED."
+        : !snapshot.runtime?.led_available || !Number.isInteger(snapshot.runtime.led_colour)
+          ? "Firmware does not report an available board LED."
+          : busy || settingsBusy ? "Finish the pending operation or recovery before controlling the LED."
+            : null;
+  const mscEnableBlockReason = canEnableMsc ? null : !snapshot?.connected
+    ? "Connect to a board before enabling USB storage."
+    : !mscSupported ? "Firmware does not support USB storage handoff."
+      : storageBlockReason ?? (busy || settingsBusy ? "Finish the pending operation before changing storage."
+        : snapshot?.msc?.enabled ? "USB storage is already active; safely eject it before returning the card."
+          : "Initialize a detected card before enabling USB storage.");
+  const mscReturnBlockReason = canReturnMsc ? null : !snapshot?.connected
+    ? "Connect to a board before returning USB storage."
+    : !mscSupported ? "Firmware does not support USB storage handoff."
+      : storageBlockReason ?? (busy || settingsBusy ? "Finish the pending operation before changing storage."
+        : "USB storage is not active.");
+  const benchmarkStartBlockReason = canStartBenchmark ? null : !snapshot?.connected
+    ? "Connect to a board before starting a benchmark."
+    : !benchmarkSupported ? "Firmware does not support storage benchmarks."
+      : !benchmarkFresh ? "Waiting for fresh benchmark status."
+        : snapshot?.self_test?.active ? "A benchmark is already running; cancel it before starting another."
+          : storageBlockReason ?? (busy || settingsBusy ? "Finish the pending operation before starting a benchmark."
+            : !snapshot?.memory?.initialized ? "Initialize a detected card before starting a benchmark."
+              : "Storage is not ready for a benchmark.");
+  const benchmarkCancelBlockReason = canCancelBenchmark ? null : !snapshot?.connected
+    ? "Connect to a board before canceling a benchmark."
+    : !benchmarkSupported ? "Firmware does not support storage benchmarks."
+      : !benchmarkFresh ? "Waiting for fresh benchmark status."
+        : !snapshot?.self_test?.active ? "No storage benchmark is currently running."
+          : busy || settingsBusy ? "Finish the pending operation before canceling the benchmark."
+            : null;
   return {
-    canSetLed: Boolean(snapshot?.connected && capabilities & 1 && snapshot.telemetry_stale === false
-      && snapshot.runtime?.led_available && Number.isInteger(snapshot.runtime.led_colour) && !busy && !settingsBusy),
+    canSetLed, ledBlockReason,
     outcomeUncertain, rebootPending, storageCommandPending, storageStatusReady,
     storageBlockReason, wirelessStatusReady, wirelessBlockReason, busy,
     canProvisionWireless, canSaveSettings: saveBlockReason === null, saveBlockReason,
-    canReboot: Boolean(snapshot?.connected && capabilities & CAPABILITY_REBOOT && !settingsBusy && !storageCommandPending),
+    canReboot, rebootBlockReason,
     recovery,
     canRecover: Boolean(recovery && snapshot?.connected && !activity.resyncing && !activity.statusFailed
       && !activity.saving && !activity.wirelessInFlight),
     settingsBusy,
-    mscSupported,
-    benchmarkSupported,
-    canStartBenchmark: Boolean(snapshot?.connected && benchmarkSupported && benchmarkFresh && !settingsBusy
-      && !busy && !storageCommandPending && snapshot?.memory?.initialized),
-    canCancelBenchmark: Boolean(snapshot?.connected && benchmarkSupported && benchmarkFresh && !settingsBusy
-      && !busy && snapshot?.self_test?.active),
-    canEnableMsc: canManageMsc && !snapshot?.msc?.enabled && snapshot?.memory?.initialized === true,
-    canReturnMsc: canManageMsc && snapshot?.msc?.enabled === true,
+    mscSupported, canEnableMsc, canReturnMsc, mscEnableBlockReason, mscReturnBlockReason,
+    benchmarkSupported, canStartBenchmark, canCancelBenchmark,
+    benchmarkStartBlockReason, benchmarkCancelBlockReason,
     boardSelectionBusy: Boolean(activity.resyncing || activity.scanning || activity.saving || activity.wirelessBusy),
   };
 }

@@ -13,6 +13,8 @@ import { acknowledge, responseJson } from "./api.mjs";
  * @typedef {{
  *   getCurrentSnapshot: () => DashboardSnapshot | null,
  *   getSelectedBoard: () => string | null,
+ *   getSelectedBoardLabel: () => string,
+ *   getConnectionGeneration: () => number,
  *   operationState: () => OperationState,
  *   runCommandLifecycle: (options: CommandLifecycleOptions, run: () => Promise<unknown>,
  *     failed: (error: Error) => void) => Promise<unknown>,
@@ -30,7 +32,8 @@ import { acknowledge, responseJson } from "./api.mjs";
  * @param {DeviceActionOptions} options
  */
 export function createDeviceActions({
-  getCurrentSnapshot, getSelectedBoard, operationState, runCommandLifecycle, boardUrl, fetchWithDeadline,
+  getCurrentSnapshot, getSelectedBoard, getSelectedBoardLabel, getConnectionGeneration,
+  operationState, runCommandLifecycle, boardUrl, fetchWithDeadline,
   publishCommandResult, markCommandOutcomeUncertain, uncertainMessage, setSettingsMessage,
 }) {
   /** @param {string} id */
@@ -42,6 +45,8 @@ export function createDeviceActions({
   let mscTarget = false;
   /** @type {string | null} */
   let mscBoard = null;
+  /** @type {{board: string | null, generation: number} | null} */
+  let rebootTarget = null;
 
   async function requestReboot() {
     const response = await fetchWithDeadline(boardUrl("/api/reboot"), {
@@ -57,15 +62,28 @@ export function createDeviceActions({
    * @param {boolean} unsavedChanges
    */
   function confirmReboot(unsavedChanges) {
+    rebootTarget = { board: getSelectedBoard(), generation: getConnectionGeneration() };
+    element("reboot-board-target").textContent = `Target: ${getSelectedBoardLabel()}.`;
     element("reboot-consequence").textContent = unsavedChanges
       ? "Unsaved dashboard changes will be lost." : "Saved next-boot settings will be applied.";
     /** @type {HTMLDialogElement} */ (element("reboot-dialog")).showModal();
   }
 
+  function invalidateConfirmation() {
+    rebootTarget = null;
+    /** @type {HTMLDialogElement} */ (element("reboot-dialog")).close();
+  }
+
   async function rebootDevice() {
     const dialog = /** @type {HTMLDialogElement} */ (element("reboot-dialog"));
     if (!dialog.open) return;
+    const target = rebootTarget;
+    rebootTarget = null;
     dialog.close();
+    if (!target || target.board !== getSelectedBoard() || target.generation !== getConnectionGeneration()) {
+      setSettingsMessage("Board connection changed; reopen the reboot confirmation.");
+      return;
+    }
     const operations = operationState();
     if (!getCurrentSnapshot()?.connected || operations.busy || !operations.canReboot) return;
     await runCommandLifecycle({
@@ -162,5 +180,5 @@ export function createDeviceActions({
     });
   }
 
-  return { benchmark, confirmReboot, rebootDevice, requestMsc, setLed, setMsc };
+  return { benchmark, confirmReboot, invalidateConfirmation, rebootDevice, requestMsc, setLed, setMsc };
 }

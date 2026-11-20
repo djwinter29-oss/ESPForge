@@ -75,18 +75,109 @@ test("fixture wireless baselines, staging and fault controls belong to their boa
   }), /matches boot bits/, "inconsistent observations require an explicit fault fixture");
 });
 
+test("switching boards requires confirmation before discarding settings and generated keys", async context => {
+  const { connected, state, handlers, elements } = await appFixture(context);
+  connected.hardware.capabilities |= 128;
+  await state.tick();
+  elements.get("#settings-clock").value = "80";
+  await handlers.get("#settings-clock:change")();
+  await handlers.get("#ble-generate:click")();
+  const key = elements.get("#ble-secret").value;
+  assert.ok(key);
+  await handlers.get("#ble-cancel:click")();
+
+  elements.get("#board-select").value = "board-b";
+  await handlers.get("#board-select:change")();
+  assert.equal(elements.get("#board-switch-dialog").open, true);
+  assert.equal(elements.get("#board-select").value, "board-a");
+  assert.match(elements.get("#board-switch-current").textContent, /board-A/);
+  assert.match(elements.get("#board-switch-next").textContent, /\/hid\/b/);
+  await handlers.get("#cancel-board-switch:click")();
+  assert.equal(elements.get("#board-select").value, "board-a");
+  assert.equal(elements.get("#settings-clock").value, "80");
+  assert.equal(elements.get("#ble-secret").value, key);
+
+  elements.get("#board-select").value = "board-b";
+  await handlers.get("#board-select:change")();
+  await handlers.get("#confirm-board-switch:click")();
+  await settle();
+  await state.tick();
+  await settle();
+  assert.equal(elements.get("#board-select").value, "board-b");
+  assert.equal(elements.get("#settings-clock").value, "160");
+  assert.equal(elements.get("#ble-secret").value, "");
+});
+
+test("browser unload warns only while dashboard drafts are dirty", async context => {
+  const { state, connected, handlers, elements, configureRadio } = await appFixture(context);
+  const unload = () => {
+    const event = { prevented: false, returnValue: "unchanged", preventDefault() { this.prevented = true; } };
+    state.beforeUnload(event);
+    return event;
+  };
+  assert.equal(unload().prevented, false);
+  elements.get("#settings-clock").value = "80";
+  await handlers.get("#settings-clock:change")();
+  const dirty = unload();
+  assert.equal(dirty.prevented, true);
+  assert.equal(dirty.returnValue, "");
+  elements.get("#settings-clock").value = "240";
+  await handlers.get("#settings-clock:change")();
+  assert.equal(unload().prevented, false);
+  connected.hardware.capabilities |= 128;
+  await state.tick();
+  configureRadio("wifi");
+  elements.get("#wifi-ssid").value = "untested-network";
+  await handlers.get("#wifi-ssid:input")();
+  elements.get("#wifi-password").value = "not-tested";
+  await handlers.get("#wifi-password:input")();
+  assert.equal(elements.get("#settings-save").disabled, true, "untested credentials are not eligible to save");
+  assert.match(elements.get("#settings-save").title, /Test Wi-Fi details before saving/);
+  assert.equal(elements.get("#settings-dirty-indicator").hidden, false,
+    "untested credentials are still shown as a local draft");
+  assert.match(elements.get("#settings-note").textContent, /Untested Wi-Fi details are a local draft/);
+  assert.equal(unload().prevented, true, "untested credentials must be protected from reload loss");
+  elements.get("#settings-clock").value = "80";
+  await handlers.get("#settings-clock:change")();
+  await handlers.get("#settings-save:click")();
+  assert.equal(elements.get("#configuration-draft-warning").hidden, false,
+    "a clock-only reboot warns that an untested wireless draft will be lost");
+  assert.equal(elements.get("#configuration-wireless-warning").hidden, true,
+    "the saved-credentials warning is not shown for an untested draft");
+  await handlers.get("#cancel-configuration:click")();
+});
+
+test("disconnect expires the reboot confirmation and a new confirmation identifies its board", async context => {
+  const { connected, state, handlers, elements, requestedUrls } = await appFixture(context);
+  await handlers.get("#reboot-control:click")();
+  assert.match(elements.get("#reboot-board-target").textContent, /board-A/);
+  connected.connected = false;
+  await state.tick();
+  assert.equal(elements.get("#reboot-dialog").open, false);
+
+  connected.connected = true;
+  await state.tick();
+  const rebootRequests = requestedUrls.filter(url => url.startsWith("/api/reboot?")).length;
+  await handlers.get("#confirm-reboot:click")();
+  assert.equal(requestedUrls.filter(url => url.startsWith("/api/reboot?")).length, rebootRequests);
+
+  await handlers.get("#reboot-control:click")();
+  assert.match(elements.get("#reboot-board-target").textContent, /board-A/);
+  await handlers.get("#confirm-reboot:click")();
+  assert.equal(requestedUrls.filter(url => url.startsWith("/api/reboot?")).length, rebootRequests + 1);
+});
+
 test("Configure after a focused remote radio refresh never creates a credential erase", async context => {
   const { state, connected, elements, handlers, savedSettings, wirelessSettings, saveAndConfirm } =
     await appFixture(context);
   connected.hardware.capabilities |= 128;
   connected.settings.radios = 1;
   await state.tick();
-  elements.get("#settings-ble").focus();
+  elements.get("#ble-configure").focus();
   connected.settings.radios = 3;
   state.wirelessStatus = { ble_enabled: true, ble_key_configured: true };
   await state.tick();
-  elements.get("#settings-ble").value = "configure";
-  await handlers.get("#settings-ble:change")();
+  await handlers.get("#ble-configure:click")();
   await handlers.get("#ble-cancel:click")();
   assert.equal(elements.get("#settings-ble").value, "1");
   assert.equal(elements.get("#settings-save").disabled, true, "Configure is not a configuration edit");
@@ -134,8 +225,11 @@ test("Save requires renewed confirmation when remote settings change the reviewe
   elements.get("#settings-clock").value = "80";
   await handlers.get("#settings-clock:change")();
   await handlers.get("#settings-save:click")();
-  assert.match(elements.get("#configuration-dialog-profile").textContent,
-    /^System clock: 80 MHz\. Wi-Fi: Enabled\. Bluetooth: Disabled\./);
+  assert.match(elements.get("#configuration-dialog-profile").textContent, /240 MHz to 80 MHz/);
+  assert.match(elements.get("#configuration-dialog-wireless").textContent, /Wi-Fi unchanged; Bluetooth unchanged/);
+  assert.match(elements.get("#configuration-dialog-wireless").textContent, /Preserve saved Wi-Fi credentials/);
+  assert.equal(elements.get("#configuration-wireless-row").hidden, false);
+  assert.equal(elements.get("#configuration-wireless-warning").hidden, true);
   connected.settings.radios = 3;
   state.wirelessStatus = { ble_enabled: true, ble_key_configured: true };
   await state.tick();
@@ -143,7 +237,7 @@ test("Save requires renewed confirmation when remote settings change the reviewe
   assert.equal(savedSettings.length, 0);
   assert.match(elements.get("#settings-note").textContent, /changed.*confirm again/);
   await handlers.get("#settings-save:click")();
-  assert.match(elements.get("#configuration-dialog-profile").textContent, /Bluetooth: Enabled/);
+  assert.match(elements.get("#configuration-dialog-wireless").textContent, /Bluetooth unchanged/);
   await handlers.get("#confirm-configuration:click")();
   assert.deepEqual(savedSettings[0], { system_clock_mhz: 80, sdcard_profile: 0, radios: 3 });
 });

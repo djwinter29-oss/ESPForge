@@ -15,6 +15,10 @@ function setup(context, { wirelessDirty = false, reply } = {}) {
     ["#configuration-dialog", dialog],
     ["#configuration-wireless-warning", { hidden: true }],
     ["#configuration-dialog-profile", { textContent: "" }],
+    ["#configuration-draft-warning", { hidden: true }],
+    ["#configuration-dialog-board", { textContent: "" }],
+    ["#configuration-wireless-row", { hidden: true }],
+    ["#configuration-dialog-wireless", { textContent: "" }],
   ]);
   const previous = globalThis.document;
   globalThis.document = { querySelector: selector => elements.get(selector) ?? null };
@@ -29,9 +33,12 @@ function setup(context, { wirelessDirty = false, reply } = {}) {
   const messages = [];
   const workflow = createSettingsWorkflow({
     getCurrentSnapshot: () => snapshot,
+    getSelectedBoardLabel: () => "ESPForge / test-board",
     wireless: {
       credentialActions: () => ({ wifi: "Keep", ble: "Keep" }),
+      testedNetworkName: () => null,
       dirty: () => wirelessDirty,
+      hasDraftEdits: () => wirelessDirty,
       finish: (saved, error) => finished.push({ saved, error }),
       request: () => ({ ssid: "lab" }),
       saveIdentity: () => "wireless",
@@ -56,15 +63,16 @@ function setup(context, { wirelessDirty = false, reply } = {}) {
     setMessage: message => messages.push(message),
     changed: () => {},
   });
-  return { calls, dialog, finished, messages, published, snapshot, uncertain, workflow };
+  return { calls, dialog, elements, finished, messages, published, snapshot, uncertain, workflow };
 }
 
 test("a confirmed plain save sends the draft, acknowledges reboot and clears the draft", async context => {
-  const { calls, dialog, published, snapshot, workflow } = setup(context);
+  const { calls, dialog, elements, published, snapshot, workflow } = setup(context);
   workflow.setClock("160");
   assert.equal(workflow.dirty(), true);
   workflow.confirm();
   assert.equal(dialog.open, true);
+  assert.equal(elements.get("#configuration-dialog-board").textContent, "ESPForge / test-board");
   await workflow.save();
   assert.deepEqual(calls, [{ url: "/api/settings", body: { system_clock_mhz: 160, sdcard_profile: 0, radios: 0 } }]);
   assert.deepEqual(published, [{ opcode: 5, status: "completed" }]);

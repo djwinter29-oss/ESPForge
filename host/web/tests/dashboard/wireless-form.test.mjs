@@ -32,7 +32,7 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
-test("fresh connected Wi-Fi links to the selected board and removes the link when stale", context => {
+test("fresh connected Wi-Fi exposes a named shell action only for the selected board", context => {
   const previous = globalThis.document;
   const fixture = domFixture();
   globalThis.document = fixture.document;
@@ -40,18 +40,25 @@ test("fresh connected Wi-Fi links to the selected board and removes the link whe
   const state = { connected: true, hardware: { capabilities: 128 }, wireless: {
     wifi_enabled: true, wifi_state: "connected", ssid: "<script>", ipv4: "192.168.1.9",
   } };
+  const shellLink = fixture.el("#wifi-shell-action");
+  shellLink.textContent = "Open Wi-Fi shell";
+  shellLink.setAttribute("target", "_blank");
+  shellLink.setAttribute("rel", "noopener noreferrer");
   renderStatus({ ...state, console_url: "/console?board=selected" });
   const status = fixture.el("#wifi-state");
-  assert.equal(status.children.length, 1);
-  assert.equal(status.children[0].href, "/console?board=selected");
-  assert.equal(status.children[0].textContent, "<script> (192.168.1.9)");
-  assert.equal(status.children[0].target, "_blank");
-  assert.equal(status.children[0].rel, "noopener noreferrer");
+  assert.equal(status.textContent, "<script> (192.168.1.9)");
+  assert.equal(shellLink.href, "/console?board=selected");
+  assert.equal(shellLink.textContent, "Open Wi-Fi shell");
+  assert.equal(shellLink.hidden, false);
+  assert.equal(shellLink.getAttribute("target"), "_blank");
+  assert.equal(shellLink.getAttribute("rel"), "noopener noreferrer");
+  renderStatus({ ...state, console_url: "/console?board=selected" });
+  assert.equal(fixture.el("#wifi-shell-action"), shellLink, "unchanged polling preserves the focused shell link");
   for (const changed of [{ ...state, connected: false }, { ...state, wireless_error: "Stale" },
     { ...state, wireless: { ...state.wireless, stale: true } },
     { ...state, wireless: { ...state.wireless, wifi_state: "connecting" } }]) {
     renderStatus({ ...changed, console_url: "/console?board=selected" });
-    assert.equal(status.children.length, 0);
+    assert.equal(shellLink.hidden, true);
   }
 });
 
@@ -61,8 +68,7 @@ test("Configure opens radio dialogs without changing saved or drafted radio choi
   form.initialize({ ssid: "saved", wifi_enabled: true, ble_enabled: false, ble_key_configured: true });
   for (const [radio, saved, drafted] of [["wifi", "1", "0"], ["ble", "0", "1"]]) {
     const select = el(`settings-${radio}`);
-    select.value = "configure";
-    await select.fire("change");
+    await el(`${radio}-configure`).fire("click");
     assert.equal(el(`${radio}-dialog`).open, true);
     assert.equal(select.value, saved);
     assert.equal(form.dirty(), false);
@@ -72,8 +78,7 @@ test("Configure opens radio dialogs without changing saved or drafted radio choi
     await select.fire("change");
     const request = form.request();
     const previousChanges = changes;
-    select.value = "configure";
-    await select.fire("change");
+    await el(`${radio}-configure`).fire("click");
     assert.equal(select.value, drafted);
     assert.deepEqual(form.request(), request);
     assert.equal(changes, previousChanges);
@@ -92,14 +97,58 @@ test("Configure respects readiness and disabled radio controls while restoring t
     form.update();
     for (const radio of ["wifi", "ble"]) {
       const select = el(`settings-${radio}`);
-      select.disabled = gate === "disabled";
-      select.value = "configure";
-      await select.fire("change");
+      el(`${radio}-configure`).disabled = gate === "disabled";
+      await el(`${radio}-configure`).fire("click");
       assert.equal(el(`${radio}-dialog`).open, false);
       assert.equal(select.value, radio === "wifi" ? "1" : "0");
       assert.equal(form.dirty(), false);
     }
   }
+});
+
+test("open Wi-Fi dialog reports readiness failures without replacing its current status", async context => {
+  let ready = true;
+  const { form, el } = formFixture(context, {
+    ready: () => ready,
+    readinessMessage: () => ready ? null : "Board status unavailable; Wi-Fi tests are disabled.",
+  });
+  await el("wifi-configure").fire("click");
+  assert.equal(el("wifi-dialog").open, true);
+  el("wifi-status").textContent = "Scanning for nearby networks…";
+  ready = false;
+  form.update();
+  assert.equal(el("wifi-readiness").hidden, false);
+  assert.match(el("wifi-readiness").textContent, /Board status unavailable/);
+  assert.equal(el("wifi-status").textContent, "Scanning for nearby networks…");
+  assert.equal(el("wifi-scan").disabled, true);
+  ready = true;
+  form.update();
+  assert.equal(el("wifi-readiness").hidden, true);
+  assert.equal(el("wifi-readiness").textContent, "");
+});
+
+test("open Bluetooth dialog explains status failures and keeps its generated key copyable", async context => {
+  let ready = true;
+  const { form, el } = formFixture(context, {
+    ready: () => ready,
+    readinessMessage: () => ready ? null : "Board status unavailable; wireless actions are disabled.",
+  });
+  await el("ble-configure").fire("click");
+  await el("ble-generate").fire("click");
+  const key = el("ble-secret").value;
+  assert.ok(key);
+  const feedback = el("ble-status").textContent;
+  ready = false;
+  form.update();
+  assert.equal(el("ble-readiness").hidden, false);
+  assert.match(el("ble-readiness").textContent, /Board status unavailable/);
+  assert.equal(el("ble-status").textContent, feedback);
+  assert.equal(el("ble-generate").disabled, true);
+  assert.equal(el("ble-copy").disabled, false);
+  assert.equal(el("ble-secret").value, key);
+  ready = true;
+  form.update();
+  assert.equal(el("ble-readiness").hidden, true);
 });
 
 test("enabling a radio without saved or replacement credentials is blocked at serialization", async context => {
@@ -526,18 +575,25 @@ test("connection-test progress uses monotonic elapsed time despite wall-clock ch
   context.mock.method(globalThis, "setInterval", callback => { ticks.set(++timer, callback); return timer; });
   context.mock.method(globalThis, "clearInterval", id => ticks.delete(id));
   const pending = deferred();
-  const { el } = formFixture(context, { test: () => pending.promise });
+  let reportPhase;
+  const { el } = formFixture(context, { test: (_, progress) => { reportPhase = progress; return pending.promise; } });
   const work = el("wifi-connect").fire("click");
+  const startAnnouncement = el("wifi-status").textContent;
   wall = 3600000;
   now = 2000;
   for (const tick of ticks.values()) tick();
-  assert.match(el("wifi-status").textContent, /2s \(up to 30s\)/);
+  assert.match(el("wifi-progress").textContent, /2s \(up to 30s\)/);
+  assert.equal(el("wifi-status").textContent, startAnnouncement);
+  reportPhase("Association");
+  assert.match(el("wifi-status").textContent, /Association/);
   wall = -3600000;
   now = 30000;
   for (const tick of ticks.values()) tick();
-  assert.match(el("wifi-status").textContent, /30s; waiting for the final result/);
+  assert.match(el("wifi-progress").textContent, /30s; waiting for the final result/);
+  assert.match(el("wifi-status").textContent, /still waiting for the final result/);
   pending.resolve({ ipv4: "192.0.2.1", remaining_seconds: 600, test_generation: 1, test_id: "a".repeat(32) });
   await work;
+  assert.equal(el("wifi-progress").hidden, true);
 });
 
 test("scanned network buttons expose raw-SSID selection and clear it for manual entry", async context => {
@@ -613,6 +669,7 @@ test("radio choices follow credentials and expired test credentials block saving
       cancelTest: async () => {} });
     form.initialize(status);
     assert.equal(form.dirty(), false);
+    assert.equal(form.hasDraftEdits(), false);
     assert.equal(Object.hasOwn(form.request(), "tcp_cli_enabled"), false);
     const bleOn = () => el("settings-ble").options.find(option => option.value === "1");
     assert.equal(bleOn().disabled, true, "Bluetooth cannot be enabled without a saved or staged key");
@@ -627,8 +684,11 @@ test("radio choices follow credentials and expired test credentials block saving
     form.update();
     ready = true;
     form.update();
+    const wasDirty = form.dirty();
     el("wifi-ssid").value = "tested";
     el("wifi-ssid").handlers.input();
+    assert.equal(form.dirty(), wasDirty, "an untested SSID does not change save eligibility");
+    assert.equal(form.hasDraftEdits(), true, "an untested SSID is still a local draft");
     await el("wifi-connect").handlers.click();
     assert.equal(form.request().use_tested_wifi, true);
     assert.equal(form.saveBlockReason(), null);
@@ -642,7 +702,17 @@ test("radio choices follow credentials and expired test credentials block saving
     await el("wifi-connect").handlers.click();
     assert.equal(form.request().ssid, "edited-network");
     assert.equal(form.request().use_tested_wifi, true);
-    now += 600000;
+    assert.match(el("wireless-summary").textContent, /tested and ready to save/);
+    const successMessage = el("wireless-summary").textContent;
+    const initialCountdown = el("wireless-countdown").textContent;
+    now += 2000;
+    form.update();
+    assert.equal(el("wireless-summary").textContent, successMessage);
+    assert.notEqual(el("wireless-countdown").textContent, initialCountdown);
+    now += 538000;
+    form.update();
+    assert.match(el("wireless-summary").textContent, /expires in less than one minute/);
+    now += 60000;
     form.update();
     assert.notEqual(form.saveBlockReason(), null);
     assert.throws(() => form.request(), /expired/);
@@ -663,7 +733,7 @@ test("radio choices follow credentials and expired test credentials block saving
     supported = false;
     form.update();
     for (const radio of ["wifi", "ble"])
-      assert.equal(el(`settings-${radio}`).options.find(option => option.value === "configure").disabled, true,
+      assert.equal(el(`${radio}-configure`).disabled, true,
         "non-wireless boards lock wireless configuration");
   } finally {
     globalThis.document = previous;

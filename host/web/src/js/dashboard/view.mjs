@@ -8,8 +8,9 @@ import { CAPABILITY_SPI, CAPABILITY_SDMMC, CAPABILITY_WIRELESS, operationState }
 /**
  * @typedef {import("./api.mjs").StatusSnapshot & {
  * settings_draft?: import("./api.mjs").BootSettings,
- * settings_dirty?: boolean, wireless_dirty?: boolean, no_board_selected?: boolean, console_url?: string | null,
- * status_read_error?: boolean, status_reading?: boolean}} DashboardView
+ * settings_dirty?: boolean, wireless_dirty?: boolean, wireless_draft_dirty?: boolean,
+ * no_board_selected?: boolean, console_url?: string | null,
+ * status_read_error?: boolean, status_reading?: boolean, status_fetch_at_ms?: number | null}} DashboardView
  */
 /** @param {string} selector */
 function element(selector) {
@@ -21,6 +22,10 @@ function element(selector) {
 const select = selector => /** @type {HTMLSelectElement} */ (element(selector));
 /** @param {string} selector */
 const button = selector => /** @type {HTMLButtonElement} */ (element(selector));
+/** @param {HTMLElement} node @param {string} value */
+function updateText(node, value) {
+  if (node.textContent !== value) node.textContent = value;
+}
 /** @param {number | undefined} milliseconds */
 function uptimeLabel(milliseconds) {
   if (milliseconds === undefined || !Number.isFinite(milliseconds)) return "--";
@@ -74,9 +79,9 @@ export function renderStatus(snapshot, operations = operationState(snapshot, {
   const hardware = snapshot.hardware;
   const runtime = snapshot.telemetry_stale ? null : snapshot.runtime;
   const connection = element("#connection");
-  connection.dataset.state = snapshot.error ? "error" : connected ? "connected" : "disconnected";
-  element("#connection-label").textContent = snapshot.error
-    ? "Attention" : snapshot.reconnecting ? "Reconnecting" : connected ? "Connected" : "Disconnected";
+  connection.dataset.state = snapshot.reconnecting ? "reconnecting" : connected ? "connected" : "disconnected";
+  element("#connection-label").textContent = snapshot.reconnecting
+    ? "Reconnecting" : connected ? "Connected" : "Disconnected";
   element("#product-name").textContent = hardware?.product_name !== undefined
     ? `${hardware.product_name}${(hardware.capabilities ?? 0) & CAPABILITY_SDMMC ? " (SDMMC)"
       : (hardware.capabilities ?? 0) & CAPABILITY_SPI ? " (SPI)" : ""}` : "--";
@@ -95,6 +100,10 @@ export function renderStatus(snapshot, operations = operationState(snapshot, {
   const ledControl = /** @type {HTMLSelectElement} */ (element("#led-colour"));
   ledControl.value = snapshot.telemetry_stale ? "" : String(runtime?.led_colour ?? "");
   ledControl.disabled = !operations.canSetLed;
+  const ledHelp = element("#led-help");
+  const ledReason = operations.ledBlockReason ?? "";
+  updateText(ledHelp, ledReason);
+  ledHelp.hidden = element("#led-control").hidden || !ledReason;
   element("#cpu-usage-core0").textContent = [
     runtime?.cpu_usage_core0_basis_points, runtime?.cpu_usage_core1_basis_points,
   ].map(load => load == null ? "--" : `${(load / 100).toFixed(1)}%`).join(" / ");
@@ -136,11 +145,21 @@ export function renderStatus(snapshot, operations = operationState(snapshot, {
   element("#msc-controls").hidden = !operations.mscSupported;
   button("#msc-enable").disabled = !operations.canEnableMsc;
   button("#msc-return").disabled = !operations.canReturnMsc;
+  const mscHelp = element("#msc-help");
+  const mscReason = operations.canEnableMsc
+    ? operations.mscReturnBlockReason ?? "" : operations.mscEnableBlockReason ?? "";
+  updateText(mscHelp, mscReason);
+  mscHelp.hidden = !operations.mscSupported || !mscReason;
   element("#benchmark-controls").hidden = !operations.benchmarkSupported || !cardDetected;
   button("#benchmark-start").disabled = !operations.canStartBenchmark;
   button("#benchmark-cancel").disabled = !operations.canCancelBenchmark;
-  /** @type {HTMLInputElement} */ (element("#benchmark-size")).disabled = !operations.canStartBenchmark;
   const benchmark = snapshot.self_test_stale ? null : snapshot.self_test;
+  const benchmarkHelp = element("#benchmark-help");
+  const benchmarkReason = operations.canStartBenchmark
+    ? operations.benchmarkCancelBlockReason ?? "" : operations.benchmarkStartBlockReason ?? "";
+  updateText(benchmarkHelp, benchmarkReason);
+  benchmarkHelp.hidden = element("#benchmark-controls").hidden || !benchmarkReason;
+  /** @type {HTMLInputElement} */ (element("#benchmark-size")).disabled = !operations.canStartBenchmark;
   const rate = (/** @type {number | null | undefined} */ value) =>
     value == null ? "--" : `${(value / 1024 ** 2).toFixed(2)} MiB/s`;
   element("#benchmark-state").textContent = benchmark
@@ -171,13 +190,31 @@ export function renderStatus(snapshot, operations = operationState(snapshot, {
   const statusLine = element(".status-line");
   statusLine.dataset.error = String(Boolean(snapshot.error || snapshot.diagnostic_error));
   statusLine.dataset.active = String(Boolean(connected && runtime));
-  element("#status-message").textContent = [message, snapshot.diagnostic_error].filter(Boolean).join(" ");
+  updateText(element("#status-message"), [message, snapshot.diagnostic_error].filter(Boolean).join(" "));
+  const freshness = /** @type {HTMLTimeElement} */ (element("#status-freshness"));
+  if (snapshot.status_read_error) {
+    const fetchedAt = snapshot.status_fetch_at_ms;
+    updateText(freshness, typeof fetchedAt === "number"
+      ? `Last successful status fetch: ${Math.max(0, Math.floor((Date.now() - fetchedAt) / 1000))} seconds ago.`
+      : "No successful status fetch yet.");
+    if (typeof fetchedAt === "number") freshness.setAttribute("datetime", new Date(fetchedAt).toISOString());
+    freshness.hidden = false;
+  } else {
+    updateText(freshness, "");
+    freshness.hidden = true;
+  }
   const commandResync = button("#command-resync");
   if (commandResync) {
     const recovery = operations.recovery;
     commandResync.textContent = recovery === "cleanup" ? "Clear Wi-Fi test" : "Re-sync";
     commandResync.hidden = recovery === null;
     commandResync.disabled = !operations.canRecover;
+    const recoveryHelp = element("#recovery-help");
+    const recoveryReason = recovery === null ? "" : operations.canRecover ? ""
+      : snapshot.status_read_error ? "Waiting for a successful status fetch before recovery."
+        : "Wait for the current operation to finish before recovery.";
+    updateText(recoveryHelp, recoveryReason);
+    recoveryHelp.hidden = !recoveryReason;
     const wifiResync = button("#wifi-resync");
     if (wifiResync) {
       wifiResync.hidden = recovery !== "resync";
@@ -238,13 +275,25 @@ function renderSettings(snapshot, operations) {
   const saveBlockReason = operations.saveBlockReason;
   button("#settings-save").disabled = !canSave;
   button("#settings-save").title = saveBlockReason ?? "";
+  const saveHelp = element("#settings-save-help");
+  updateText(saveHelp, saveBlockReason ?? "");
+  saveHelp.hidden = !saveBlockReason;
   button("#reboot-control").disabled = !operations.canReboot;
-  element("#settings-note").textContent = snapshot.settings_message
+  const rebootHelp = element("#reboot-help");
+  const rebootReason = operations.rebootBlockReason ?? "";
+  updateText(rebootHelp, rebootReason);
+  rebootHelp.hidden = !rebootReason;
+  element("#settings-dirty-indicator").hidden =
+    !snapshot.settings_dirty && !snapshot.wireless_dirty && !snapshot.wireless_draft_dirty;
+  const settingsNote = snapshot.settings_message
     || ((snapshot.settings_dirty || snapshot.wireless_dirty) ? saveBlockReason : null)
+    || (snapshot.wireless_draft_dirty && !snapshot.wireless_dirty
+      ? "Untested Wi-Fi details are a local draft; test them before saving or rebooting." : null)
     || (!snapshot.connected ? "Waiting for an ESPForge connection."
       : !snapshot.settings_supported ? "Boot settings unavailable; update device firmware."
         : operations.storageBlockReason ?? operations.wirelessBlockReason ?? "");
-  element("#settings-note").hidden = !element("#settings-note").textContent;
+  updateText(element("#settings-note"), settingsNote);
+  element("#settings-note").hidden = !settingsNote;
   element("#status-message").hidden = !snapshot.error && !snapshot.diagnostic_error
     && !element("#settings-note").hidden;
 }

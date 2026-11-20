@@ -99,13 +99,13 @@ def check_native_drafts(page: Page, origin: str, host_name: str) -> None:
             page.wait_for_function(
                 "({radio, value}) => document.querySelector('#settings-' + radio).value === value",
                 arg={"radio": radio, "value": value})
-            configure = page.locator(f"#settings-{radio}")
+            configure = page.locator(f"#{radio}-configure")
             configure.focus()
-            configure.select_option("configure")
+            configure.click()
             assert page.locator(f"#{radio}-dialog").evaluate("(dialog) => dialog.open")
             page.keyboard.press("Escape")
             page.wait_for_function("(radio) => !document.querySelector('#' + radio + '-dialog').open", arg=radio)
-            assert configure.evaluate("(select) => select === document.activeElement")
+            assert configure.evaluate("(button) => button === document.activeElement")
             assert page.locator(f"#settings-{radio}").input_value() == value
             assert page.locator("#settings-save").is_disabled(), "Configure manufactured an edit"
             page.evaluate("document.dispatchEvent(new Event('visibilitychange'))")
@@ -142,7 +142,7 @@ def check_native_transitions(page: Page, origin: str, host_name: str) -> None:
     page.wait_for_function("!document.querySelector('#settings-clock').disabled")
     page.select_option("#settings-clock", "80")
     page.locator("#settings-save").click()
-    assert "Bluetooth: Disabled" in page.locator("#configuration-dialog-profile").inner_text()
+    assert "Bluetooth unchanged" in page.locator("#configuration-dialog-wireless").inner_text()
     page.evaluate("""() => {
         const state = window.sharedBrowserState.connected;
         state.board_configuration.radios = 2;
@@ -154,7 +154,7 @@ def check_native_transitions(page: Page, origin: str, host_name: str) -> None:
     assert page.evaluate("window.sharedBrowserState.settingsRequests.length") == 0
     assert "confirm again" in page.locator("#settings-note").inner_text()
     page.locator("#settings-save").click()
-    assert "Bluetooth: Enabled" in page.locator("#configuration-dialog-profile").inner_text()
+    assert "Bluetooth unchanged" in page.locator("#configuration-dialog-wireless").inner_text()
     page.locator("#confirm-configuration").click()
     page.wait_for_function("window.sharedBrowserState.settingsRequests.length === 1")
     assert page.evaluate("window.sharedBrowserState.settingsRequests[0]") == {
@@ -165,12 +165,12 @@ def check_native_transitions(page: Page, origin: str, host_name: str) -> None:
         page.goto(origin)
         page.wait_for_function("!document.querySelector('#settings-wifi').disabled")
         page.select_option("#settings-clock", "80")
-        page.locator("#settings-wifi").select_option("configure")
+        page.locator("#wifi-configure").click()
         page.locator("#wifi-ssid").fill("temporary-network")
         page.locator("#wifi-connect").click()
         page.wait_for_function("!document.querySelector('#wifi-dialog').open")
         if conflicting:
-            page.locator("#settings-ble").select_option("configure")
+            page.locator("#ble-configure").click()
             page.locator("#ble-generate").click()
             page.locator("#ble-cancel").click()
             page.evaluate("""() => {
@@ -183,7 +183,7 @@ def check_native_transitions(page: Page, origin: str, host_name: str) -> None:
             assert page.locator("#settings-save").is_disabled()
             page.locator("#wireless-discard").click()
         else:
-            page.locator("#settings-wifi").select_option("configure")
+            page.locator("#wifi-configure").click()
             page.locator("#wifi-cancel").click()
         page.wait_for_function("document.querySelector('#wifi-cancel').textContent === 'Retry clearing test'")
         assert page.locator("#wifi-dialog").evaluate("(dialog) => dialog.open")
@@ -333,8 +333,7 @@ def check_accessibility_smoke(page: Page, origin: str, host_name: str) -> None:
     page.evaluate("document.documentElement.style.zoom = ''")
     page.set_viewport_size({"width": 320, "height": 800})
     assert page.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth")
-    tab_to("#settings-ble")
-    page.keyboard.press("End")
+    tab_to("#ble-configure")
     page.keyboard.press("Enter")
     tab_to("#ble-generate")
     page.keyboard.press("Enter")
@@ -348,9 +347,347 @@ def check_accessibility_smoke(page: Page, origin: str, host_name: str) -> None:
     assert page.evaluate("document.querySelector('#ble-dialog').scrollWidth <= "
                          "document.querySelector('#ble-dialog').clientWidth")
     page.keyboard.press("Escape")
-    assert page.locator("#settings-ble").evaluate("(select) => select === document.activeElement")
+    assert page.locator("#ble-configure").evaluate("(button) => button === document.activeElement")
     check_focus()
     print(f"{host_name}: PASS 200-percent zoom, 320-pixel reflow and clipboard refusal feedback")
+
+
+def check_recovery_presentation(page: Page, origin: str, host_name: str) -> None:
+    """Keep host-owned uncertainty actionable, accessible and visually legible."""
+    page.goto(origin)
+    expect(page.locator("#settings-clock")).to_be_enabled()
+    expect(page.locator("#settings-dirty-indicator")).to_be_hidden()
+    normal_mark = page.locator(".status-mark").evaluate("(node) => getComputedStyle(node).backgroundColor")
+    page.evaluate("""() => {
+        window.sharedBrowserState.connected.command_outcome_uncertain = true;
+        window.sharedBrowserState.connected.command_resync_supported = true;
+        document.dispatchEvent(new Event('visibilitychange'));
+    }""")
+    expect(page.locator("#status-message")).to_contain_text("previous command outcome is uncertain")
+    expect(page.locator("#connection-label")).to_have_text("Connected")
+    expect(page.locator("#settings-save")).to_be_disabled()
+    expect(page.locator("#reboot-control")).to_be_disabled()
+    recovery = page.locator("#command-resync")
+    expect(recovery).to_be_visible()
+    bounds = recovery.evaluate("""node => {
+        const rect = node.getBoundingClientRect();
+        const style = getComputedStyle(node);
+        return {width: rect.width, left: rect.left, right: rect.right,
+            scrollWidth: node.scrollWidth, clientWidth: node.clientWidth,
+            gridColumn: style.gridColumnStart, viewport: innerWidth,
+            footerRight: node.parentElement.getBoundingClientRect().right};
+    }""")
+    assert bounds["width"] >= 80 and bounds["scrollWidth"] <= bounds["clientWidth"], bounds
+    assert bounds["gridColumn"] == "2" and bounds["right"] <= bounds["footerRight"], bounds
+
+    def contrast(selector: str) -> float:
+        return page.locator(selector).evaluate("""node => {
+            const channel = value => {
+                value /= 255;
+                return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+            };
+            const luminance = colour => {
+                const values = colour.match(/[\\d.]+/g).slice(0, 3).map(Number);
+                return values.map(channel).reduce((sum, value, index) =>
+                    sum + value * [0.2126, 0.7152, 0.0722][index], 0);
+            };
+            const foreground = luminance(getComputedStyle(node).color);
+            for (let surface = node; surface; surface = surface.parentElement) {
+                const background = getComputedStyle(surface).backgroundColor;
+                if (!background.endsWith(', 0)')) {
+                    const backgroundLuminance = luminance(background);
+                    return (Math.max(foreground, backgroundLuminance) + 0.05)
+                        / (Math.min(foreground, backgroundLuminance) + 0.05);
+                }
+            }
+            throw new Error('No opaque background found for text');
+        }""")
+
+    assert contrast("#status-message") >= 4.5, "normal status text must meet WCAG AA contrast"
+    assert contrast("#memory-note") >= 4.5, "storage guidance must meet WCAG AA contrast"
+    page.evaluate("""() => {
+        window.sharedBrowserState.connected.error = 'A rejected operation';
+        document.dispatchEvent(new Event('visibilitychange'));
+    }""")
+    expect(page.locator("#status-message")).to_contain_text("A rejected operation")
+    assert contrast("#status-message") >= 4.5, "error status text must meet WCAG AA contrast"
+    error_mark = page.locator(".status-line").evaluate("(node) => getComputedStyle(node.querySelector('.status-mark')).backgroundColor")
+    assert normal_mark != error_mark, "the live-telemetry marker must not override an error marker"
+    assert page.locator("footer.status-line").get_attribute("role") is None
+    assert page.locator("#status-message").get_attribute("role") == "status"
+    print(f"{host_name}: PASS host-owned recovery explanation, usable action and rendered text contrast")
+
+
+def check_dirty_navigation(page: Page, origin: str, host_name: str) -> None:
+    """Prevent browser reloads from silently discarding an active dashboard draft."""
+    page.goto(origin)
+    page.wait_for_function("() => !document.querySelector('#settings-clock').disabled")
+    assert page.locator("a.brand").count() == 0, "the current-page brand must not reload the dashboard"
+    clean = page.evaluate("""() => {
+        const event = new Event('beforeunload', { cancelable: true });
+        window.dispatchEvent(event);
+        return event.defaultPrevented;
+    }""")
+    assert not clean, "clean dashboard state must not prompt before leaving"
+    expect(page.locator("#settings-dirty-indicator")).to_be_hidden()
+    page.locator("#settings-clock").select_option("80")
+    expect(page.locator("#settings-dirty-indicator")).to_be_visible()
+    dirty = page.evaluate("""() => {
+        const event = new Event('beforeunload', { cancelable: true });
+        window.dispatchEvent(event);
+        return event.defaultPrevented;
+    }""")
+    assert dirty, "unsaved configuration must prevent an unconfirmed unload"
+    page.goto(origin)
+    page.wait_for_function("() => !document.querySelector('#settings-wifi').disabled")
+    page.locator("#wifi-configure").click()
+    page.locator("#wifi-ssid").fill("untested-network")
+    page.locator("#wifi-password").fill("not-tested")
+    expect(page.locator("#settings-dirty-indicator")).to_be_visible()
+    expect(page.locator("#settings-save")).to_be_disabled()
+    expect(page.locator("#settings-note")).to_contain_text("Untested Wi-Fi details are a local draft")
+    dialogs: list[str] = []
+
+    def accept_before_unload(dialog) -> None:
+        dialogs.append(dialog.type)
+        dialog.accept()
+
+    page.on("dialog", accept_before_unload)
+    page.reload()
+    page.remove_listener("dialog", accept_before_unload)
+    assert dialogs == ["beforeunload"], "native reload must warn for an untested wireless draft"
+    expect(page.locator("#settings-dirty-indicator")).to_be_hidden()
+    print(f"{host_name}: PASS native reload warning for untested wireless drafts")
+
+
+def check_status_error_survives_local_edit(page: Page, origin: str, host_name: str) -> None:
+    """Keep fetch failures visible across local renders and clear them only after a successful status read."""
+    page.goto(origin)
+    page.wait_for_function("() => window.sharedBrowserState.statusReads > 0")
+    page.locator("#wifi-configure").click()
+    page.locator("#wifi-status").evaluate("(status) => { status.textContent = 'Current dialog progress'; }")
+    page.evaluate("""() => {
+        window.sharedBrowserState.statusFails = true;
+        document.dispatchEvent(new Event('visibilitychange'));
+    }""")
+    expect(page.locator("#status-message")).to_contain_text("Status unavailable: status endpoint offline")
+    expect(page.locator("#status-freshness")).to_contain_text("Last successful status fetch")
+    expect(page.locator("#wifi-readiness")).to_contain_text("Board status unavailable")
+    expect(page.locator("#wifi-scan")).to_be_disabled()
+    expect(page.locator("#wifi-connect")).to_be_disabled()
+    expect(page.locator("#wifi-status")).to_have_text("Current dialog progress")
+    page.locator("#wifi-ssid").fill("untested-network")
+    page.locator("#wifi-password").fill("not-tested")
+    expect(page.locator("#status-message")).to_contain_text("Status unavailable: status endpoint offline")
+    expect(page.locator("#connection-label")).to_have_text("Connected")
+    page.evaluate("""() => {
+        window.sharedBrowserState.statusFails = false;
+        document.dispatchEvent(new Event('visibilitychange'));
+    }""")
+    expect(page.locator("#status-message")).to_have_text("HID telemetry is live")
+    expect(page.locator("#status-freshness")).to_be_hidden()
+    expect(page.locator("#wifi-readiness")).to_be_hidden()
+    expect(page.locator("#wifi-ssid")).to_have_value("untested-network")
+    expect(page.locator("#wifi-password")).to_have_value("not-tested")
+    print(f"{host_name}: PASS status failure persists through edits and clears on recovery")
+
+
+def check_wireless_readiness_guidance(page: Page, origin: str, host_name: str) -> None:
+    """Keep local Bluetooth keys recoverable and actionable when board status is unavailable."""
+    page.goto(origin)
+    page.wait_for_function("() => window.sharedBrowserState.statusReads > 0")
+    page.locator("#ble-configure").click()
+    page.locator("#ble-generate").click()
+    key = page.locator("#ble-secret").input_value()
+    page.evaluate("""() => {
+        window.sharedBrowserState.statusFails = true;
+        document.dispatchEvent(new Event('visibilitychange'));
+    }""")
+    expect(page.locator("#ble-readiness")).to_contain_text("Board status unavailable")
+    expect(page.locator("#ble-generate")).to_be_disabled()
+    expect(page.locator("#ble-copy")).to_be_enabled()
+    expect(page.locator("#ble-secret")).to_have_value(key)
+    page.evaluate("""() => Object.defineProperty(navigator, 'clipboard', {configurable: true,
+        value: {writeText: async text => { window.copiedWirelessKey = text; }}})""")
+    page.locator("#ble-copy").click()
+    expect(page.locator("#ble-status")).to_contain_text("Key copied")
+    assert page.evaluate("window.copiedWirelessKey") == key
+    page.evaluate("""() => {
+        window.sharedBrowserState.statusFails = false;
+        document.dispatchEvent(new Event('visibilitychange'));
+    }""")
+    expect(page.locator("#ble-readiness")).to_be_hidden()
+    expect(page.locator("#ble-secret")).to_have_value(key)
+    page.locator("#ble-cancel").click()
+    print(f"{host_name}: PASS local Bluetooth key remains copyable through status failure")
+
+
+def check_active_wifi_progress(page: Page, origin: str, host_name: str) -> None:
+    """Keep the per-second connection-test progress out of the polite Wi-Fi status region."""
+    page.goto(origin)
+    page.wait_for_function("() => window.sharedBrowserState.statusReads > 0")
+    page.evaluate("""() => {
+        const request = window.fetch;
+        window.resumeWirelessTest = null;
+        window.fetch = (input, options) => {
+            if (new URL(input, document.baseURI).pathname !== '/api/wireless/test')
+                return request(input, options);
+            return new Promise(resolve => {
+                window.resumeWirelessTest = () => request(input, options).then(resolve);
+            });
+        };
+    }""")
+    page.locator("#wifi-configure").click()
+    page.locator("#wifi-ssid").fill("progress-network")
+    page.locator("#wifi-connect").click()
+    page.wait_for_function("() => document.querySelector('#wifi-status').textContent.includes('Testing')")
+    initial_status = page.locator("#wifi-status").inner_text()
+    initial_progress = page.locator("#wifi-progress").inner_text()
+    page.evaluate("""() => {
+        const status = document.querySelector('#wifi-status');
+        window.progressStatusMutations = 0;
+        window.progressStatusObserver = new MutationObserver(records => {
+            window.progressStatusMutations += records.length;
+        });
+        window.progressStatusObserver.observe(status, {subtree: true, childList: true, characterData: true});
+    }""")
+    page.wait_for_timeout(2200)
+    mutations = page.evaluate("""() => {
+        window.progressStatusObserver.disconnect();
+        return window.progressStatusMutations;
+    }""")
+    assert mutations == 0 and page.locator("#wifi-status").inner_text() == initial_status, (
+        f"{host_name}: active test changed the polite status region {mutations} times")
+    assert page.locator("#wifi-progress").inner_text() != initial_progress
+    assert page.locator("#wifi-progress").get_attribute("aria-live") == "off"
+    expect(page.locator("#wifi-readiness")).to_be_hidden()
+    page.evaluate("window.resumeWirelessTest()")
+    expect(page.locator("#wifi-dialog")).not_to_be_visible()
+    print(f"{host_name}: PASS active Wi-Fi progress does not repeatedly announce")
+
+
+def check_hidden_display_and_responsive_confirmation(page: Page, origin: str, host_name: str) -> None:
+    """Verify hidden optional controls stay hidden and confirmations remain reachable on narrow displays."""
+    page.goto(origin)
+    page.wait_for_function("() => window.sharedBrowserState.statusReads > 0")
+    hidden = page.evaluate("""() => ['#msc-controls', '#wifi-manual-label',
+        '#configuration-wireless-row'].map(selector => {
+        const element = document.querySelector(selector);
+        return element.hidden && getComputedStyle(element).display === 'none';
+    })""")
+    assert all(hidden), f"{host_name}: a hidden optional control still occupies layout"
+
+    page.locator("#wifi-configure").click()
+    boundary = page.locator("#wifi-password").evaluate("""node => {
+        const values = getComputedStyle(node).borderTopColor.match(/[\\d.]+/g).slice(0, 3).map(Number);
+        const luminance = values.map(value => {
+            value /= 255;
+            return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+        }).reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0);
+        return (1.05) / (luminance + 0.05);
+    }""")
+    assert boundary >= 3, f"{host_name}: wireless form border contrast is only {boundary:.2f}:1"
+    page.locator("#wifi-cancel").click()
+
+    page.set_viewport_size({"width": 320, "height": 600})
+    page.goto(origin)
+    page.wait_for_function("() => window.sharedBrowserState.statusReads > 0")
+    page.locator("#settings-clock").select_option("80")
+    page.locator("#settings-save").click()
+    dialog = page.locator("#configuration-dialog")
+    expect(dialog).to_be_visible()
+    dimensions = dialog.evaluate("""dialog => {
+        const rect = dialog.getBoundingClientRect();
+        return {top: rect.top, bottom: rect.bottom, height: rect.height, scrollHeight: dialog.scrollHeight};
+    }""")
+    assert 0 <= dimensions["top"] and dimensions["bottom"] <= 600, (
+        f"{host_name}: confirmation extends outside the viewport: {dimensions}")
+    assert dimensions["scrollHeight"] <= 600, (
+        f"{host_name}: unchanged wireless details make the confirmation unnecessarily scroll: {dimensions}")
+    page.locator("#confirm-configuration").scroll_into_view_if_needed()
+    expect(page.locator("#confirm-configuration")).to_be_visible()
+    page.set_viewport_size({"width": 1280, "height": 800})
+    print(f"{host_name}: PASS hidden controls and narrow-screen confirmation")
+
+
+def check_live_region_updates_are_stable(page: Page, origin: str, host_name: str) -> None:
+    """Avoid replacing unchanged text in the polite live regions during normal polling."""
+    page.goto(origin)
+    page.wait_for_function("() => window.sharedBrowserState.statusReads > 0")
+    before = page.evaluate("""() => {
+        const regions = ['#status-message', '#settings-note'].map(selector =>
+            document.querySelector(selector));
+        window.liveRegionMutations = 0;
+        window.liveRegionObserver = new MutationObserver(records => {
+            window.liveRegionMutations += records.length;
+        });
+        for (const region of regions)
+            window.liveRegionObserver.observe(region, {subtree: true, childList: true, characterData: true});
+        return window.sharedBrowserState.statusReads;
+    }""")
+    page.evaluate("document.dispatchEvent(new Event('visibilitychange'))")
+    page.wait_for_function("(reads) => window.sharedBrowserState.statusReads > reads", arg=before)
+    page.wait_for_timeout(20)
+    mutations = page.evaluate("""() => {
+        window.liveRegionObserver.disconnect();
+        return window.liveRegionMutations;
+    }""")
+    assert mutations == 0, f"unchanged live-region text caused {mutations} DOM mutations"
+    print(f"{host_name}: PASS unchanged live regions are not rewritten during polling")
+
+
+def check_shell_link_focus_survives_poll(page: Page, origin: str, host_name: str) -> None:
+    """Keep keyboard focus on the Wi-Fi shell link when its status is refreshed."""
+    page.goto(origin)
+    page.wait_for_function("() => window.sharedBrowserState.statusReads > 0")
+    page.evaluate("""() => {
+        const board = window.sharedBrowserState.connected;
+        board.board_configuration.radios = 1;
+        Object.assign(board.wireless, { ssid: 'focus-network', wifi_enabled: true,
+            wifi_state: 'connected', ipv4: '192.0.2.2' });
+        document.dispatchEvent(new Event('visibilitychange'));
+    }""")
+    page.wait_for_selector("#wifi-shell-action")
+    page.wait_for_timeout(50)
+    link = page.locator("#wifi-shell-action")
+    expect(link).to_have_text("Open Wi-Fi shell")
+    assert link.get_attribute("target") == "_blank"
+    assert link.get_attribute("rel") == "noopener noreferrer"
+    assert link.get_attribute("aria-label") == "Open Wi-Fi shell through focus-network (192.0.2.2)"
+    expect(page.locator("#wifi-state")).to_have_text("focus-network (192.0.2.2)")
+    page.locator("#wifi-shell-action").focus()
+    before = page.evaluate("""() => {
+        window.focusedShellLink = document.querySelector('#wifi-shell-action');
+        const reads = window.sharedBrowserState.statusReads;
+        document.dispatchEvent(new Event('visibilitychange'));
+        return reads;
+    }""")
+    page.wait_for_function("(reads) => window.sharedBrowserState.statusReads > reads", arg=before)
+    focused = page.evaluate("() => document.activeElement === window.focusedShellLink")
+    assert focused, "a status poll must not move keyboard focus away from the unchanged shell link"
+    print(f"{host_name}: PASS Wi-Fi shell-link focus survives a status poll")
+
+
+def check_console_brand_keyboard_focus(page: Page, origin: str, host_name: str) -> None:
+    """Keep the linked shell-page brand visibly focused against the dark header."""
+    page.goto(f"{origin}/console?board=browser-board")
+    page.keyboard.press("Tab")
+    brand = page.locator("a.brand")
+    assert brand.evaluate("(node) => node === document.activeElement")
+    contrast = brand.evaluate("""node => {
+        const parse = colour => colour.match(/[\\d.]+/g).slice(0, 3).map(Number);
+        const luminance = colour => parse(colour).map(value => {
+            value /= 255;
+            return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+        }).reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0);
+        const style = getComputedStyle(node);
+        const foreground = luminance(style.outlineColor);
+        const background = luminance(getComputedStyle(node.parentElement).backgroundColor);
+        return {width: style.outlineWidth, ratio: (Math.max(foreground, background) + 0.05)
+            / (Math.min(foreground, background) + 0.05)};
+    }""")
+    assert contrast["width"] == "3px" and contrast["ratio"] >= 3, contrast
+    print(f"{host_name}: PASS linked shell brand has a high-contrast keyboard focus indicator")
 
 
 def check_partial_diagnostics(page: Page, origin: str, host_name: str) -> None:
@@ -548,9 +885,18 @@ def main() -> None:
                         check_partial_diagnostics(page, origin, label)
                         check_msc_handoff(page, origin, label)
                         check_identity_details(browser, page, origin, label)
+                        check_dirty_navigation(page, origin, label)
+                        check_status_error_survives_local_edit(page, origin, label)
+                        check_wireless_readiness_guidance(page, origin, label)
+                        check_active_wifi_progress(page, origin, label)
+                        check_hidden_display_and_responsive_confirmation(page, origin, label)
+                        check_live_region_updates_are_stable(page, origin, label)
+                        check_shell_link_focus_survives_poll(page, origin, label)
+                        check_recovery_presentation(page, origin, label)
                         console = page.request.get(f"{origin}/console")
                         assert console.status == 200
                         assert "<h1>Wi-Fi shell</h1>" in console.text()
+                        check_console_brand_keyboard_focus(page, origin, label)
                         assert not errors, errors
             finally:
                 browser.close()

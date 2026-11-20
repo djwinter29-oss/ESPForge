@@ -24,6 +24,7 @@ function serverShape({ msc = null, filesystem_format = null, settings = null, me
 export async function appFixture(context) {
   const state = {
     statusFails: false, statusUnknownBoard: false, boardScanFails: false, boardWarnings: [],
+    beforeUnload: null,
     saveFails: false, settingsFailure: "save", settingsOutcomeConflict: false, settingsTimeout: false,
     readbackMismatch: false, rebootFails: false, rebootResponseError: false,
     now: Date.now(),
@@ -33,8 +34,7 @@ export async function appFixture(context) {
   const fixture = domFixture();
   const { handlers, elements, el: element } = fixture;
   const configureRadio = radio => {
-    element(`#settings-${radio}`).value = "configure";
-    return handlers.get(`#settings-${radio}:change`)();
+    return handlers.get(`#${radio}-configure:click`)();
   };
   const connected = { connected: true, error: null, command_outcome_uncertain: false, reboot_pending: false,
     telemetry_stale: false, storage_stale: false, self_test_stale: true,
@@ -79,7 +79,13 @@ export async function appFixture(context) {
   });
   const saved = { document: globalThis.document, window: globalThis.window, fetch: globalThis.fetch };
   globalThis.document = fixture.document;
-  globalThis.window = { setInterval: callback => { state.tick = callback; }, confirm: () => true };
+  globalThis.window = {
+    setInterval: callback => { state.tick = callback; },
+    addEventListener: (type, callback) => {
+      if (type === "beforeunload") state.beforeUnload = callback;
+    },
+    confirm: () => true,
+  };
   const saveAndConfirm = async () => {
     handlers.get("#settings-save:click")();
     await handlers.get("#confirm-configuration:click")();
@@ -87,8 +93,8 @@ export async function appFixture(context) {
   const switchBoard = async id => {
     elements.get("#board-select").value = id;
     handlers.get("#board-select:change")();
-    await new Promise(resolve => setImmediate(resolve));
-    await new Promise(resolve => setImmediate(resolve));
+    if (elements.get("#board-switch-dialog").open) handlers.get("#confirm-board-switch:click")();
+    for (let turn = 0; turn < 4; turn++) await new Promise(resolve => setImmediate(resolve));
     assert.equal(elements.get("#board-select").value, id, `board ${id} is selectable after the prior request settles`);
   };
   const reconnect = async () => {

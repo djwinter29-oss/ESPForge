@@ -7,8 +7,8 @@ Dashboard modules live under `src/js/dashboard/`; the standalone terminal lives 
 Unit, integration and type checks follow the same split under `tests/dashboard/` and `tests/console/`;
 shared browser, CSS and fixture checks stay at the test root.
 
-Choose **Configure…** in the Wi-Fi or Bluetooth dropdown to open its provisioning dialog without changing
-the radio's Enabled/Disabled selection. Wireless edits are saved with **Save&Reboot**.
+Use **Configure Wi-Fi** or **Configure Bluetooth** beside the radio switch to open its provisioning dialog without
+changing the radio's Enabled/Disabled selection. Wireless edits are saved with **Save&Reboot**.
 
 ## HTTP API
 
@@ -85,13 +85,24 @@ Diagnostic tiles expand to fill each responsive row, including rows with fewer v
 Commands are serialized per board. A timeout or disconnect can leave the outcome uncertain; further writes
 remain blocked until explicit reconciliation. Clients must not replay a state-changing request.
 Both hosts remain loopback-only and require local request origins.
+Host-reported uncertainty is shown with its recovery action even after a dashboard reload. Switching boards with
+unsaved settings or wireless edits requires explicit discard confirmation; browser reload or close warns while those
+edits remain, including Wi-Fi names and passwords entered before connection testing. Untested credentials remain
+ineligible to save. Save confirmation identifies the target board, boot and radio changes, and whether Wi-Fi
+credentials or the Bluetooth key will be preserved, replaced or erased. A replacement Wi-Fi action names the tested
+network; credentials are never displayed. Safety warnings appear only when relevant. Failed status polls remain
+visible in open wireless dialogs, including guidance when a generated Bluetooth key is still locally available.
+Wi-Fi test progress is shown without repeatedly announcing its countdown. The dashboard reports the age of the last
+successful status fetch until a poll recovers.
+Reboot confirmation expires on disconnect and identifies the selected board.
 After a confirmed reboot, writes remain blocked until the dashboard observes a disconnect/reconnect or a host-reported
 reboot-pending transition followed by clear. A fresh lower uptime also confirms a restart when the tab missed the
 disconnect. If controls remain blocked after reconnection, reload the dashboard to reconcile with the host.
 
 ## Browser shell
 
-Fresh connected Wi-Fi status becomes a link opening the [diagnostic shell](../../docs/guides/console.md) in a new tab.
+Fresh connected Wi-Fi status exposes a labeled **Open Wi-Fi shell** link to the
+[diagnostic shell](../../docs/guides/console.md) in a new tab.
 Wi-Fi connectivity does not establish that TCP port 2323 is listening; connection failures are explicit.
 
 `POST /api/console?board=ID` accepts exactly `{}`. The host obtains the address from that board's monitor, sends

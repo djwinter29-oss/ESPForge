@@ -31,6 +31,7 @@ const rebootControl = /** @type {HTMLButtonElement} */ (element("reboot-control"
 const configurationDialog = dialog("configuration-dialog");
 const rebootDialog = dialog("reboot-dialog");
 const mscDialog = dialog("msc-dialog");
+const boardSwitchDialog = dialog("board-switch-dialog");
 
 /** @param {string} url @param {RequestInit} options @param {number} timeoutMs */
 const fetchWithDeadline = (url, options, timeoutMs) =>
@@ -40,6 +41,9 @@ const fetchWithDeadline = (url, options, timeoutMs) =>
 let currentSnapshot = null;
 /** Set after the first disconnected status so drafts are discarded once per disconnection. */
 let disconnectedUi = false;
+let connectionGeneration = 0;
+/** @type {{from: string | null, to: string | null} | null} */
+let pendingBoardSelection = null;
 /** A confirmed command is in flight; status reads wait until it finishes. */
 let commandInProgress = false;
 /** @type {string | null} */
@@ -71,8 +75,7 @@ const boardSession = createBoardSession({
   },
   onStatusError: error => {
     renderStatus(currentSnapshot?.connected
-      ? { ...currentSnapshot, error: `Status unavailable: ${error.message}`,
-        telemetry_stale: true, storage_stale: true }
+      ? currentSnapshot
       : { connected: false, error: error.message });
   },
   onScanError: error => {
@@ -88,6 +91,9 @@ const boardSession = createBoardSession({
     configurationDialog.close();
     rebootDialog.close();
     mscDialog.close();
+    boardSwitchDialog.close();
+    deviceActions.invalidateConfirmation();
+    pendingBoardSelection = null;
     disconnectedUi = false;
     currentSnapshot = null;
     acceptConnection({ connected: false });
@@ -133,6 +139,14 @@ const wirelessForm = bindWirelessForm({
   scan: wirelessTransport.scan,
   test: wirelessTransport.test,
   cancelTest: wirelessTransport.cancelTest,
+  readinessMessage: () => {
+    const statusError = boardSession.state().statusError;
+    if (statusError) return `Board status unavailable: ${statusError}. Wireless actions are disabled until status recovers.`;
+    if (wirelessForm.inFlight()) return null;
+    const operations = operationState();
+    return operations.wirelessBlockReason ?? operations.storageBlockReason
+      ?? (operations.busy ? "Finish the pending operation or recovery before editing wireless settings." : null);
+  },
   changed: refresh,
 });
 /** @param {string | null} message */
@@ -143,6 +157,7 @@ const settings = createSettingsWorkflow({
   operationState,
   runCommandLifecycle,
   boardUrl: path => boardSession.boardUrl(path),
+  getSelectedBoardLabel: () => boardSession.describeBoard(boardSession.state().selectedBoard),
   fetchWithDeadline,
   publishCommandResult: recovery.publish,
   markCommandOutcomeUncertain: recovery.markUncertain,
@@ -152,6 +167,8 @@ const settings = createSettingsWorkflow({
 const deviceActions = createDeviceActions({
   getCurrentSnapshot,
   getSelectedBoard: () => boardSession.state().selectedBoard,
+  getSelectedBoardLabel: () => boardSession.describeBoard(boardSession.state().selectedBoard),
+  getConnectionGeneration: () => connectionGeneration,
   operationState,
   runCommandLifecycle,
   boardUrl: boardSession.boardUrl,
@@ -174,6 +191,7 @@ function operationState(snapshot = currentSnapshot) {
     statusFailed: session.statusError !== null, scanning: session.scanning,
     radiosDirty: wirelessForm.radioEdited("wifi") || wirelessForm.radioEdited("ble"),
     settingsDirty: settings.dirty(), wirelessDirty: wirelessForm.dirty(),
+    wirelessDraftDirty: wirelessForm.hasDraftEdits(),
     wirelessBlockReason: wirelessForm.saveBlockReason(),
   });
 }
@@ -187,6 +205,11 @@ function acceptConnection(snapshot) {
   if (snapshot.connected === true) disconnectedUi = false;
   else if (snapshot.connected === false && !disconnectedUi) {
     disconnectedUi = true;
+    connectionGeneration++;
+    configurationDialog.close();
+    rebootDialog.close();
+    mscDialog.close();
+    deviceActions.invalidateConfirmation();
     resetDashboardDrafts();
   }
 }
@@ -211,10 +234,21 @@ function settingsEditState() {
 
 /** @param {DashboardSnapshot} snapshot */
 function renderStatus(snapshot) {
+  const session = boardSession.state();
+  if (session.statusError) {
+    snapshot = snapshot.connected
+      ? { ...snapshot, error: `Status unavailable: ${session.statusError}`,
+        telemetry_stale: true, storage_stale: true }
+      : { ...snapshot, error: snapshot.error ?? session.statusError };
+  }
   const operations = operationState(snapshot);
   boardSession.updateControls();
-  const session = boardSession.state();
   const commands = recovery.state();
+  const recoveryMessage = operations.outcomeUncertain
+    ? snapshot.command_resync_supported
+      ? commands.uncertainCommand?.message ?? "A previous command outcome is uncertain. Use Re-sync before sending another command."
+      : "Command outcome is uncertain. Reconnect the board and reload the dashboard before retrying."
+    : null;
   const rebootRecoveryHint = commands.rebootUptimeMs === null
     ? "No pre-reboot uptime was available to confirm a missed restart; reload the dashboard to reconcile with the host."
     : "If the dashboard missed the restart and controls remain disabled, reload it to reconcile with the host.";
@@ -224,17 +258,16 @@ function renderStatus(snapshot) {
     : null;
   renderDashboardStatus({
     ...snapshot,
-    error: snapshot.error ?? (commands.uncertainCommand ? snapshot.command_resync_supported
-      ? commands.uncertainCommand.message
-      : "Command outcome is uncertain. Reconnect the board and reload the dashboard before retrying."
-      : commands.commandFailure?.message ?? session.scanWarning),
+    error: snapshot.error ?? recoveryMessage ?? commands.commandFailure?.message ?? session.scanWarning,
     no_board_selected: !session.selectedBoard,
     console_url: session.selectedBoard && session.statusError === null ? boardSession.boardUrl("/console") : null,
     ...settingsEditState(),
     wireless_dirty: wirelessForm.dirty(),
+    wireless_draft_dirty: wirelessForm.hasDraftEdits(),
     settings_message: rebootMessage ?? settingsMessage ?? snapshot.settings_message,
     status_read_error: session.statusError !== null,
     status_reading: session.statusReading,
+    status_fetch_at_ms: session.lastStatusAt,
   }, operations);
   const discard = /** @type {HTMLButtonElement} */ (element("wireless-discard"));
   discard.hidden = !wirelessForm.conflicted();
@@ -262,19 +295,55 @@ element("msc-enable").addEventListener("click", () => deviceActions.requestMsc(t
 element("msc-return").addEventListener("click", () => deviceActions.requestMsc(false));
 element("cancel-msc").addEventListener("click", () => mscDialog.close());
 element("confirm-msc").addEventListener("click", deviceActions.setMsc);
-boardSelect.addEventListener("change", () => boardSession.selectBoard(boardSelect.value));
 rescanBoardsButton.addEventListener("click", boardSession.rescanBoards);
 clockControl.addEventListener("change", () => settings.setClock(clockControl.value));
 element("settings-save").addEventListener("click", settings.confirm);
 element("confirm-configuration").addEventListener("click", settings.save);
 element("cancel-configuration").addEventListener("click", () => configurationDialog.close());
 rebootControl.addEventListener("click", () => {
-  if (!rebootControl.disabled) deviceActions.confirmReboot(settings.dirty() || wirelessForm.dirty());
+  if (!rebootControl.disabled) deviceActions.confirmReboot(settings.dirty() || wirelessForm.hasDraftEdits());
 });
 element("confirm-reboot").addEventListener("click", deviceActions.rebootDevice);
 element("cancel-reboot").addEventListener("click", () => rebootDialog.close());
+boardSelect.addEventListener("change", () => {
+  const current = boardSession.state().selectedBoard;
+  const next = boardSelect.value || null;
+  if (next === current) return;
+  if (!settings.dirty() && !wirelessForm.hasDraftEdits()) {
+    boardSession.selectBoard(next ?? "");
+    return;
+  }
+  pendingBoardSelection = { from: current, to: next };
+  element("board-switch-current").textContent = boardSession.describeBoard(current);
+  element("board-switch-next").textContent = boardSession.describeBoard(next);
+  element("board-switch-error").hidden = true;
+  boardSelect.value = current ?? "";
+  boardSwitchDialog.showModal();
+});
+element("cancel-board-switch").addEventListener("click", () => boardSwitchDialog.close());
+element("confirm-board-switch").addEventListener("click", () => {
+  const target = pendingBoardSelection;
+  if (!target || target.from !== boardSession.state().selectedBoard || operationState().boardSelectionBusy) {
+    element("board-switch-error").textContent = "Board selection changed or is busy. Keep editing and try again.";
+    element("board-switch-error").hidden = false;
+    return;
+  }
+  pendingBoardSelection = null;
+  boardSwitchDialog.close();
+  boardSession.selectBoard(target.to ?? "");
+  boardSelect.value = target.to ?? "";
+});
+boardSwitchDialog.addEventListener("close", () => {
+  pendingBoardSelection = null;
+  boardSelect.value = boardSession.state().selectedBoard ?? "";
+});
 element("command-resync").addEventListener("click", resyncCommand);
 element("wifi-resync").addEventListener("click", resyncCommand);
+window.addEventListener("beforeunload", event => {
+  if (!settings.dirty() && !wirelessForm.hasDraftEdits()) return;
+  event.preventDefault();
+  event.returnValue = "";
+});
 for (const modal of [configurationDialog, rebootDialog, mscDialog]) {
   modal.addEventListener("keydown", event => {
     if (event.key === "Escape") {

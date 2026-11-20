@@ -9,6 +9,9 @@ function setup(context, fetchReply = async () => ({ ok: true, status: 200, json:
   const elements = new Map([
     ["#benchmark-size", { value: "32" }],
     ["#led-colour", { value: "5" }],
+    ["#reboot-dialog", { open: false, showModal() { this.open = true; }, close() { this.open = false; } }],
+    ["#reboot-board-target", { textContent: "" }],
+    ["#reboot-consequence", { textContent: "" }],
     ["#msc-dialog", { open: false, showModal() { this.open = true; }, close() { this.open = false; } }],
     ["#msc-dialog-title", { textContent: "" }],
     ["#msc-warning", { textContent: "" }],
@@ -25,12 +28,15 @@ function setup(context, fetchReply = async () => ({ ok: true, status: 200, json:
   const uncertain = [];
   const messages = [];
   const snapshot = { connected: true };
-  let operations = { canStartBenchmark: true, canCancelBenchmark: true, canSetLed: true,
+  let operations = { canStartBenchmark: true, canCancelBenchmark: true, canSetLed: true, canReboot: true,
     canEnableMsc: true, canReturnMsc: true };
   let selectedBoard = "board-a";
+  let connectionGeneration = 3;
   const actions = createDeviceActions({
     getCurrentSnapshot: () => snapshot,
     getSelectedBoard: () => selectedBoard,
+    getSelectedBoardLabel: () => `ESPForge / ${selectedBoard}`,
+    getConnectionGeneration: () => connectionGeneration,
     operationState: () => operations,
     runCommandLifecycle: async (_options, run, failed) => {
       try { await run(); }
@@ -53,6 +59,7 @@ function setup(context, fetchReply = async () => ({ ok: true, status: 200, json:
     actions, calls, confirmations, elements, messages, published, snapshot, uncertain,
     setOperations: next => { operations = next; },
     selectBoard: board => { selectedBoard = board; },
+    disconnect: () => { connectionGeneration++; },
   };
 }
 
@@ -145,4 +152,18 @@ test("MSC confirmation is discarded after a board change or lost admission", asy
   await actions.setMsc();
   assert.equal(calls.length, 0);
   assert.equal(elements.get("#msc-dialog").open, false);
+});
+
+test("reboot confirmation records its board and expires after a disconnect", async context => {
+  const { actions, calls, elements, disconnect } = setup(context);
+  actions.confirmReboot(false);
+  assert.match(elements.get("#reboot-board-target").textContent, /board-a/);
+  disconnect();
+  actions.invalidateConfirmation();
+  await actions.rebootDevice();
+  assert.equal(calls.length, 0);
+
+  actions.confirmReboot(false);
+  await actions.rebootDevice();
+  assert.equal(calls.length, 1);
 });

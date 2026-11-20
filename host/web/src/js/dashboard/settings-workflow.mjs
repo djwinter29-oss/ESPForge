@@ -14,7 +14,8 @@ import { CAPABILITY_WIRELESS } from "./operation-state.mjs";
  * @typedef {import("./operation-state.mjs").Recovery} Recovery
  * @typedef {import("./command-lifecycle.mjs").CommandLifecycleOptions} CommandLifecycleOptions
  * @typedef {Pick<ReturnType<typeof import("./wireless-form.mjs").bindWirelessForm>,
- *   "credentialActions" | "dirty" | "finish" | "request" | "saveIdentity" | "selectedRadios">} WirelessDraft
+ *   "credentialActions" | "dirty" | "finish" | "hasDraftEdits" | "request" | "saveIdentity"
+ *   | "selectedRadios" | "testedNetworkName">} WirelessDraft
  * @typedef {{
  *   getCurrentSnapshot: () => DashboardSnapshot | null,
  *   wireless: WirelessDraft,
@@ -22,6 +23,7 @@ import { CAPABILITY_WIRELESS } from "./operation-state.mjs";
  *   runCommandLifecycle: (options: CommandLifecycleOptions, run: () => Promise<unknown>,
  *     failed: (error: Error) => void) => Promise<unknown>,
  *   boardUrl: (path: string) => string,
+ *   getSelectedBoardLabel: () => string,
  *   fetchWithDeadline: (url: string, options: RequestInit, timeoutMs: number) => Promise<Response>,
  *   publishCommandResult: (result: ControlResult) => void,
  *   markCommandOutcomeUncertain: (error: Error, message?: string, recovery?: Recovery) => boolean,
@@ -35,7 +37,7 @@ import { CAPABILITY_WIRELESS } from "./operation-state.mjs";
  */
 export function createSettingsWorkflow({
   getCurrentSnapshot, wireless, operationState, runCommandLifecycle, boardUrl, fetchWithDeadline,
-  publishCommandResult, markCommandOutcomeUncertain, setMessage, changed,
+  getSelectedBoardLabel, publishCommandResult, markCommandOutcomeUncertain, setMessage, changed,
 }) {
   /** @param {string} id */
   const element = id => {
@@ -91,15 +93,42 @@ export function createSettingsWorkflow({
 
   function confirm() {
     if (!operationState().canSaveSettings) return;
-    element("configuration-wireless-warning").hidden = !wireless.dirty();
+    element("configuration-draft-warning").hidden = wireless.dirty() || !wireless.hasDraftEdits();
     const settings = selected();
     const credentials = wireless.credentialActions();
+    const saved = getCurrentSnapshot()?.settings ?? settings;
     confirmedIdentity = identity();
+    element("configuration-dialog-board").textContent = getSelectedBoardLabel();
     element("configuration-dialog-profile").textContent =
-      `System clock: ${settings.system_clock_mhz ? `${settings.system_clock_mhz} MHz` : "Default"}.`
-      + (wirelessSupported() ? ` Wi-Fi: ${settings.radios & 1 ? "Enabled" : "Disabled"}.`
-        + ` Bluetooth: ${settings.radios & 2 ? "Enabled" : "Disabled"}.`
-        + ` Wi-Fi credentials: ${credentials.wifi}. Bluetooth key: ${credentials.ble}.` : "");
+      `${saved.system_clock_mhz ? `${saved.system_clock_mhz} MHz` : "Default"} to `
+      + `${settings.system_clock_mhz ? `${settings.system_clock_mhz} MHz` : "Default"}`;
+    const wirelessRow = element("configuration-wireless-row");
+    const wirelessWarning = element("configuration-wireless-warning");
+    wirelessRow.hidden = !wirelessSupported();
+    wirelessWarning.textContent = "";
+    wirelessWarning.hidden = true;
+    if (wirelessSupported()) {
+      /** @param {boolean} current @param {boolean} proposed */
+      const radioValue = (current, proposed) => current === proposed
+        ? "unchanged" : `${current ? "Enabled" : "Disabled"} to ${proposed ? "Enabled" : "Disabled"}`;
+      const radioChanges = `Wi-Fi ${radioValue(Boolean(saved.radios & 1), Boolean(settings.radios & 1))}; `
+        + `Bluetooth ${radioValue(Boolean(saved.radios & 2), Boolean(settings.radios & 2))}.`;
+      const wifiAction = credentials.wifi === "preserve" ? "Preserve saved Wi-Fi credentials"
+        : credentials.wifi === "replace"
+          ? `Replace with tested network “${wireless.testedNetworkName() ?? ""}”`
+          : "Erase saved Wi-Fi credentials";
+      const bleAction = credentials.ble === "preserve" ? "Preserve saved Control key"
+        : credentials.ble === "replace" ? "Replace with the new Control key" : "Erase saved Control key";
+      element("configuration-dialog-wireless").textContent =
+        `${radioChanges} Wi-Fi credentials: ${wifiAction}; Bluetooth key: ${bleAction}.`;
+      const warnings = [];
+      if (credentials.ble === "replace")
+        warnings.push("Copy the new Control key before saving; the board cannot show it again.");
+      if (credentials.wifi === "replace" || credentials.ble === "replace")
+        warnings.push("Credentials stored in flash are not encrypted.");
+      wirelessWarning.textContent = warnings.join(" ");
+      wirelessWarning.hidden = !warnings.length;
+    }
     dialog.showModal();
   }
 

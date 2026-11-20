@@ -9,6 +9,7 @@ test("dashboard styles expose wireless selection and focus and wrap dialog actio
   const css = readFileSync(new URL("../../src/css/dashboard.css", import.meta.url), "utf8");
   assert.match(css, /\.wifi-network\[aria-pressed="true"\]/);
   assert.match(css, /\.wifi-network:focus-visible/);
+  assert.match(css, /\.brand:focus-visible/);
   assert.match(css, /\.dialog-actions \{[^}]*flex-wrap: wrap/);
 });
 
@@ -40,4 +41,26 @@ test("keyboard focus indicators provide at least 3:1 contrast on dashboard surfa
       assert.ok((light + 0.05) / (dark + 0.05) >= 3, `${colour} must contrast with ${surface}`);
     }
   }
+});
+
+test("muted and error text colors meet normal-text contrast on dashboard surfaces", () => {
+  const css = readFileSync(new URL("../../src/css/dashboard.css", import.meta.url), "utf8");
+  const muted = css.match(/--muted:\s*(#[0-9a-f]{6})/i)?.[1];
+  const error = css.match(/--coral:\s*(#[0-9a-f]{6})/i)?.[1];
+  assert.ok(muted && error);
+  const luminance = colour => {
+    const channels = colour.match(/[0-9a-f]{2}/gi)?.map(channel => parseInt(channel, 16) / 255);
+    assert.ok(channels?.length === 3);
+    return channels.map(value => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4)
+      .reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0);
+  };
+  for (const [foreground, surface] of [[muted, "#f4f7f6"], [muted, "#eaf0ee"], [error, "#eaf0ee"]]) {
+    const [light, dark] = [luminance(foreground), luminance(surface)].sort((a, b) => b - a);
+    assert.ok((light + 0.05) / (dark + 0.05) >= 4.5, `${foreground} must contrast with ${surface}`);
+  }
+});
+
+test("hidden unsaved-change indicator remains visually hidden", () => {
+  const css = readFileSync(new URL("../../src/css/dashboard.css", import.meta.url), "utf8");
+  assert.match(css, /\.settings-dirty\[hidden\]\s*\{\s*display:\s*none\s*;/);
 });

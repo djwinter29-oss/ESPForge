@@ -32,27 +32,29 @@ import {
 export function renderWirelessStatus(snapshot, consoleUrl = null) {
   const wireless = snapshot.wireless;
   const unavailable = !snapshot.connected ? "--" : snapshot.wireless_error ? "Unavailable" : !wireless ? "--" : null;
+  const shellAvailable = !unavailable && !wireless?.stale && wireless?.wifi_enabled
+    && wireless.wifi_state === "connected" && wireless.ipv4 && wireless.ipv4 !== "0.0.0.0" && consoleUrl;
   /** @param {string} name @param {() => string} text */
   const render = (name, text) => {
     const diagnostics = /** @type {HTMLElement} */ (document.querySelector(`#${name}-diagnostics`));
     diagnostics.hidden = !((snapshot.hardware?.capabilities ?? 0) & 128);
     const status = /** @type {HTMLElement} */ (document.querySelector(`#${name}-state`));
-    status.textContent = unavailable ?? text();
+    const value = unavailable ?? text();
+    if (status.childElementCount || status.textContent !== value) status.textContent = value;
     status.title = snapshot.wireless_error ?? "";
   };
-  render("wifi", () => !wireless?.wifi_enabled || !wireless.ssid ? "Disabled"
+  const wifiText = () => !wireless?.wifi_enabled || !wireless.ssid ? "Disabled"
     : `${wireless.ssid} (${wireless.wifi_state === "connected" ? wireless.ipv4
-      : wireless.wifi_state === "connecting" ? "connecting" : "disconnected"})`);
-  if (!unavailable && !wireless?.stale && wireless?.wifi_enabled && wireless.wifi_state === "connected"
-      && wireless.ipv4 && wireless.ipv4 !== "0.0.0.0" && consoleUrl) {
-    const status = /** @type {HTMLElement} */ (document.querySelector("#wifi-state"));
-    const link = document.createElement("a");
-    link.href = consoleUrl;
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
-    link.textContent = status.textContent;
-    link.title = "Open the unauthenticated Wi-Fi shell";
-    status.replaceChildren(link);
+      : wireless.wifi_state === "connecting" ? "connecting" : "disconnected"})`;
+  render("wifi", wifiText);
+  if (shellAvailable) {
+    const shellAction = /** @type {HTMLAnchorElement} */ (document.querySelector("#wifi-shell-action"));
+    shellAction.href = consoleUrl;
+    shellAction.setAttribute("href", consoleUrl);
+    shellAction.setAttribute("aria-label", `Open Wi-Fi shell through ${wireless.ssid} (${wireless.ipv4})`);
+    shellAction.hidden = false;
+  } else {
+    /** @type {HTMLElement} */ (document.querySelector("#wifi-shell-action")).hidden = true;
   }
   render("ble", () => {
     if (!wireless?.ble_enabled) return "Disabled";
@@ -68,10 +70,12 @@ export function renderWirelessStatus(snapshot, consoleUrl = null) {
  * @param {{scan: () => Promise<import("./api.mjs").WirelessNetwork[]>,
  * test: (settings: WifiPair & {password: string}, progress: (phase: string) => void) =>
  * Promise<ReturnType<typeof testedWireless>>, cancelTest: () => Promise<unknown>,
- * ready: () => boolean, supported: () => boolean, cleanupRequired?: () => boolean, changed?: () => void}} options
+ * ready: () => boolean, supported: () => boolean, cleanupRequired?: () => boolean,
+ * readinessMessage?: () => string | null, changed?: () => void}} options
  */
 export function bindWirelessForm({
-  scan, test, cancelTest, ready, supported, cleanupRequired = () => false, changed = () => {},
+  scan, test, cancelTest, ready, supported, cleanupRequired = () => false,
+  readinessMessage = () => null, changed = () => {},
 }) {
   /** @param {string} id */
   const el = id => {
@@ -159,8 +163,8 @@ export function bindWirelessForm({
     const available = supported();
     const wifiBlocked = busy || wifiCanceling || wifiCancelError !== null || cleanupRequired();
     for (const radio of /** @type {const} */ (["wifi", "ble"])) {
-      const configure = option(`settings-${radio}`, "configure");
-      if (configure) configure.disabled = !available || !ready() || busy || wifiCanceling
+      const configure = button(`${radio}-configure`);
+      configure.disabled = !available || !ready() || busy || wifiCanceling
         || radio === "ble" && wifiCancelError !== null;
     }
     el("wifi-settings").hidden = el("ble-settings").hidden = !available;
@@ -169,7 +173,7 @@ export function bindWirelessForm({
     if (wifiOn) wifiOn.disabled = Boolean(status && !wifiStage && !status.ssid);
     const bleOn = option("settings-ble", "1");
     if (bleOn) bleOn.disabled = Boolean(status && !keyDirty && !status.ble_key_configured);
-    for (const id of ["wifi-scan", "wifi-other", "wifi-connect", "ble-generate", "ble-copy"]) {
+    for (const id of ["wifi-scan", "wifi-other", "wifi-connect", "ble-generate"]) {
       button(id).disabled = !ready() || busy || wifiCanceling || wifiCancelError !== null;
     }
     for (const id of ["wifi-scan", "wifi-other", "wifi-connect"]) button(id).disabled ||= wifiBlocked;
@@ -185,14 +189,36 @@ export function bindWirelessForm({
       network.setAttribute("aria-pressed", String(selectedSsidHex !== null
         && network.dataset.ssidHex === selectedSsidHex));
     }
-    button("ble-copy").disabled ||= !bleKey;
-    setStatus("wireless-summary", wifiCancelError
+    button("ble-copy").disabled = !bleKey;
+    const stagedWifi = available && radioOn("settings-wifi") && wifiStage?.use_tested_wifi;
+    const expiredTest = stagedWifi && wirelessTestExpired(policyState());
+    const stagedSsid = wifiStage?.ssid ?? "";
+    const seconds = remainingTestSeconds();
+    const summaryMessage = wifiCancelError
       ? `Could not clear temporary Wi-Fi credentials: ${wifiCancelError}. ${wifiCancelRequiresReconnect
         ? "Use Re-sync before retrying; if unavailable, reconnect the board and reload the dashboard."
         : "Open Wi-Fi settings to retry."}`
-      : available ? saveBlockReason() ?? (radioOn("settings-wifi") && wifiStage?.use_tested_wifi
-        ? `Wi-Fi “${wifiStage.ssid}” tested; expires in ${remainingTestSeconds()}s.` : "") : "");
+      : available ? saveBlockReason() ?? (stagedWifi
+        ? expiredTest ? `Wi-Fi test for “${stagedSsid}” expired; test the network again before saving.`
+          : seconds <= 60 ? `Wi-Fi test for “${stagedSsid}” expires in less than one minute. `
+            + "Save now or test the network again."
+            : `Wi-Fi “${stagedSsid}” tested and ready to save.`
+        : !ready() ? readinessMessage() ?? "" : "") : "";
+    setStatus("wireless-summary", summaryMessage);
     el("wireless-summary").hidden = !el("wireless-summary").textContent;
+    const readiness = wifiDialog.open && !ready()
+      ? readinessMessage() ?? "" : "";
+    setStatus("wifi-readiness", readiness);
+    el("wifi-readiness").hidden = !readiness;
+    const bleReadiness = bleDialog.open && !ready() ? readinessMessage() ?? "" : "";
+    setStatus("ble-readiness", bleReadiness);
+    el("ble-readiness").hidden = !bleReadiness;
+    const countdown = stagedWifi
+      ? expiredTest ? "Test expired; test the network again."
+        : `Test expires in ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}.`
+      : "";
+    setStatus("wireless-countdown", countdown);
+    el("wireless-countdown").hidden = !countdown;
   };
   const ssidBytes = wirelessPairBytes;
   /** @param {WirelessConfiguration} wireless @param {string} [ssid] */
@@ -311,17 +337,19 @@ export function bindWirelessForm({
       : "No Control key is saved. Bluetooth stays off until a key is saved.";
     bleDialog.showModal();
   };
-  /** @type {Array<[string, () => void]>} */
-  const radioDialogs = [["settings-wifi", openWifi], ["settings-ble", openBle]];
-  for (const [id, open] of radioDialogs) {
+  /** @param {"wifi" | "ble"} radio */
+  const configureRadio = radio => {
+    if (button(`${radio}-configure`).disabled || !supported() || !ready() || busy || wifiCanceling
+      || radio === "ble" && wifiCancelError !== null) return;
+    (radio === "wifi" ? openWifi : openBle)();
+  };
+  for (const radio of /** @type {const} */ (["wifi", "ble"])) {
+    button(`${radio}-configure`).addEventListener("click", () => configureRadio(radio));
+  }
+  for (const id of /** @type {const} */ (["settings-wifi", "settings-ble"])) {
     const radio = id === "settings-wifi" ? "wifi" : "ble";
     const changeRadio = () => {
       const value = select(id).value;
-      if (value === "configure") {
-        synchronize();
-        if (!select(id).disabled && !option(id, "configure")?.disabled) open();
-        return;
-      }
       if (value !== "0" && value !== "1") throw new Error(`Invalid radio value: ${value}`);
       editRadio(radio, value === "1");
       if (value === "0") {
@@ -395,11 +423,21 @@ export function bindWirelessForm({
     wifiStage = null;
     awaitingPair = false;
     let phase = "Starting";
+    let announcedPhase = "";
+    let announcedLongWait = false;
     const progress = () => {
       const elapsed = Math.floor((performance.now() - started) / 1000);
-      setStatus("wifi-status", elapsed < 30
+      setStatus("wifi-progress", elapsed < 30
         ? `Testing “${ssid}”: ${phase}… ${elapsed}s (up to 30s).`
         : `Testing “${ssid}”: ${phase}… ${elapsed}s; waiting for the final result.`);
+      el("wifi-progress").hidden = false;
+      if (phase !== announcedPhase) {
+        announcedPhase = phase;
+        setStatus("wifi-status", `Testing “${ssid}”: ${phase}…`);
+      } else if (elapsed >= 30 && !announcedLongWait) {
+        announcedLongWait = true;
+        setStatus("wifi-status", `Testing “${ssid}”: still waiting for the final result.`);
+      }
     };
     progress();
     testTimer = setInterval(progress, 1000);
@@ -438,6 +476,8 @@ export function bindWirelessForm({
       if (current === generation) {
         clearInterval(testTimer ?? undefined);
         testTimer = null;
+        setStatus("wifi-progress", "");
+        el("wifi-progress").hidden = true;
         busy = false;
         refresh();
         changed();
@@ -540,8 +580,10 @@ export function bindWirelessForm({
     /** @param {number} saved */
     selectedRadios: saved => wirelessSelectedRadios(policyState(), saved),
     credentialActions,
+    testedNetworkName: () => wifiStage?.ssid ?? null,
     operationBusy: () => busy || wifiCanceling || wifiCancelError !== null,
     inFlight: () => busy || wifiCanceling,
+    hasDraftEdits: () => dirty() || wifiEdited,
     saveBlockReason,
     saveIdentity: () => wirelessSaveIdentity(policyState()),
     /** @returns {WirelessSave} */
