@@ -125,6 +125,28 @@ test("uncertain command recovery stores no secrets, reads same UID+tx+opcode and
   await restored.disconnect(); await setup.client.disconnect();
 });
 
+test("abandoning recovery requires an idle uncertain session and only clears the journal", async () => {
+  const { client, device, sent, pendingStore } = fakeConnection();
+  await client.connect();
+  const receive = device.receiveFeatureReport;
+  device.receiveFeatureReport = async id => {
+    if (id === 20) throw new Error("USB disconnected");
+    return receive(id);
+  };
+  await assert.rejects(client.command(OP.REBOOT, { flags: 1 }));
+  assert.equal(client.state.outcome_uncertain, true);
+  assert.ok(pendingStore.getItem("espforge.direct.pending-operation"));
+  const writes = sent.length;
+  client.abandonRecovery();
+  assert.equal(client.state.outcome_uncertain, false);
+  assert.equal(client.state.pending_request, null);
+  assert.match(describe(client.state.recovery_message), /outcome remains unknown/);
+  assert.equal(pendingStore.getItem("espforge.direct.pending-operation"), null);
+  assert.equal(sent.length, writes, "abandonment never sends or replays a command");
+  assert.throws(() => client.abandonRecovery(), /command-blocked/);
+  await client.disconnect();
+});
+
 test("accepted test lifecycle survives reload, enforces generation and never stores pair bytes", async () => {
   for (const wrongGeneration of [false, true]) {
     const setup = await connected(); radio(setup);

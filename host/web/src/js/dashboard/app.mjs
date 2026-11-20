@@ -57,12 +57,11 @@ const boardSession = createBoardSession({
   statusBlocked: () => commandInProgress,
   onStatus: snapshot => {
     const observation = recovery.observeStatus(snapshot);
+    if (observation?.rebootSettled) resetDashboardDrafts();
     if (observation?.settledCommand?.kind === "settings") {
       settings.clearDraft();
       settingsMessage = "Settings readback matches the requested values.";
     }
-    if (observation?.rebootSettled && /reboot requested/i.test(settingsMessage ?? ""))
-      settingsMessage = null;
     currentSnapshot = snapshot;
     acceptConnection(snapshot);
     if (snapshot.wireless_phase) wirelessTransport.reportPhase(snapshot.wireless_phase);
@@ -188,9 +187,21 @@ function acceptConnection(snapshot) {
   if (snapshot.connected === true) disconnectedUi = false;
   else if (snapshot.connected === false && !disconnectedUi) {
     disconnectedUi = true;
-    wirelessForm.reset();
-    settings.clearDraft();
+    resetDashboardDrafts();
+  }
+}
+
+function resetDashboardDrafts() {
+  wirelessForm.reset();
+  settings.clearDraft();
+  settingsMessage = null;
+}
+
+async function resyncCommand() {
+  const resolved = await recovery.resync();
+  if (resolved && /outcome is uncertain/i.test(settingsMessage ?? "")) {
     settingsMessage = null;
+    refresh();
   }
 }
 
@@ -262,8 +273,8 @@ rebootControl.addEventListener("click", () => {
 });
 element("confirm-reboot").addEventListener("click", deviceActions.rebootDevice);
 element("cancel-reboot").addEventListener("click", () => rebootDialog.close());
-element("command-resync").addEventListener("click", recovery.resync);
-element("wifi-resync").addEventListener("click", recovery.resync);
+element("command-resync").addEventListener("click", resyncCommand);
+element("wifi-resync").addEventListener("click", resyncCommand);
 for (const modal of [configurationDialog, rebootDialog, mscDialog]) {
   modal.addEventListener("keydown", event => {
     if (event.key === "Escape") {

@@ -35,6 +35,7 @@ Copyright (c) 2026 Ji Dong
   <main>
     <section class="page-heading">
       <div>
+        <p class="eyebrow">USB HID · authenticated Bluetooth LE</p>
         <h1>Dashboard</h1>
       </div>
     </section>
@@ -220,13 +221,15 @@ Copyright (c) 2026 Ji Dong
     </dialog>
 
     <dialog class="confirmation-dialog" id="configuration-dialog" aria-labelledby="configuration-dialog-title"
-      aria-describedby="configuration-dialog-profile configuration-warning direct-configuration-wireless-warning">
+      aria-describedby="configuration-dialog-profile configuration-warning configuration-board-target
+        direct-configuration-wireless-warning">
       <h2 id="configuration-dialog-title">Save and reboot?</h2>
       <p id="configuration-dialog-profile"></p>
       <p class="configuration-warning" id="configuration-warning">
         Firmware saves boot settings, then reboots the board and briefly disconnects USB and Bluetooth.
         Stop external traffic first.
       </p>
+      <p class="configuration-warning" id="configuration-board-target"></p>
       <p class="configuration-warning" id="direct-configuration-wireless-warning" hidden>
         Wi-Fi and Bluetooth credentials are saved with these settings. Keep a copy of the Control key; it cannot be read
         back. Flash credentials are not encrypted.
@@ -238,13 +241,14 @@ Copyright (c) 2026 Ji Dong
     </dialog>
 
     <dialog class="confirmation-dialog" id="reboot-dialog" aria-labelledby="reboot-dialog-title"
-      aria-describedby="reboot-warning reboot-consequence">
+      aria-describedby="reboot-warning reboot-consequence reboot-board-target">
       <h2 id="reboot-dialog-title">Reboot board?</h2>
       <p class="configuration-warning" id="reboot-warning">
         This immediately reboots the board and briefly disconnects USB and Bluetooth.
         Stop external traffic first.
       </p>
       <p id="reboot-consequence"></p>
+      <p class="configuration-warning" id="reboot-board-target"></p>
       <div class="dialog-actions">
         <button class="button button-cancel" id="cancel-reboot" type="button" autofocus>Cancel</button>
         <button class="button button-danger" id="confirm-reboot" type="button">Reboot Board</button>
@@ -255,8 +259,30 @@ Copyright (c) 2026 Ji Dong
       <span class="status-mark" aria-hidden="true"></span>
       <span id="status-message" role="status" aria-live="polite">Select an ESPForge device</span>
       <p class="settings-note" id="settings-note">Connect to read the saved settings.</p>
+      <button class="button button-danger" id="recovery-abandon" type="button" hidden>
+        Abandon unresolved recovery…
+      </button>
     </footer>
   </main>
+  <dialog class="confirmation-dialog" id="recovery-abandon-dialog" aria-labelledby="recovery-abandon-title"
+    aria-describedby="recovery-abandon-warning">
+    <h2 id="recovery-abandon-title">Clear unresolved recovery?</h2>
+    <p class="configuration-warning" id="recovery-abandon-warning"></p>
+    <div class="dialog-actions">
+      <button class="button button-cancel" id="cancel-recovery-abandon" type="button" autofocus>Keep recovering</button>
+      <button class="button button-danger" id="confirm-recovery-abandon" type="button">Clear local record</button>
+    </div>
+  </dialog>
+  <dialog class="confirmation-dialog" id="disconnect-dialog" aria-labelledby="disconnect-title"
+    aria-describedby="disconnect-warning disconnect-target">
+    <h2 id="disconnect-title">Disconnect with unsaved changes?</h2>
+    <p class="configuration-warning" id="disconnect-warning"></p>
+    <p class="configuration-warning" id="disconnect-target"></p>
+    <div class="dialog-actions">
+      <button class="button button-cancel" id="cancel-disconnect" type="button" autofocus>Keep connected</button>
+      <button class="button button-danger" id="confirm-disconnect" type="button">Discard and disconnect</button>
+    </div>
+  </dialog>
   <dialog class="confirmation-dialog" id="usb-connection-dialog" aria-labelledby="usb-connection-title">
     <h2 id="usb-connection-title">Connect through USB</h2>
     <p>Attach your board to this computer, then select it in the browser's USB HID device picker.</p>

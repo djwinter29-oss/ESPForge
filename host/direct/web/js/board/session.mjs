@@ -78,6 +78,7 @@ export class BoardSession {
 
   connect(options) { return this.connection.connect(options); }
   disconnect() { return this.connection.disconnect(); }
+  abandonRecovery() { return this.commands.abandonRecovery(); }
   /** @param {number} opcode @param {import("./commands.mjs").CommandOptions} [options] */
   command(opcode, options) { return this.commands.command(opcode, options); }
   expireReports(suspended) { this.polling.expireReports(suspended); }

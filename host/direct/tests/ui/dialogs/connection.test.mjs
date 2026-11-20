@@ -11,7 +11,10 @@ test("connection dialogs select transports, validate credentials and stay open w
   const previousDocument = globalThis.document;
   globalThis.document = dom.document;
   const calls = [];
+  const errors = [];
+  let hasUnsavedChanges = false;
   let session = {
+    connectionGeneration: 0,
     state: { link: "usb", connected: false, reconnecting: false, busy: false },
     async connect(options) { calls.push(["connect", options]); this.state.connected = true; },
     async disconnect() { calls.push(["disconnect"]); this.state.connected = false; },
@@ -20,6 +23,8 @@ test("connection dialogs select transports, validate credentials and stay open w
     getSession: () => session,
     setSession: next => { session = next; },
     selectTransport: kind => ({ ...session, state: { ...session.state, link: kind, connected: false, busy: false } }),
+    hasUnsavedChanges: () => hasUnsavedChanges,
+    reportError: message => errors.push(message),
     run: async operation => operation(),
   });
   try {
@@ -45,6 +50,22 @@ test("connection dialogs select transports, validate credentials and stay open w
     await dom.fire("#usb-connect", "click");
     assert.equal(session.state.connected, true);
     assert.equal(dialogs[0].open, false);
+
+    session.state.hardware = { serial_number: "USB-1" };
+    hasUnsavedChanges = true;
+    await dom.fire("#usb-open", "click");
+    await dom.fire("#usb-connect", "click");
+    assert.equal(dialogs[2].open, true);
+    assert.deepEqual(calls, [["connect", new Uint8Array(32).fill(0xab)], ["connect", undefined]]);
+    session.connectionGeneration += 1;
+    await dom.fire("#confirm-disconnect", "click");
+    assert.equal(session.state.connected, true);
+    assert.match(errors[0], /Board changed/);
+
+    await dom.fire("#usb-connect", "click");
+    await dom.fire("#confirm-disconnect", "click");
+    assert.equal(session.state.connected, false);
+    assert.deepEqual(calls.at(-1), ["disconnect"]);
   } finally {
     dialogs.forEach(dialog => dialog.close());
     if (previousDocument === undefined) delete globalThis.document;

@@ -41,6 +41,7 @@ export const DOMAIN_EVENTS = Object.freeze({
   "command/finished": ["busy", "outcome_uncertain", "error", "settings", "reboot_pending"],
   "lifecycle/settled": ["pending_wireless"],
   "recovery/finished": ["outcome_uncertain", "error", "recovered_opcode", "recovery_message"],
+  "recovery/abandoned": ["outcome_uncertain", "pending_request", "pending_wireless", "error", "recovery_message"],
   "report/received": [...REPORTS, "wireless_poll_error"],
   "report/expired": REPORTS,
   "report/failed": ["error", "wireless_poll_error", "wireless", "wireless_error"],

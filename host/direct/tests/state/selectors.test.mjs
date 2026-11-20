@@ -82,9 +82,11 @@ test("canRun is the one gate and names the first failing precondition per operat
     ["settings", { memory: null }, "Fresh storage status required before saving."],
     ["settings", { hardware: { capabilities: 16 } }, "Unavailable capability"],
     ["settings", { pending_request: { opcode: 2 } }, blocked],
-    ["wireless", { wireless_busy: true }, wireless],
-    ["wireless", { link: "ble" }, wireless],
-    ["wireless", { hardware: { capabilities: 2 | 4 | 16 } }, wireless],
+    ["wireless", { wireless_busy: true }, blocked],
+    ["wireless", { link: "ble" }, "This operation requires USB."],
+    ["wireless", { hardware: { capabilities: 2 | 4 | 16 } }, "Unavailable capability"],
+    ["wireless", { freshness: { 10: "stale" } }, wireless],
+    ["wireless", { outcome_uncertain: true }, blocked],
   ];
   for (const [operation, changes, reason] of cases) {
     const result = canRun({ ...ready, ...changes }, operation);

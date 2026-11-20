@@ -110,7 +110,7 @@ export function createCommandRecovery({
 
   async function resync() {
     const operations = operationState();
-    if (!operations.canRecover || !getCurrentSnapshot()) return;
+    if (!operations.canRecover || !getCurrentSnapshot()) return false;
     const version = session.state().selectionVersion;
     const sameBoard = () => version === session.state().selectionVersion;
     session.commandChanged();
@@ -119,7 +119,7 @@ export function createCommandRecovery({
     try {
       if (operations.recovery === "cleanup") {
         if (await clearWirelessTest()) await session.updateStatus();
-        return;
+        return false;
       }
       const response = await fetchWithDeadline(session.boardUrl("/api/control/resync"), {
         method: "POST",
@@ -128,7 +128,7 @@ export function createCommandRecovery({
       }, 10000);
       const result = await responseJson(response, `Command re-sync returned HTTP ${response.status}`, true);
       const snapshot = getCurrentSnapshot();
-      if (!sameBoard() || !snapshot) return;
+      if (!sameBoard() || !snapshot) return false;
       const control = reconciledResult(result);
       current.uncertainCommand = null;
       snapshot.command_outcome_uncertain = false;
@@ -141,10 +141,12 @@ export function createCommandRecovery({
       if (result.wireless != null) snapshot.wireless = wirelessConfiguration(result.wireless);
       if (result.control_result) snapshot.control_result = result.control_result;
       await session.updateStatus();
+      return true;
     } catch (error) {
       if (!(error instanceof Error)) throw error;
       const latest = getCurrentSnapshot();
       if (sameBoard() && latest) latest.error = error.message;
+      return false;
     } finally {
       session.commandChanged();
       resyncing = false;

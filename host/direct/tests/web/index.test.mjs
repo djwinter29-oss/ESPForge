@@ -57,7 +57,8 @@ test("standalone dashboard labels profiles, active measurements, controls and ac
   assert.match(html, /Module SPI flash capacity/);
   assert.match(html, /Service load \(Core 0 \/ Core 1\)/);
   assert.match(html, /<dt>Filesystem<\/dt>/);
-  assert.doesNotMatch(html, /class="eyebrow"|id="mcu"|id="memory-timing"|id="board-config"/);
+  assert.match(html, /class="eyebrow">USB HID · authenticated Bluetooth LE<\/p>/);
+  assert.doesNotMatch(html, /id="mcu"|id="memory-timing"|id="board-config"/);
   assert.doesNotMatch(html, /metric-product/);
   assert.match(html, /id="settings-title">Board configuration/);
   const identity = html.split('aria-label="Hardware identity"')[1].split("</section>")[0];
@@ -81,7 +82,7 @@ test("standalone dashboard labels profiles, active measurements, controls and ac
   assert.match(html, /id="board-uart"[\s\S]*id="board-storage-pins"/);
   const dialogs = [...html.matchAll(/<dialog class="confirmation-dialog" id="([^"]+)-dialog"/g)];
   assert.deepEqual(dialogs.map(match => match[1]),
-    ["msc", "benchmark-start", "configuration", "reboot", "usb-connection"]);
+    ["msc", "benchmark-start", "configuration", "reboot", "recovery-abandon", "disconnect", "usb-connection"]);
   for (const name of ["telemetry", "storage"]) {
     assert.match(html, new RegExp(`id="${name}-freshness" role="status"`));
   }

@@ -45,7 +45,7 @@ export function deriveDeviceViewModel(state, dashboard = deriveDashboardViewMode
   return {
     ...dashboard,
     active: Boolean(state.connected && runtime),
-    error: Boolean(state.error),
+    error: dashboard.status_error,
     freshness: [[REPORT.TELEMETRY, "telemetry"], [REPORT.STORAGE, "storage"]].map(([id, label]) => ({
       label, hidden: state.freshness?.[id] === "fresh", text: `${label}: ${state.freshness?.[id] ?? "unavailable"}`,
     })),

@@ -51,6 +51,20 @@ export const UI_TEXT = Object.freeze({
     + "Back up the card first; the benchmark causes card wear.",
   benchmarkBoardChanged: "Board changed; reopen the benchmark.",
   storageBoardChanged: "Board changed; reopen the storage dialog.",
+  settingsBoardChanged: "Board changed; reopen the settings confirmation.",
+  rebootBoardChanged: "Board changed; reopen the reboot confirmation.",
+  disconnectBoardChanged: "Board changed; reopen the disconnect confirmation.",
+  /** @param {boolean} staged @param {boolean} unsaved */
+  rebootConsequence(staged, unsaved) {
+    return [
+      staged ? UI_TEXT.rebootStaged : null,
+      unsaved ? UI_TEXT.unsavedEditsWillBeLost : null,
+      !staged && !unsaved ? UI_TEXT.rebootSaved : null,
+    ].filter(Boolean).join(" ");
+  },
+  /** @param {string} target */
+  recoveryAbandonWarning: target => `${target} The pending operation may already have completed. This clears only `
+    + "the local recovery record; it does not undo or verify the operation. Check the board before retrying.",
   /** @param {boolean} enabled */
   storageTitle: enabled => enabled ? "Enable USB drive?" : "Return card to firmware?",
   /** @param {boolean} enabled */
@@ -73,7 +87,7 @@ export const UI_TEXT = Object.freeze({
   /** @param {string} error */
   settingsSaveFailed: error => `Save failed: ${error}`,
   rebootStaged: "Staged wireless credentials and their expiry marker will be discarded.",
-  rebootUnsaved: "Unsaved dashboard changes will be lost.",
+  unsavedEditsWillBeLost: "Unsaved dashboard changes will be lost.",
   rebootSaved: "Saved next-boot settings will be applied.",
 });
 
@@ -98,9 +112,11 @@ export const MESSAGES = Object.freeze({
     return `Command ${result.opcode}: status ${result.status}, error ${result.error}`
       + (typeof detail !== "number" ? "" : `, detail ${detail}`);
   },
-  [REASON.OUTCOME_UNCERTAIN]: "Command outcome uncertain; disconnect and reconnect to inspect it. It will not be replayed.",
+  [REASON.OUTCOME_UNCERTAIN]: "Command outcome is uncertain; Direct will inspect it after reconnect. If it remains "
+    + "unresolved, inspect the board before clearing the local recovery hold. Never retry until the effect is known.",
   [REASON.DISCONNECTED_UNCERTAIN]: "Command outcome uncertain after disconnect; no request will be replayed.",
-  [REASON.RESULT_TIMEOUT]: "Command outcome uncertain: result timeout; disconnect/reconnect to read it, never replay",
+  [REASON.RESULT_TIMEOUT]: "Command result timed out; reconnect once to recover it. If it remains uncertain, inspect "
+    + "the board before clearing the local recovery hold. Never retry until the effect is known.",
   [REASON.NOT_CONFIRMED]: "Firmware did not confirm the selected values",
   [REASON.SCAN_MISMATCH]: "Scan entry did not match the requested generation and index",
   [REASON.STORAGE_UNAVAILABLE]: "Session storage is unavailable; refusing an untracked device write.",
@@ -110,6 +126,8 @@ export const MESSAGES = Object.freeze({
   /** @param {unknown} detail */
   [REASON.RECOVERY_CLEAR_FAILED]: detail =>
     `Command was not sent, but recovery state could not be cleared: ${describe(detail)}`,
+  [REASON.RECOVERY_ABANDONED]: "Local recovery was cleared by operator; the command outcome remains unknown. "
+    + "Verify the board before retrying.",
   [REASON.CONNECTION_CHANGED]: "Board connection changed",
   [REASON.CONNECTION_CANCELLED]: "Connection cancelled",
   /** @param {unknown} failure */
@@ -129,8 +147,11 @@ export const MESSAGES = Object.freeze({
   [REASON.RECOVERED_WIRELESS]: "Wireless operation confirmed after reconnect.",
   [REASON.WIRELESS_CONNECTION_CHANGED]: "Wireless connection changed",
   [REASON.WIRELESS_UNCERTAIN]: "Wireless command outcome uncertain after disconnect",
-  [REASON.WIRELESS_DISCONNECTED]: "Wireless command outcome uncertain; reconnect to inspect its result.",
-  [REASON.WIRELESS_TIMEOUT]: "Wireless operation timed out; reconnect to inspect it, never replay",
+  [REASON.WIRELESS_DISCONNECTED]: "Wireless operation outcome is uncertain; Direct will inspect it after reconnect. "
+    + "If it remains unresolved, inspect the board before clearing the local recovery hold. Never retry until the "
+    + "effect is known.",
+  [REASON.WIRELESS_TIMEOUT]: "Wireless operation timed out; reconnect once to recover it. If it remains uncertain, "
+    + "inspect the board before clearing the local recovery hold. Never retry until the effect is known.",
   [REASON.WIRELESS_STALE]: "Wireless status is stale",
   [REASON.WIRELESS_SCAN_FAILED]: "Wireless scan failed",
   [REASON.SCAN_GENERATION_CHANGED]: "Wireless scan generation changed",

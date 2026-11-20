@@ -14,6 +14,7 @@
   --canvas: #f4f7f6;
   --teal: #087d73;
   --teal-dark: #103c3b;
+  --focus: #08766d;
   --lime: #c9e779;
   --coral: #bd563d;
   --amber: #a96b12;
@@ -60,6 +61,7 @@ button { font: inherit; }
 }
 
 .brand { display: inline-flex; align-items: center; gap: 12px; color: inherit; text-decoration: none; }
+.brand:focus-visible { outline: 3px solid var(--lime); outline-offset: 3px; }
 .brand-mark {
   width: 32px;
   height: 32px;
@@ -101,10 +103,11 @@ h2 { margin-bottom: 0; font-size: 18px; font-weight: 650; }
   cursor: pointer;
 }
 .button:hover:not(:disabled) { background: var(--teal-dark); }
-.button:focus-visible { outline: 3px solid var(--lime); outline-offset: 2px; }
+.button:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.topbar .button:focus-visible { outline-color: var(--lime); }
 .button:disabled { cursor: wait; opacity: .55; }
-.button-secondary { background: var(--teal); color: var(--button-text); box-shadow: 0 2px 4px #087b7026; }
-.button-secondary:hover:not(:disabled) { background: var(--teal-dark); }
+.button-secondary { background: var(--paper); border-color: var(--input-border); color: var(--teal-ink); }
+.button-secondary:hover:not(:disabled) { background: var(--hover-surface); }
 
 .identity {
   position: relative;
@@ -138,7 +141,7 @@ h2 { margin-bottom: 0; font-size: 18px; font-weight: 650; }
   border-radius: 50%;
   font: 600 10px var(--sans);
 }
-.identity-details > summary:focus-visible { outline: 3px solid var(--lime); outline-offset: 3px; }
+.identity-details > summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
 .identity-popover {
   position: absolute;
   top: 100%;
@@ -200,7 +203,7 @@ h2 { margin-bottom: 0; font-size: 18px; font-weight: 650; }
 .pin-map-disclosure { margin: 8px 0 0; overflow: hidden; background: var(--paper); border: 1px solid var(--line);
   border-radius: 8px; }
 .pin-map-disclosure > summary { padding: 8px 12px; color: var(--teal-ink); font-weight: 650; cursor: pointer; }
-.pin-map-disclosure > summary:focus-visible { outline: 3px solid var(--lime); outline-offset: -3px; }
+.pin-map-disclosure > summary:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
 .pin-map-disclosure[open] > summary { border-bottom: 1px solid var(--line); }
 .pin-tables { display: grid; gap: 16px; padding: 12px; overflow-x: auto; }
 .pin-tables table { width: 100%; border-collapse: collapse; font: 12px var(--mono); }
@@ -232,7 +235,7 @@ h2 { margin-bottom: 0; font-size: 18px; font-weight: 650; }
 .wifi-network > span { min-width: 0; overflow-wrap: anywhere; }
 .wifi-network small { color: var(--muted); font: 12px var(--mono); }
 .wireless-dialog input:focus-visible {
-  outline: 3px solid var(--lime); outline-offset: 2px;
+  outline: 3px solid var(--focus); outline-offset: 2px;
 }
 .button-cancel { background: var(--paper); border-color: var(--input-border); color: var(--ink); }
 .button-cancel:hover:not(:disabled) { background: var(--hover-surface); }
@@ -252,9 +255,10 @@ h2 { margin-bottom: 0; font-size: 18px; font-weight: 650; }
   background: var(--paper);
   font: 12px var(--mono);
 }
-.settings-controls select:focus-visible { outline: 3px solid var(--lime); outline-offset: 2px; }
+.settings-controls select:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 .settings-controls select:disabled { opacity: .55; }
 .settings-note { grid-column: 2; margin: 0; color: var(--teal-ink); font-weight: 600; overflow-wrap: anywhere; }
+#recovery-abandon { grid-column: 2; justify-self: start; }
 
 .status-line {
   min-height: 46px;
@@ -287,6 +291,7 @@ h2 { margin-bottom: 0; font-size: 18px; font-weight: 650; }
     --canvas: #10191b;
     --teal: #087d73;
     --teal-dark: #0c302f;
+    --focus: #65d8cb;
     --lime: #d3ef91;
     --coral: #ff9f8b;
     --amber: #f1c36a;
@@ -317,7 +322,8 @@ h2 { margin-bottom: 0; font-size: 18px; font-weight: 650; }
   .button, .wireless-dialog input, .settings-controls select, .pin-map-disclosure,
   .wifi-network, .confirmation-dialog { border: 1px solid ButtonText; }
   .button:focus-visible, .wireless-dialog input:focus-visible, .settings-controls select:focus-visible,
-  .wifi-network:focus-visible, .identity-details > summary:focus-visible {
+  .wifi-network:focus-visible, .identity-details > summary:focus-visible, .pin-map-disclosure > summary:focus-visible,
+  .brand:focus-visible {
     outline: 2px solid Highlight;
     outline-offset: 2px;
   }

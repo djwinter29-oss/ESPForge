@@ -35,9 +35,21 @@ test("dashboard view model derives connection messaging and readiness without a 
     assert.equal(deriveDashboardViewModel({ connected: true, link, runtime: {} }).status_message, live);
     assert.match(deriveDashboardViewModel({ connected: true, link, reboot_pending: true }).status_message, rebooting);
   }
+  assert.match(deriveDashboardViewModel({ connected: true, link: "ble", reconnecting: true }).status_message,
+    /Bluetooth device reconnecting/);
 
   const error = deriveDashboardViewModel({ connected: true, error: "Connection failed" });
-  assert.equal(error.connection_state, "error");
-  assert.equal(error.connection_label, "Attention");
+  assert.equal(error.connection_state, "connected");
+  assert.equal(error.connection_label, "Connected");
   assert.equal(error.status_message, "Connection failed");
+
+  const actionError = deriveDashboardViewModel({ connected: true, action_error: "No board was selected." });
+  assert.equal(actionError.connection_state, "connected");
+  assert.equal(actionError.connection_label, "Connected");
+  assert.equal(actionError.status_message, "No board was selected.");
+  assert.equal(actionError.status_error, true);
+
+  const disconnectedError = deriveDashboardViewModel({ connected: false, error: "Connection failed" });
+  assert.equal(disconnectedError.connection_state, "error");
+  assert.equal(disconnectedError.connection_label, "Attention");
 });

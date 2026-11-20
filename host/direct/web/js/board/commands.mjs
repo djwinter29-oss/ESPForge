@@ -170,6 +170,17 @@ export class Commands {
     this.session.emit("lifecycle/settled", { pending_wireless: null });
   }
 
+  /** @brief Clear an uncertain journal only after explicit user acknowledgement; never sends or retries a command. */
+  abandonRecovery() {
+    const s = this.session;
+    if (this.queue || s.state.busy || s.state.wireless_busy) throw new BoardError(REASON.QUEUE_BUSY);
+    if (!s.state.outcome_uncertain) throw new BoardError(REASON.COMMAND_BLOCKED);
+    this.persist(null, null);
+    this.recoveryError = null;
+    s.emit("recovery/abandoned", { outcome_uncertain: false, pending_request: null, pending_wireless: null,
+      error: null, recovery_message: REASON.RECOVERY_ABANDONED });
+  }
+
   /** @brief Failure code when a completed result does not prove the request's effect, else null. */
   /** @param {import("../state/reducer.mjs").PendingRequest} request
    * @param {ReturnType<typeof decodeControlResult>} result */

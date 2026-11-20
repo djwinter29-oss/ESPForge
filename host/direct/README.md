@@ -74,6 +74,7 @@ a board advertising as `ESPForge-…`. See [wireless setup](../../docs/guides/wi
 
 - Do not run competing clients against the same board.
 - A timeout or disconnect does **not** automatically retry a command. Resolve uncertain outcomes before continuing.
+- Disconnecting with unsaved board or wireless edits asks for confirmation and identifies the connected board.
 - Control keys authenticate commands; they do not encrypt BLE traffic. Flash credentials are not encrypted.
 - Host tests and successful builds do not establish physical hardware, radio, or SD-card reliability.
 
@@ -172,7 +173,9 @@ state: drafts are cleared; reconnect explicitly. Commands are never automaticall
 Pending-operation journals remain in the current tab's `sessionStorage` for same-board reconciliation.
 They contain allowlisted transaction/profile/commit-mask or generation facts, never SSIDs, passwords, or Control
 keys. Missing, inaccessible, or invalid journal storage blocks writes. Keep the tab open while resolving an
-uncertain operation; recovery does not survive ending the tab's session.
+uncertain operation; recovery does not survive ending the tab's session. If same-board recovery remains uncertain,
+**Abandon unresolved recovery…** clears only the local journal after explicit confirmation; use it only after
+independently checking the board. It does not undo or verify the operation. Never retry until its effect is known.
 
 Async form results belong to their originating session, connection generation, and draft lifecycle. Old
 completions cannot clear newer post-reconnect drafts.

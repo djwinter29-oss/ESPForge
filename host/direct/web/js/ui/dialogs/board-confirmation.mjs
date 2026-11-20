@@ -27,6 +27,17 @@ export function captureBoardTarget(session) {
 }
 
 /**
+ * @brief Human-readable identity shown alongside a state-changing confirmation.
+ * @param {import("../../board/session.mjs").BoardSession} session
+ */
+export function boardTargetDescription(session) {
+  const hardware = session.state.hardware;
+  const name = hardware?.board_name ?? hardware?.board_model ?? hardware?.product_name ?? "ESPForge board";
+  return `Target: ${name}${hardware?.serial_number ? ` · serial ${hardware.serial_number}` : ""}`
+    + ` over ${session.state.link === "ble" ? "Bluetooth LE" : "USB HID"}.`;
+}
+
+/**
  * @brief Run an action only if its confirmation still targets the same connected board and link.
  * @param {BoardTarget | null} target Captured when the confirmation dialog opens.
  * @param {() => import("../../board/session.mjs").BoardSession} currentSession

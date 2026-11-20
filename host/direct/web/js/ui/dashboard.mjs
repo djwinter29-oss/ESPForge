@@ -12,12 +12,13 @@ import { canRun } from "../state/selectors.mjs";
 import { createUiStore, UI_INITIAL } from "../state/store.mjs";
 import { queryElement } from "./dom.mjs";
 import { deriveDashboardViewModel } from "./sections/status-model.mjs";
-import { describe } from "./messages.mjs";
+import { describe, UI_TEXT } from "./messages.mjs";
 import { mountBoardOperationDialogs } from "./dialogs/board-operations.mjs";
 import { mountConnectionDialogs } from "./dialogs/connection.mjs";
 import { bindDialogEscape } from "./dialogs/keyboard.mjs";
 import { mountSettingsDialogs } from "./dialogs/settings.mjs";
 import { bindIdentityDetails } from "./sections/identity-details.mjs";
+import { boardTargetDescription } from "./dialogs/board-confirmation.mjs";
 
 /**
  * @typedef {{secure: boolean, hid: boolean, ble: boolean, now: () => number,
@@ -46,6 +47,7 @@ export function mountDashboard({ session, selectTransport, timers, environment }
   const renderStatus = createDashboardView(environment.consoleUrl);
   const usbDialog = queryElement("dialog#usb-connection-dialog");
   const bluetoothDialog = queryElement("dialog#bluetooth-connection-dialog");
+  const recoveryDialog = queryElement("dialog#recovery-abandon-dialog");
   bindIdentityDetails(["product-information", "module-memory"].map(id => queryElement(`details#${id}`)));
   let wasConnected = client.state.connected;
   let refreshQueued = false;
@@ -86,6 +88,8 @@ export function mountDashboard({ session, selectTransport, timers, environment }
   });
   const connectionDialogs = mountConnectionDialogs({
     getSession: () => client,
+    hasUnsavedChanges: () => ui.getState().settings_dirty || wirelessForm.dirty(),
+    reportError: message => setUi({ action_error: message }),
     setSession(session) {
       client = session;
       watch();
@@ -102,7 +106,7 @@ export function mountDashboard({ session, selectTransport, timers, environment }
     wirelessForm,
     isDisposed: () => disposed,
   });
-  const allDialogs = [...connectionDialogs, ...settingsDialogs.dialogs, ...operationDialogs.dialogs];
+  const allDialogs = [...connectionDialogs, ...settingsDialogs.dialogs, ...operationDialogs.dialogs, recoveryDialog];
   watch();
   /** Reset dashboard-only state after a disconnect, then render once. Performs no device I/O. */
   function refresh() {
@@ -114,6 +118,7 @@ export function mountDashboard({ session, selectTransport, timers, environment }
       ui.dispatch({ type: "replace", state: { ...UI_INITIAL, action_error: ui.getState().action_error } });
       settingsDialogs.close();
       operationDialogs.close();
+      recoveryDialog.close();
     }
     wasConnected = board.connected;
     render(board, ui.getState());
@@ -126,7 +131,7 @@ export function mountDashboard({ session, selectTransport, timers, environment }
    */
   function render(board, view) {
     // Domain state carries reason codes; this is the one place they become text.
-    const state = { ...board, error: describe(board.error) ?? view.action_error,
+    const state = { ...board, error: describe(board.error), action_error: describe(view.action_error),
       recovery_message: describe(board.recovery_message), wireless_error: describe(board.wireless_error),
       wireless_poll_error: describe(board.wireless_poll_error) };
     const viewModel = deriveDashboardViewModel(state, view.wireless_form_busy);
@@ -137,6 +142,9 @@ export function mountDashboard({ session, selectTransport, timers, environment }
       settingsMessage: view.settings_message, bleName: client.deviceName, settingsDirty: view.settings_dirty,
       wirelessDirty: wirelessForm.dirty(),
       wirelessSaveBlockReason: wirelessForm.saveBlockReason() }, environment);
+    const abandon = button("recovery-abandon");
+    abandon.hidden = !board.outcome_uncertain;
+    abandon.disabled = Boolean(board.busy || board.wireless_busy);
     wirelessForm.update(board, { wireless: wirelessReady, settings: !bluetoothLink() && settingsReady });
   }
 
@@ -148,6 +156,20 @@ export function mountDashboard({ session, selectTransport, timers, environment }
   element("led-colour").addEventListener("change", () => run(async () => {
     const control = /** @type {HTMLSelectElement} */ (element("led-colour"));
     if (!control.disabled) await client.setLedColour(Number(control.value));
+  }));
+
+  element("recovery-abandon").addEventListener("click", () => {
+    if (button("recovery-abandon").hidden || button("recovery-abandon").disabled) return;
+    element("recovery-abandon-warning").textContent =
+      UI_TEXT.recoveryAbandonWarning(boardTargetDescription(client));
+    recoveryDialog.showModal();
+  });
+  element("cancel-recovery-abandon").addEventListener("click", () => recoveryDialog.close());
+  element("confirm-recovery-abandon").addEventListener("click", () => run(async () => {
+    if (!recoveryDialog.open) return;
+    recoveryDialog.close();
+    if (!client.state.outcome_uncertain || client.state.busy || client.state.wireless_busy) return;
+    await client.abandonRecovery();
   }));
 
   bindDialogEscape(allDialogs, connectionDialogs, () => client.state.busy);

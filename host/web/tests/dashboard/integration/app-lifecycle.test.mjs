@@ -653,6 +653,8 @@ test("lost reboot delivery waits for the originating board's disconnect without 
         await handlers.get("#command-resync:click")();
         for (let poll = 0; poll < 2; poll++) await state.tick();
         assert.equal(elements.get("#reboot-control").disabled, false, "Re-sync releases the unrelated outcome");
+        assert.doesNotMatch(elements.get("#settings-note").textContent, /outcome is uncertain/i,
+          "successful Re-sync clears stale uncertainty guidance");
         assert.match(elements.get("#status-message").textContent, /Command 6 failed/);
         await send();
         assert.equal(reboots(), 2, "only an explicit user action retries the command");
@@ -918,10 +920,20 @@ test("mounted Re-sync locks selection, preserves failure, and resets disconnecte
 });
 
 test("a fresh uptime reset settles an acknowledged reboot missed while the dashboard was hidden", async context => {
-  const { state, connected, handlers, elements, requestedUrls } = await appFixture(context);
+  const { state, connected, handlers, elements, requestedUrls, configureRadio } = await appFixture(context);
+  connected.hardware.capabilities |= 128;
+  connected.storage_stale = false;
   connected.runtime.uptime_milliseconds = 120000;
   await state.tick();
   await settle();
+
+  elements.get("#settings-clock").value = "80";
+  await handlers.get("#settings-clock:change")();
+  configureRadio("wifi");
+  elements.get("#wifi-ssid").value = "temporary-network";
+  await handlers.get("#wifi-ssid:input")();
+  await handlers.get("#wifi-connect:click")();
+  assert.match(elements.get("#wireless-summary").textContent, /temporary-network.*tested/);
 
   await handlers.get("#reboot-control:click")();
   await handlers.get("#confirm-reboot:click")();
@@ -935,6 +947,7 @@ test("a fresh uptime reset settles an acknowledged reboot missed while the dashb
   connected.connected = true;
   connected.reboot_pending = false;
   connected.runtime.uptime_milliseconds = 1000;
+  state.wirelessStatus = null;
   await state.tick();
 
   globalThis.document.hidden = false;
@@ -942,6 +955,11 @@ test("a fresh uptime reset settles an acknowledged reboot missed while the dashb
   assert.equal(elements.get("#connection-label").textContent, "Connected");
   assert.equal(elements.get("#reboot-control").disabled, false);
   assert.equal(elements.get("#settings-clock").disabled, false);
+  assert.equal(elements.get("#settings-clock").value, "240", "reboot settlement discards the clock draft");
+  assert.equal(elements.get("#settings-save").disabled, true, "discarded drafts no longer block Save");
+  assert.doesNotMatch(elements.get("#wireless-summary").textContent, /temporary-network/,
+    "reboot settlement discards the tested Wi-Fi candidate");
+  assert.equal(elements.get("#wifi-ssid").value, "saved");
   assert.equal(elements.get("#settings-note").textContent, "");
   assert.equal(requestedUrls.filter(url => url.startsWith("/api/reboot?")).length, 1,
     "recovery observes the restart; it never resends the command");

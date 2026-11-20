@@ -37,7 +37,7 @@ def check_accessibility(browser: Browser, origin: str, errors: list[str]) -> Non
     """Run pinned axe-core rules on both pages in light and dark modes."""
     dialogs = (None, "usb-connection-dialog", "bluetooth-connection-dialog", "msc-dialog",
                "benchmark-start-dialog", "configuration-dialog", "reboot-dialog", "direct-wifi-dialog",
-               "direct-ble-dialog")
+               "direct-ble-dialog", "recovery-abandon-dialog", "disconnect-dialog")
     for scheme in ("light", "dark"):
         with monitored_context(browser, errors, color_scheme=scheme) as context:
             page = context.new_page()
@@ -91,7 +91,76 @@ def check_forced_colors(browser: Browser, origin: str, errors: list[str]) -> Non
         }""")
         if focus["outlineStyle"] != "solid" or focus["outlineWidth"] < 2:
             raise AssertionError(f"Forced-colors focus indicator is not visible: {focus}")
+        page.locator(".pin-map-disclosure > summary").focus()
+        focus = page.locator(".pin-map-disclosure > summary").evaluate("""node => {
+            const style = getComputedStyle(node);
+            return {outlineStyle: style.outlineStyle, outlineWidth: parseFloat(style.outlineWidth)};
+        }""")
+        if focus["outlineStyle"] != "solid" or focus["outlineWidth"] < 2:
+            raise AssertionError(f"Forced-colors pin-map focus indicator is not visible: {focus}")
     print("PASS forced-colors mode retains a visible keyboard focus outline")
+
+def check_focus_contrast(browser: Browser, origin: str, errors: list[str]) -> None:
+    """Keep regular keyboard-focus indicators above the 3:1 non-text contrast minimum."""
+    for scheme in ("light", "dark"):
+        with monitored_context(browser, errors, color_scheme=scheme) as context:
+            page = context.new_page()
+            page.goto(f"{origin}/web/index.html")
+            report = page.evaluate("""() => {
+                const root = getComputedStyle(document.documentElement);
+                const rules = [];
+                const visit = list => [...list].forEach(rule => {
+                    if (rule.selectorText) rules.push(rule);
+                    if (rule.cssRules) visit(rule.cssRules);
+                });
+                [...document.styleSheets].forEach(sheet => visit(sheet.cssRules));
+                const rgb = value => {
+                    const hex = value.trim().match(/^#([0-9a-f]{6})$/i)?.[1];
+                    return hex ? [0, 2, 4].map(index => parseInt(hex.slice(index, index + 2), 16))
+                        : value.match(/\\d+/g).slice(0, 3).map(Number);
+                };
+                const luminance = value => {
+                    const [r, g, b] = rgb(value).map(channel => {
+                        const scaled = channel / 255;
+                        return scaled <= 0.04045 ? scaled / 12.92 : ((scaled + 0.055) / 1.055) ** 2.4;
+                    });
+                    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+                };
+                const ratio = (a, b) => {
+                    const [high, low] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+                    return (high + 0.05) / (low + 0.05);
+                };
+                const targets = [
+                    ['.brand:focus-visible', '--lime', '--teal-dark'],
+                    ['.button:focus-visible', '--focus', '--canvas'],
+                    ['.topbar .button:focus-visible', '--lime', '--teal-dark'],
+                    ['.identity-details > summary:focus-visible', '--focus', '--paper'],
+                    ['.pin-map-disclosure > summary:focus-visible', '--focus', '--paper'],
+                    ['.wireless-dialog input:focus-visible', '--focus', '--paper'],
+                    ['.settings-controls select:focus-visible', '--focus', '--paper'],
+                    ['.wifi-network:focus-visible', '--teal', '--paper'],
+                ].map(([selector, foreground, background]) => {
+                    const find = value => rules.find(item => item.selectorText.split(',')
+                        .some(part => part.trim() === value));
+                    const rule = find(selector);
+                    const declaration = rule?.style;
+                    const outline = selector === '.topbar .button:focus-visible'
+                        ? find('.button:focus-visible')?.style.getPropertyValue('outline') : declaration?.outline;
+                    const color = declaration?.getPropertyValue('outline-color')
+                        || outline.match(/var\\([^)]+\\)/)?.[0] || '';
+                    const width = parseFloat(outline);
+                    const style = outline.split(' ').find(part => part === 'solid' || part === 'dashed') || '';
+                    return {selector, color, expectedColor: `var(${foreground})`, width,
+                        style,
+                        ratio: ratio(root.getPropertyValue(foreground), root.getPropertyValue(background))};
+                });
+                return targets;
+            }""")
+            for target in report:
+                if (target["color"] != target["expectedColor"] or target["style"] != "solid"
+                        or target["width"] < 2 or target["ratio"] < 3):
+                    raise AssertionError(f"Focus indicator fails on {target['selector']} in {scheme} mode: {report}")
+    print("PASS keyboard focus indicator contrast is at least 3:1 in light and dark modes")
 
 
 def check_history(browser: Browser, origin: str, errors: list[str]) -> None:
@@ -353,6 +422,7 @@ def main() -> None:
                     check_identity_details(browser, origin, errors)
                     check_wifi_layout(browser, origin, errors)
                     check_accessibility(browser, origin, errors)
+                    check_focus_contrast(browser, origin, errors)
                     check_forced_colors(browser, origin, errors)
                     if errors:
                         raise AssertionError(f"Browser page errors: {errors}")

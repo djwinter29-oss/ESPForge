@@ -9,6 +9,7 @@
 import { CAP, RADIOS, STAGED_EXPIRED } from "../../protocol/constants.mjs";
 import { describe, UI_TEXT } from "../messages.mjs";
 import { queryElement } from "../dom.mjs";
+import { captureBoardTarget, boardTargetDescription, runBoardConfirmation } from "./board-confirmation.mjs";
 
 /**
  * @typedef {{getSession: () => import("../../board/session.mjs").BoardSession,
@@ -39,6 +40,12 @@ export function mountSettingsDialogs({ getSession, run, setUi, ui, wirelessForm,
   const configurationDialog = queryElement("dialog#configuration-dialog");
   const rebootDialog = queryElement("dialog#reboot-dialog");
   const dialogs = [configurationDialog, rebootDialog];
+  /** @type {ReturnType<typeof captureBoardTarget> | null} */
+  let configurationTarget = null;
+  /** @type {ReturnType<typeof captureBoardTarget> | null} */
+  let rebootTarget = null;
+  configurationDialog.addEventListener("close", () => { configurationTarget = null; });
+  rebootDialog.addEventListener("close", () => { rebootTarget = null; });
   const selectedRadios = () => {
     const session = getSession();
     return session.state.hardware?.capabilities & CAP.WIRELESS
@@ -65,50 +72,63 @@ export function mountSettingsDialogs({ getSession, run, setUi, ui, wirelessForm,
     const bleEnabled = wifiEnabled === null ? false : Boolean(selectedRadios() & RADIOS.BLE);
     element("configuration-dialog-profile").textContent =
       UI_TEXT.configurationProfile(Number(settingsClock.value), wifiEnabled, bleEnabled);
+    configurationTarget = captureBoardTarget(session);
+    element("configuration-board-target").textContent = boardTargetDescription(session);
     configurationDialog.showModal();
   });
   element("confirm-configuration").addEventListener("click", () => run(async () => {
     if (!configurationDialog.open) return;
+    const target = configurationTarget;
+    configurationTarget = null;
     configurationDialog.close();
-    if (settingsSave.disabled) return;
-    const bluetooth = bluetoothLink();
-    const blocked = bluetooth ? null : wirelessForm.saveBlockReason();
-    if (blocked) {
-      setUi({ settings_message: blocked });
-      return;
-    }
-    const owner = getSession();
-    const signal = wirelessForm.signal;
-    const generation = owner.connectionGeneration;
-    const current = () => !isDisposed() && getSession() === owner && !signal.aborted
-      && owner.connectionGeneration === generation;
-    const settings = { system_clock_mhz: Number(settingsClock.value), sdcard_profile: 0,
-      radios: bluetooth ? owner.state.settings?.radios ?? 0 : selectedRadios() };
-    try {
-      const wireless = bluetooth ? null : wirelessForm.request();
-      const saved = await owner.saveConfiguration({ settings, wireless });
-      if (!current()) return;
-      if (saved) wirelessForm.finish(saved);
-      setUi({ settings_dirty: false, settings_message: UI_TEXT.settingsSaved });
-    } catch (error) {
-      if (!current()) return;
-      if (!bluetooth && wirelessForm.dirty()) wirelessForm.finish(null, describe(error));
-      setUi({ settings_message: UI_TEXT.settingsSaveFailed(describe(error)) });
-    }
+    await runBoardConfirmation(target, getSession, message => setUi({ settings_message: message }),
+      UI_TEXT.settingsBoardChanged, async owner => {
+        if (settingsSave.disabled) return;
+        const bluetooth = bluetoothLink();
+        const blocked = bluetooth ? null : wirelessForm.saveBlockReason();
+        if (blocked) {
+          setUi({ settings_message: blocked });
+          return;
+        }
+        const signal = wirelessForm.signal;
+        const generation = owner.connectionGeneration;
+        const current = () => !isDisposed() && getSession() === owner && !signal.aborted
+          && owner.connectionGeneration === generation;
+        const settings = { system_clock_mhz: Number(settingsClock.value), sdcard_profile: 0,
+          radios: bluetooth ? owner.state.settings?.radios ?? 0 : selectedRadios() };
+        try {
+          const wireless = bluetooth ? null : wirelessForm.request();
+          const saved = await owner.saveConfiguration({ settings, wireless });
+          if (!current()) return;
+          if (saved) wirelessForm.finish(saved);
+          setUi({ settings_dirty: false, settings_message: UI_TEXT.settingsSaved });
+        } catch (error) {
+          if (!current()) return;
+          if (!bluetooth && wirelessForm.dirty()) wirelessForm.finish(null, describe(error));
+          setUi({ settings_message: UI_TEXT.settingsSaveFailed(describe(error)) });
+        }
+      });
   }));
   settingsReboot.addEventListener("click", () => {
     if (settingsReboot.disabled) return;
     const session = getSession();
     const staged = session.state.wireless?.staged_mask
       || session.state.wireless?.staged_state & STAGED_EXPIRED;
-    element("reboot-consequence").textContent = staged ? UI_TEXT.rebootStaged
-      : ui.getState().settings_dirty || wirelessForm.dirty() ? UI_TEXT.rebootUnsaved : UI_TEXT.rebootSaved;
+    const unsaved = ui.getState().settings_dirty || wirelessForm.dirty();
+    element("reboot-consequence").textContent = UI_TEXT.rebootConsequence(Boolean(staged), unsaved);
+    rebootTarget = captureBoardTarget(session);
+    element("reboot-board-target").textContent = boardTargetDescription(session);
     rebootDialog.showModal();
   });
   element("confirm-reboot").addEventListener("click", () => run(async () => {
     if (!rebootDialog.open) return;
+    const target = rebootTarget;
+    rebootTarget = null;
     rebootDialog.close();
-    if (!settingsReboot.disabled) await getSession().reboot(true);
+    await runBoardConfirmation(target, getSession, message => setUi({ settings_message: message }),
+      UI_TEXT.rebootBoardChanged, async session => {
+        if (!settingsReboot.disabled) await session.reboot(true);
+      });
   }));
   for (const [name, dialog] of /** @type {[string, HTMLDialogElement][]} */ (
     [["configuration", configurationDialog], ["reboot", rebootDialog]])) {

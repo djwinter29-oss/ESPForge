@@ -31,6 +31,7 @@ export const REASON = Object.freeze({
   STORAGE_UNAVAILABLE: "storage-unavailable",
   RECOVERY_UNAVAILABLE: "recovery-unavailable",
   RECOVERY_CLEAR_FAILED: "recovery-clear-failed",
+  RECOVERY_ABANDONED: "recovery-abandoned",
   // Connection and recovery.
   CONNECTION_CHANGED: "connection-changed",
   CONNECTION_CANCELLED: "connection-cancelled",

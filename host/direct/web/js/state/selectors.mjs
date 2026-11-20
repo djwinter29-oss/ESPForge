@@ -72,7 +72,9 @@ const RULES = {
     : !(caps & CAP.REBOOT) ? NO_CAPABILITY : e.blocked ? BLOCKED : null,
   settings: (state, e, caps) => !e.storageReady ? REASON.SETTINGS_STORAGE
     : !(caps & CAP.SETTINGS) ? NO_CAPABILITY : e.blocked ? BLOCKED : null,
-  wireless: (state, e) => e.wirelessReady ? null : REASON.WIRELESS_STORAGE,
+  wireless: (state, e, caps) => state.link === "ble" ? REASON.USB_ONLY
+    : !(caps & CAP.WIRELESS) ? NO_CAPABILITY : e.blocked ? BLOCKED
+      : e.storageReady ? null : REASON.WIRELESS_STORAGE,
   msc: (state, e) => e.mscReady ? null : BLOCKED,
   benchmark: (state, e) => e.benchmarkReady ? null : BLOCKED,
   "benchmark-cancel": (state, e) => e.benchmarkCancelReady ? null : BLOCKED,
