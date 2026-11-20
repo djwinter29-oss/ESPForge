@@ -373,16 +373,21 @@ def check_recovery_presentation(page: Page, origin: str, host_name: str) -> None
     assert page.locator("#reboot-control").get_attribute("aria-describedby") == "settings-save-help"
     recovery = page.locator("#command-resync")
     expect(recovery).to_be_visible()
-    bounds = recovery.evaluate("""node => {
-        const rect = node.getBoundingClientRect();
-        const style = getComputedStyle(node);
-        return {width: rect.width, left: rect.left, right: rect.right,
-            scrollWidth: node.scrollWidth, clientWidth: node.clientWidth,
-            gridColumn: style.gridColumnStart, viewport: innerWidth,
-            footerRight: node.parentElement.getBoundingClientRect().right};
-    }""")
-    assert bounds["width"] >= 80 and bounds["scrollWidth"] <= bounds["clientWidth"], bounds
-    assert bounds["gridColumn"] == "2" and bounds["right"] <= bounds["footerRight"], bounds
+    for width, zoom in ((1280, ""), (320, ""), (1280, "2")):
+        page.set_viewport_size({"width": width, "height": 900})
+        page.evaluate("(zoom) => document.documentElement.style.zoom = zoom", zoom)
+        bounds = recovery.evaluate("""node => {
+            const rect = node.getBoundingClientRect();
+            const style = getComputedStyle(node);
+            return {width: rect.width, left: rect.left, right: rect.right,
+                scrollWidth: node.scrollWidth, clientWidth: node.clientWidth,
+                gridColumn: style.gridColumnStart, viewport: innerWidth,
+                footerRight: node.parentElement.getBoundingClientRect().right};
+        }""")
+        assert bounds["width"] >= 80 and bounds["scrollWidth"] <= bounds["clientWidth"], bounds
+        assert (bounds["gridColumn"] == "2" and bounds["left"] >= 0
+                and bounds["right"] <= min(bounds["footerRight"], bounds["viewport"])), bounds
+    page.evaluate("document.documentElement.style.zoom = ''")
 
     page.evaluate("""() => {
         window.sharedBrowserState.statusFails = true;

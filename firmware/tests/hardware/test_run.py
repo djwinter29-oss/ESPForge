@@ -13,7 +13,8 @@ import run as hardware
 
 def storage():
     return {"sample_valid": True, "initialized": True, "msc_enabled": False,
-            "filesystem_format": "fat32", "cid": "card", "sequence": 1}
+            "filesystem_format": "fat32", "cid": "card", "sequence": 1,
+            "capacity_bytes": 64 * 1024 * 1024, "bus_clock_hz": 25000000}
 
 
 def status(state="passed", **values):
@@ -102,6 +103,7 @@ class HardwareCheckTests(unittest.TestCase):
         with patch.object(hardware, "sample", side_effect=samples):
             result = hardware.benchmark(client, {}, args)
         self.assertEqual(result["written_bytes"], 32 * 1024 * 1024)
+        self.assertEqual(result["card"]["cid"], "card")
         self.assertFalse(result["file_remains"])
         client.benchmark.assert_called_once_with(True, 32)
 

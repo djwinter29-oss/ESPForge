@@ -61,9 +61,11 @@ python3 firmware/tests/hardware/run.py --serial BOARD_SERIAL \
 ```
 
 It requires fresh telemetry and storage reports within 5 seconds, validates reports through the existing codecs,
-rejects unexpected uptime resets, and fails any completed Feature/Input read exceeding 1000 ms.
-The report records actual maxima and selected check counts. HID handle reopens are **not** physical USB
-disconnect/reconnect or firmware USB-stack reset tests.
+rejects unexpected uptime resets, and fails sampled configuration/wireless Feature reads or Input polls exceeding
+1000 ms. Identity and command-acknowledgement Feature calls are not individually timed.
+The report records measured maxima and selected check counts. `checks.samples` counts baseline cycles plus handle
+reopens; report counters also include benchmark monitoring. Input latency includes the requested polling wait.
+HID handle reopens are **not** physical USB disconnect/reconnect or firmware USB-stack reset tests.
 
 After authorizing scan state changes, repeat scans while checking management responsiveness:
 

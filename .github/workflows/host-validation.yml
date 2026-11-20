@@ -44,7 +44,9 @@ jobs:
       - name: Type-check Python host
         if: matrix.os == 'ubuntu-24.04' && matrix.python == '3.12'
         working-directory: host/python
-        run: pyright
+        run: |
+          pyright
+          pyright ../../firmware/tests/hardware/run.py
 
       - name: Verify installed Python wheel
         if: matrix.os == 'ubuntu-24.04' && matrix.python == '3.12'

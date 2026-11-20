@@ -23,7 +23,7 @@ def arguments(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--benchmark-mib", type=int, default=0, help="0 disables writes; otherwise 32..1024 MiB")
     parser.add_argument("--allow-state-changes", action="store_true")
     parser.add_argument("--allow-card-writes", action="store_true")
-    parser.add_argument("--max-latency-ms", type=int, default=1000, help="Maximum completed Feature/Input read latency")
+    parser.add_argument("--max-latency-ms", type=int, default=1000, help="Maximum sampled Feature/Input read latency")
     parser.add_argument("--timeout-seconds", type=int, default=900, help="Benchmark deadline between completed reads")
     args = parser.parse_args(argv)
     if not args.serial or args.cycles < 1 or args.reopens < 0 or args.wifi_scans < 0:
@@ -118,7 +118,7 @@ def benchmark(
                     raise RuntimeError("Benchmark target changed during the run")
                 continue
             active_seen |= status["active"]
-            if not status["active"] and status["state"] not in ("idle",):
+            if not status["active"] and status["state"] != "idle":
                 if status["state"] in ("failed", "cancelled"):
                     raise RuntimeError(f"Benchmark {status['state']}: error {status['error']}, "
                                        f"filesystem result {status['filesystem_result']}")
@@ -132,10 +132,15 @@ def benchmark(
                     if (not after["sample_valid"] or not after["initialized"] or after["msc_enabled"]
                             or after["filesystem_format"] == "unknown" or after["cid"] != before["cid"]):
                         raise RuntimeError("The original card did not return to mounted firmware ownership")
-                    return {key: status[key] for key in (
-                        "target_bytes", "written_bytes", "read_bytes", "write_elapsed_ms", "read_elapsed_ms",
-                        "mismatch_count", "filesystem_result", "file_remains",
-                    )}
+                    return {
+                        "card": {key: before[key] for key in (
+                            "cid", "capacity_bytes", "filesystem_format", "bus_clock_hz",
+                        )},
+                        **{key: status[key] for key in (
+                            "target_bytes", "written_bytes", "read_bytes", "write_elapsed_ms", "read_elapsed_ms",
+                            "mismatch_count", "filesystem_result", "file_remains",
+                        )},
+                    }
     raise TimeoutError("Benchmark result was not attributable within the deadline; inspect it without resending")
 
 

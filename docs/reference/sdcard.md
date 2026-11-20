@@ -61,7 +61,8 @@ Use a 3.3 V-compatible SPI socket/module with appropriate SD pull-ups, including
 replace external resistors. This is ordinary full-duplex SPI with one MOSI and one MISO line, not native one-bit SDMMC.
 
 The native image enables SDMMC slot 0 with a four-bit bus; the SPI image disables that slot and enables SPI3.
-Both request a 25 MHz maximum frequency. SPI2 remains dedicated to the RGB LED in both images.
+Native SDMMC requests a 40 MHz maximum frequency; SPI requests 25 MHz.
+SPI2 remains dedicated to the RGB LED in both images.
 GPIO33-37 are occupied by octal PSRAM on N16R8.
 
 Report `2` publishes storage GPIOs in CLK, CMD, DAT0, DAT1, DAT2, DAT3 order as
@@ -78,7 +79,7 @@ validate the new allocation before use.
 | SPI image controller/slot | SPI3, compatible `zephyr,sdhc-spi-slot` |
 | Disk layer | `zephyr,sdmmc-disk`, disk name `SD` |
 | Filesystem | FatFs, mount point `/SD:` |
-| Requested bus ceiling | 25 MHz; not a measured runtime clock or throughput |
+| Requested bus ceiling | Native 40 MHz; SPI 25 MHz; not a measured runtime clock or throughput |
 | Native image pad drive | `drive-strength = <10>` on CLK, CMD and DAT0-DAT3 |
 
 Both images enable GPIO/pinctrl, disk access, the SDMMC disk driver, the filesystem API and FatFs.
@@ -88,6 +89,15 @@ disabled: the application cannot automatically format a failed mount or call Fat
 
 Prepare an existing FAT16, FAT32 or exFAT volume on a computer and back up its data before use. exFAT support
 covers mounting existing volumes, such as factory-formatted SDXC cards; the firmware still cannot create one.
+
+Native SDMMC starts at the probing clock and negotiates the card's advertised capabilities.
+Cards that accept High Speed mode can use the 40 MHz ceiling; cards without that support remain at the legacy
+clock, at most 25 MHz requested. The ESP32 driver divides a 160 MHz source: a 25 MHz request produces about
+22.9 MHz, while 40 MHz is exact. Requesting 50 MHz would still select 40 MHz with this driver.
+There is no UHS/1.8 V mode or automatic clock reduction after CRC errors.
+A card's write-speed class does not determine its negotiated bus clock.
+Keep the 10 mA pad drive and qualify writes on the actual wiring; if higher-speed operation is unreliable,
+restore `max-bus-freq = <25000000>` in the native board overlay and rebuild rather than replaying failed writes.
 
 ## Boot and runtime mount lifecycle
 

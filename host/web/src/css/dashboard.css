@@ -321,7 +321,7 @@ h2 { margin-bottom: 0; font-size: 18px; font-weight: 650; }
 .status-line[data-error="true"] { color: var(--coral); }
 .status-line[data-error="true"] .status-mark { background: var(--red); }
 .status-line[data-active="true"]:not([data-error="true"]) .status-mark { background: var(--green); }
-#command-resync { grid-column: 2; justify-self: start; }
+#command-resync { grid-column: 2; justify-self: start; min-width: 80px; }
 #recovery-help { grid-column: 2; max-width: 100%; }
 
 @media (max-width: 1200px) {
