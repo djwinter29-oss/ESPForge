@@ -27,3 +27,7 @@ Further qualification should record firmware/image identity, host/tool versions,
 procedures, durations and observed results. Use backups and a dedicated card for destructive or fault-injection tests.
 Historical software-only records remain unchanged; neither they nor one functional report establish compatibility
 with every hardware or workload combination.
+
+The [firmware qualification procedure](firmware-qualification.md) defines opt-in target checks, matrices,
+acceptance thresholds and safety requirements for closing the SD/MSC and USB/BLE/Wi-Fi lifecycle gaps.
+Having a procedure or software-tested runner does not close those physical gaps.

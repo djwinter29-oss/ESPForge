@@ -30,6 +30,7 @@ Keep each topic in one document; other documents link rather than duplicate its 
 | SD pin allocation, driver configuration, mount behavior, status and data safety | [SD storage](reference/sdcard.md) |
 | Shared dashboard HTTP routes and request rules | [Shared dashboard API](../host/web/README.md) |
 | Toolchains and software validation | [Firmware](development/firmware.md), [host tools](development/host-tools.md) |
+| Firmware target checks and SD/USB/BLE/Wi-Fi qualification procedure | [Firmware qualification](validation/firmware-qualification.md) |
 | Packaging and publication | [Release](deployment/release.md) |
 | Unqualified behavior and observed results | [Gaps](validation/qualification-gaps.md), [records](validation/records/README.md) |
 

@@ -38,6 +38,9 @@ jobs:
       - name: Run Python host tests
         run: python -m unittest discover -s host/python/tests -v
 
+      - name: Check firmware hardware-runner safety without hardware
+        run: python -m unittest discover -s firmware/tests/hardware -v
+
       - name: Type-check Python host
         if: matrix.os == 'ubuntu-24.04' && matrix.python == '3.12'
         working-directory: host/python

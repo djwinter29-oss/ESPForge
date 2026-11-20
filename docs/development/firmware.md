@@ -171,3 +171,10 @@ Software-only wrapper tests use mocked installers and runners:
 Do not connect an SD card or run storage tests for software-only setup.
 Compilation does not validate initialization, USB enumeration, BLE/Wi-Fi coexistence, or filesystem reliability.
 Record software evidence separately from future hardware observations in [validation records](../validation/records/README.md).
+
+## Target qualification
+
+Use the [firmware qualification procedure](../validation/firmware-qualification.md) for opt-in USB target checks,
+SD/MSC card matrices and USB/BLE/Wi-Fi lifecycle stress. Its runner reuses the installed Python host package;
+software-only safety tests run with `python3 -m unittest discover -s firmware/tests/hardware -v`.
+Neither these safety tests nor successful target builds supply physical qualification evidence.
