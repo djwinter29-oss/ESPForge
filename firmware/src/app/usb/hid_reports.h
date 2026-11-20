@@ -110,8 +110,10 @@ typedef struct {
 	bool presence_known; /**< Debounced presence is known. */
 	bool present; /**< Debounced card-present state. */
 	bool sample_valid; /**< Firmware-owned, non-busy SD sample is available. */
-	bool initialized; /**< The current medium was initialized successfully. */
+	bool initialized; /**< Hardware initialization succeeded, independently of filesystem mounting. */
 	bool capacity_valid; /**< Sector count belongs to the current medium. */
+	bool cid_valid; /**< CID belongs to the initialized current medium. */
+	uint8_t cid[16]; /**< Raw SD CID in wire byte order. */
 	uint32_t bus_clock_hz; /**< Configured bus ceiling, not a measured clock. */
 	uint32_t block_count; /**< Whole-card capacity in 512-byte sectors. */
 	uint8_t filesystem_format; /**< Mounted FAT format, or zero when unknown. */

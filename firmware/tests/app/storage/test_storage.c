@@ -12,22 +12,33 @@ static unsigned opens;
 static unsigned closes;
 static unsigned refreshes;
 static bool opened_usb;
+static bool mount_failed;
+static int64_t completed_at;
 
 void ef_storage_publish(const ef_storage_t *storage)
 {
 	published = *storage;
 }
 
-int ef_storage_media_open(bool usb, uint32_t *blocks, uint8_t *format)
+int ef_storage_media_open(bool usb, ef_storage_t *storage)
 {
 	TEST_ASSERT_TRUE(published.busy);
 	TEST_ASSERT_FALSE(published.sample_valid);
 	TEST_ASSERT_FALSE(published.msc_enabled);
 	++opens;
 	opened_usb = usb;
-	*blocks = 12345;
-	*format = usb ? 0 : 3;
-	return open_result;
+	storage->initialized = open_result == 0;
+	storage->block_count = storage->initialized ? 12345 : 0;
+	storage->cid_valid = storage->initialized;
+	memset(storage->cid, storage->initialized ? 0x1b : 0, sizeof(storage->cid));
+	storage->bus_clock_hz = storage->initialized ? 25000000 : 0;
+	storage->filesystem_format = storage->initialized && !usb && !mount_failed ? 3 : 0;
+	return open_result != 0 ? open_result : mount_failed && !usb ? -ENODEV : 0;
+}
+
+int64_t ef_storage_media_time(void)
+{
+	return completed_at;
 }
 
 int ef_storage_media_close(void)
@@ -52,6 +63,8 @@ void setUp(void)
 	open_result = close_result = refresh_result = 0;
 	opens = closes = refreshes = 0;
 	opened_usb = false;
+	mount_failed = false;
+	completed_at = 0;
 	ef_storage_policy_init(true, false, 0);
 }
 
@@ -79,6 +92,9 @@ void test_insertion_is_debounced_then_mounted_and_removal_clears_all_card_facts(
 	TEST_ASSERT_FALSE(published.initialized);
 	TEST_ASSERT_EQUAL_UINT32(0, published.block_count);
 	TEST_ASSERT_EQUAL_UINT8(0, published.filesystem_format);
+	TEST_ASSERT_FALSE(published.cid_valid);
+	TEST_ASSERT_EACH_EQUAL_UINT8(0, published.cid, sizeof(published.cid));
+	TEST_ASSERT_EQUAL_UINT32(0, published.bus_clock_hz);
 }
 
 void test_boot_mount_and_failed_mount_retry_are_paced(void)
@@ -185,4 +201,59 @@ void test_brief_removal_revokes_export_and_replacement_waits_for_stable_insertio
 	TEST_ASSERT_EQUAL_UINT(before + 1, opens);
 	TEST_ASSERT_FALSE(opened_usb);
 	TEST_ASSERT_FALSE(published.msc_enabled);
+}
+
+void test_failed_mount_retains_hardware_identity_and_retries_from_completion(void)
+{
+	ef_storage_policy_init(true, true, 0);
+	mount_failed = true;
+	completed_at = 5000;
+	ef_storage_policy_poll(true, 0, EF_STORAGE_NO_REQUEST);
+	TEST_ASSERT_TRUE(published.sample_valid);
+	TEST_ASSERT_TRUE(published.initialized);
+	TEST_ASSERT_TRUE(published.capacity_valid);
+	TEST_ASSERT_TRUE(published.cid_valid);
+	TEST_ASSERT_EACH_EQUAL_UINT8(0x1b, published.cid, sizeof(published.cid));
+	TEST_ASSERT_EQUAL_UINT32(12345, published.block_count);
+	TEST_ASSERT_EQUAL_UINT32(25000000, published.bus_clock_hz);
+	TEST_ASSERT_EQUAL_UINT8(0, published.filesystem_format);
+	ef_storage_policy_poll(true, 6999, EF_STORAGE_NO_REQUEST);
+	TEST_ASSERT_EQUAL_UINT(1, opens);
+	mount_failed = false;
+	ef_storage_policy_poll(true, 7000, EF_STORAGE_NO_REQUEST);
+	TEST_ASSERT_EQUAL_UINT(2, opens);
+	TEST_ASSERT_EQUAL_UINT8(3, published.filesystem_format);
+}
+
+void test_unmounted_card_can_export_only_on_request_and_failed_export_clears_identity(void)
+{
+	ef_storage_policy_init(true, true, 0);
+	mount_failed = true;
+	ef_storage_policy_poll(true, 0, EF_STORAGE_NO_REQUEST);
+	TEST_ASSERT_FALSE(published.msc_enabled);
+	ef_storage_policy_poll(true, 1, 1);
+	TEST_ASSERT_TRUE(published.msc_enabled);
+	ef_storage_policy_poll(true, 2, 0);
+	TEST_ASSERT_FALSE(published.msc_enabled);
+	TEST_ASSERT_TRUE(published.initialized);
+	TEST_ASSERT_TRUE(published.msc_request_rejected);
+	TEST_ASSERT_EQUAL_UINT8(0, published.filesystem_format);
+	refresh_result = -EIO;
+	ef_storage_policy_poll(true, 3, 1);
+	TEST_ASSERT_FALSE(published.initialized);
+	TEST_ASSERT_FALSE(published.cid_valid);
+	TEST_ASSERT_EACH_EQUAL_UINT8(0, published.cid, sizeof(published.cid));
+	TEST_ASSERT_EQUAL_UINT32(0, published.bus_clock_hz);
+}
+
+void test_detection_error_clears_unmounted_card_identity(void)
+{
+	ef_storage_policy_init(true, true, 0);
+	mount_failed = true;
+	ef_storage_policy_poll(true, 0, EF_STORAGE_NO_REQUEST);
+	ef_storage_policy_poll(-EIO, 1, EF_STORAGE_NO_REQUEST);
+	TEST_ASSERT_FALSE(published.sample_valid);
+	TEST_ASSERT_FALSE(published.cid_valid);
+	TEST_ASSERT_EACH_EQUAL_UINT8(0, published.cid, sizeof(published.cid));
+	TEST_ASSERT_EQUAL_UINT32(0, published.block_count);
 }

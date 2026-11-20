@@ -414,7 +414,8 @@ function renderMemory(memory, filesystemFormat, stale, cardDetectGpio) {
     return;
   }
   set("#memory-state", memory?.configured && memory.sample_valid === false ? "Busy"
-    : memory?.initialized ? "Ready" : memory?.configured ? "Not initialized" : "Unavailable");
+    : memory?.initialized ? filesystemFormat && filesystemFormat !== "unknown" ? "Ready" : "Not mounted"
+      : memory?.configured ? "Not initialized" : "Unavailable");
   set("#memory-note", !memory?.configured ? "No SD-card transport configured"
     : memory && !memory.sample_valid ? ""
     : memory.presence_known && !memory.present
@@ -423,7 +424,10 @@ function renderMemory(memory, filesystemFormat, stale, cardDetectGpio) {
           ? ` and the card-detect connection on GPIO${cardDetectGpio}` : ""}.`
       : memory.present && !memory.initialized
         ? "Card detected but not initialized; check UART logs and SD wiring."
-        : memory.initialized ? "" : "Card not mounted; check card insertion, UART logs and SD wiring.");
+        : memory.initialized
+          ? filesystemFormat && filesystemFormat !== "unknown" ? ""
+            : "Card initialized but filesystem not mounted; check UART logs."
+          : "Card not mounted; check card insertion, UART logs and SD wiring.");
   if (busy && lastStorageDetails) {
     ({ memory, filesystemFormat } = lastStorageDetails);
   }

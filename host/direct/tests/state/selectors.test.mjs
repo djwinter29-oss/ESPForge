@@ -52,9 +52,11 @@ test("operation eligibility is one rule table for storage, settings and wireless
 
 test("benchmark starts need fresh firmware storage; cancellation works with a busy SD sample", () => {
   const state = readyState({ hardware: { capabilities: 0xb6 },
+    filesystem_format: "fat32",
     freshness: { 10: "fresh", 11: "fresh" }, memory: { sample_valid: true, initialized: true },
     self_test: { active: false } });
   assert.equal(canRun(state, "benchmark").allowed, true);
+  assert.equal(canRun({ ...state, filesystem_format: "unknown" }, "benchmark").allowed, false);
   assert.equal(canRun({ ...state, link: "ble" }, "benchmark").allowed, false);
   assert.equal(canRun({ ...state, freshness: { 10: "fresh", 11: "stale" } }, "benchmark").allowed, false);
   const active = { ...state, self_test: { active: true }, memory: { sample_valid: false } };

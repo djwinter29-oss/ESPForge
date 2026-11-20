@@ -20,6 +20,7 @@
  * @property {{transition_pending?: boolean, enabled?: boolean} | null} [msc]
  * @property {{board_flags?: number} | null} [board_configuration]
  * @property {{sample_valid?: boolean, initialized?: boolean} | null} [memory]
+ * @property {string | null} [filesystem_format]
  * @property {(import("./api.mjs").BootSettings & {tcp_cli_enabled?: boolean}) | null} [settings]
  * @property {boolean} [settings_supported]
  * @property {string | null} [settings_message]
@@ -183,7 +184,8 @@ export function operationState(snapshot, activity = {}) {
   const canReboot = Boolean(snapshot?.connected && capabilities & CAPABILITY_REBOOT && !settingsBusy
     && !storageCommandPending);
   const canStartBenchmark = Boolean(snapshot?.connected && benchmarkSupported && benchmarkFresh && !settingsBusy
-    && !busy && !storageCommandPending && snapshot?.memory?.initialized);
+    && !busy && !storageCommandPending && snapshot?.memory?.initialized
+    && snapshot.filesystem_format && snapshot.filesystem_format !== "unknown");
   const canCancelBenchmark = Boolean(snapshot?.connected && benchmarkSupported && benchmarkFresh && !settingsBusy
     && !busy && snapshot?.self_test?.active);
   const canEnableMsc = canManageMsc && !snapshot?.msc?.enabled && snapshot?.memory?.initialized === true;
@@ -219,7 +221,7 @@ export function operationState(snapshot, activity = {}) {
         : snapshot?.self_test?.active ? "A benchmark is already running; cancel it before starting another."
           : storageBlockReason ?? (busy || settingsBusy ? "Finish the pending operation before starting a benchmark."
             : !snapshot?.memory?.initialized ? "Initialize a detected card before starting a benchmark."
-              : "Storage is not ready for a benchmark.");
+              : "Mount a supported filesystem before starting a benchmark.");
   const benchmarkCancelBlockReason = canCancelBenchmark ? null : !snapshot?.connected
     ? "Connect to a board before canceling a benchmark."
     : !benchmarkSupported ? "Firmware does not support storage benchmarks."

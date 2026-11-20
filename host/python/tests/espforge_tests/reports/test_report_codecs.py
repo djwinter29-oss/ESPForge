@@ -249,10 +249,24 @@ class ProtocolTests(unittest.TestCase):
         bad_mode[5] = 2
         with self.assertRaisesRegex(ValueError, "bus mode"):
             parse_memory_report(bad_mode, self.identity)
-        for report in (storage_report(flags=0x7F, cid=bytes.fromhex("1b53444341524431211234567801aaff")),
-                       storage_report(speed=2)):
+        for report in (storage_report(speed=2),):
             with self.subTest(report=report), self.assertRaisesRegex(ValueError, "ESPForge profile"):
                 parse_memory_report(report, self.identity)
+
+    def test_unmounted_card_retains_cid_identity_capacity_and_bus(self):
+        report = bytearray(storage_report(flags=0x7F, cid=bytes.fromhex("1b53444341524431211234567801aaff")))
+        report[31] = 0
+        data = parse_memory_report(report, self.identity)
+        self.assertTrue(data["initialized"])
+        self.assertEqual(data["filesystem_format"], "unknown")
+        self.assertEqual(data["capacity_bytes"], 4096 * 512)
+        self.assertEqual(data["bus_clock_hz"], 25_000_000)
+        self.assertEqual(data["manufacturer"]["product_name"], "CARD1")
+        self.assertEqual(data["manufacturer"]["serial_number"], 0x12345678)
+        invalid = report.copy()
+        invalid[15:31] = bytes(16)
+        with self.assertRaises(ValueError):
+            parse_memory_report(invalid, self.identity)
 
     def test_card_detection_msc_availability_and_invalidated_sd_samples(self):
         config = bytearray(configuration_report(flags=0x45))

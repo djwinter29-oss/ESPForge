@@ -31,7 +31,7 @@ case "$*" in
         mkdir -p zephyr/scripts modules/hal/espressif/zephyr
         touch zephyr/scripts/requirements-base.txt modules/hal/espressif/zephyr/requirements.txt ;;
     "-m west list zephyr "*)
-        printf '%s/zephyr\n' "$PWD" ;;
+        printf '%s/zephyr\n' "$(dirname "$MOCK_ROOT")" ;;
     "-m west list hal_espressif "*)
         printf '%s/modules/hal/espressif\n' "$PWD" ;;
     "-m west blobs fetch "*)
@@ -78,16 +78,24 @@ class WrapperTests(unittest.TestCase):
         temp = tempfile.TemporaryDirectory(prefix="espforge-wrappers-")
         self.addCleanup(temp.cleanup)
         self.workspace = Path(temp.name)
+        # Confine mocked workspace discovery even when fixtures live beneath a real west workspace.
+        (self.workspace / ".west").mkdir()
+        (self.workspace / ".west/config").touch()
         self.root = self.workspace / "ESPForge"
         shutil.copytree(TOOLS, self.root / "tools/firmware")
+        shutil.copytree(TOOLS.parents[1] / "patches", self.root / "patches")
         self.bin = self.workspace / "mock-bin"
         self.bin.mkdir()
         python = self.bin / "python3"
         python.write_text(MOCK)
         python.chmod(0o755)
+        shutil.copy(python, self.bin / "python")
         for tool in ("git", "cmake", "ninja", "gperf", "dtc", "make", "gcc", "g++", "xz", "wget"):
             path = self.bin / tool
-            path.write_text("#!/usr/bin/env bash\nexit 0\n")
+            path.write_text("#!/usr/bin/env bash\n"
+                            'if [[ "$*" == *"rev-parse HEAD"* ]]; then '
+                            "echo 28af05ca658cbacf745fd5b099566311c58ccb1d; fi\n"
+                            "exit 0\n")
             path.chmod(0o755)
         self.log = self.workspace / "commands.log"
         self.env = dict(os.environ, PATH=f"{self.bin}:{os.environ['PATH']}", PYTHON=str(python),
@@ -109,14 +117,47 @@ class WrapperTests(unittest.TestCase):
             result = self.run_script("build.sh")
             self.assertEqual(result.returncode, 0, result.stderr)
         commands = self.commands()
-        for command in ("-m venv ", "-m west init ", "-m west sdk install "):
+        for command in ("-m venv ", "-m west sdk install "):
             self.assertEqual(commands.count(command), 1)
+        self.assertNotIn("-m west init ", commands)
         self.assertEqual(commands.count("-m west build "), 2)
         self.assertIn("-m west update --narrow -o=--depth=1", commands)
         self.assertIn("-m west blobs fetch hal_espressif", commands)
         self.assertIn("-b esp32s3_devkitc/esp32s3/procpu", commands)
         self.assertIn("-DDTC_OVERLAY_FILE=boards/esp32s3_devkitc_n16r8_sdmmc.overlay", commands)
         self.assertIn("-DEF_ENABLE_STORAGE_BENCHMARK=ON", commands)
+
+    def test_dependency_patch_applies_once_accepts_reverse_match_and_rejects_conflict(self):
+        self.assertEqual(self.run_script("build.sh").returncode, 0)
+        git = self.bin / "git"
+        git.write_text("""#!/usr/bin/env bash
+printf '%s\\n' "$*" >> "$MOCK_LOG"
+case "$*" in
+    *"rev-parse HEAD"*) echo 28af05ca658cbacf745fd5b099566311c58ccb1d ;;
+    *"apply --reverse --check"*) [[ "$PATCH_STATE" == applied ]] ;;
+    *"apply --check"*) [[ "$PATCH_STATE" == fresh ]] ;;
+    *"apply "*) exit 0 ;;
+    *) exit 99 ;;
+esac
+""")
+        for state, expected in (("fresh", 0), ("applied", 0), ("conflict", 1)):
+            self.env["PATCH_STATE"] = state
+            self.log.write_text("")
+            result = self.run_script("apply-zephyr-patches.sh", str(self.workspace / "zephyr"))
+            self.assertEqual(result.returncode, expected, result.stderr)
+            calls = self.commands()
+            self.assertIn("apply --check", calls)
+            if state == "fresh":
+                self.assertNotIn("apply --reverse", calls)
+            else:
+                self.assertIn("apply --reverse --check", calls)
+            if state == "conflict":
+                self.assertIn("neither applies nor matches", result.stderr)
+        self.env["PATCH_STATE"] = "fresh"
+        self.log.write_text("")
+        result = self.run_script("apply-zephyr-patches.sh", str(self.root))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn("apply", self.commands())
 
     def test_flash_builds_missing_artifacts_then_flashes_once(self):
         result = self.run_script("flash.sh", "--port", "/dev/mock", "--baud", "115200")
@@ -236,7 +277,7 @@ class WrapperTests(unittest.TestCase):
         self.assertEqual(self.commands(), "")
 
     def test_relative_custom_venv_and_existing_workspace(self):
-        (self.workspace / ".west").mkdir()
+        (self.workspace / ".west").mkdir(exist_ok=True)
         (self.workspace / ".west/config").touch()
         self.env["VENV_DIR"] = "custom venv"
         result = self.run_script("build.sh")

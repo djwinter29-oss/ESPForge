@@ -48,7 +48,8 @@ export function deriveOperationEligibility(state) {
       && state.runtime?.led_available === true,
     benchmarkSupported,
     benchmarkReady: !blocked && !bluetooth && benchmarkSupported && benchmarkFresh && storageReady
-      && state.memory?.initialized === true,
+      && state.memory?.initialized === true && Boolean(state.filesystem_format)
+      && state.filesystem_format !== "unknown",
     benchmarkCancelReady: !blocked && !bluetooth && benchmarkSupported && benchmarkFresh
       && state.self_test?.active === true,
     settingsReady: !blocked && storageReady,

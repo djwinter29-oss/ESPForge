@@ -132,6 +132,10 @@ void ef_report_storage(const ef_storage_t *storage, uint8_t out[EF_STORAGE_SIZE]
 	}
 	if (valid && storage->initialized) {
 		sd_flags |= 0x08u;
+		if (storage->cid_valid) {
+			sd_flags |= 0x10u;
+			memcpy(out + 14, storage->cid, sizeof(storage->cid));
+		}
 		if (storage->capacity_valid) {
 			sd_flags |= 0x20u;
 			put32(out + 10, storage->block_count);

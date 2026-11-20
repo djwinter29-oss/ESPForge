@@ -82,6 +82,7 @@ done
 python -m pip install --disable-pip-version-check --no-input \
 	-r "$zephyr/scripts/requirements-base.txt" -r "$espressif/zephyr/requirements.txt"
 export ZEPHYR_BASE="$zephyr"
+bash "$root/tools/firmware/apply-zephyr-patches.sh" "$zephyr"
 python -m west blobs fetch hal_espressif
 
 sdk=""

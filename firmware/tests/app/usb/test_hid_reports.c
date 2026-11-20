@@ -180,7 +180,7 @@ void test_usb_owned_storage_report_never_exposes_stale_card_fields(void)
 	ef_storage_t storage = {
 		.configured = true, .sample_valid = true, .presence_known = true, .present = true,
 		.initialized = true, .capacity_valid = true, .block_count = 100,
-		.bus_clock_hz = 25000000, .msc_enabled = true,
+		.bus_clock_hz = 25000000, .msc_enabled = true, .cid_valid = true, .cid = {0x1b},
 	};
 	uint8_t out[EF_STORAGE_SIZE];
 
@@ -190,6 +190,27 @@ void test_usb_owned_storage_report_never_exposes_stale_card_fields(void)
 		TEST_ASSERT_EQUAL_UINT8(0, out[i]);
 	}
 	TEST_ASSERT_EQUAL_UINT8(1, out[31]);
+}
+
+void test_initialized_unmounted_card_reports_cid_capacity_and_bus(void)
+{
+	ef_storage_t storage = {
+		.configured = true, .sample_valid = true, .presence_known = true, .present = true,
+		.initialized = true, .capacity_valid = true, .block_count = 12345,
+		.bus_clock_hz = 25000000, .cid_valid = true,
+		.cid = {0x1b, 0x53, 0x44, 0x43, 0x41, 0x52, 0x44, 0x31, 0x21, 0x12, 0x34, 0x56, 0x78, 0x01, 0xaa, 0xff},
+	};
+	uint8_t out[EF_STORAGE_SIZE];
+
+	ef_report_storage(&storage, out);
+	TEST_ASSERT_EQUAL_HEX8(0x7f, out[2]);
+	TEST_ASSERT_EQUAL_UINT8(EF_STORAGE_SPI ? 2 : 3, out[4]);
+	TEST_ASSERT_EQUAL_MEMORY(storage.cid, out + 14, sizeof(storage.cid));
+	TEST_ASSERT_EQUAL_UINT8(0, out[30]);
+	storage.initialized = false;
+	ef_report_storage(&storage, out);
+	TEST_ASSERT_EQUAL_HEX8(0x47, out[2]);
+	TEST_ASSERT_EACH_EQUAL_UINT8(0, out + 3, 27);
 }
 
 void test_wireless_layout_clears_reserved_flags(void)

@@ -27,8 +27,9 @@ to the USB HID and Bluetooth LE specifications.
 Wi-Fi join events do not supply the 802.11 failure reason. Wireless diagnostics describe state, not a reliable
 classification of authentication or access-point failures.
 
-The disk API does not expose card CID or negotiated SD bus state to the application. Mount errors are logged
-to UART, not carried as error codes in storage reports.
+The pinned SD stack has a managed public-ioctl extension retaining CID during hardware initialization.
+Storage reports retain identity and capacity independently of mounting, but do not expose negotiated bus state.
+Mount errors are logged to UART, not carried as error codes in storage reports.
 
 These are implementation limits, not hardware qualification. Observed evidence and outstanding physical tests
 belong in the validation records and qualification gaps.

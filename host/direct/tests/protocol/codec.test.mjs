@@ -176,6 +176,10 @@ test("storage validates native SDMMC samples, timing, capacity and CID with isol
   assert.equal(decodeStorageReport(cid).memory.manufacturer.product_name, "SD16G");
   assert.equal(decodeStorageReport(cid).memory.manufacturer.serial_number, 0x12345678);
   assert.equal(decodeStorageReport(cid).memory.manufacturer.manufacture_year, 2025);
+  cid[30] = 0;
+  assert.equal(decodeStorageReport(cid).filesystem_format, "unknown");
+  assert.equal(decodeStorageReport(cid).memory.initialized, true);
+  assert.equal(decodeStorageReport(cid).memory.capacity_bytes, 512 * 100000);
   for (const [offset, value] of [[2, 128], [2, 63], [2, 64], [2, 71], [4, 1], [4, 4], [3, 2], [9, 0], [9, 3],
     [31, 1], [32, 1], [33, 2], [30, 5], [14, 1]]) {
     const bad = storage(); bad[offset] = value;

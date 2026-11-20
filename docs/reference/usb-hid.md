@@ -286,12 +286,12 @@ It reflects the storage worker's detection, mount and ownership state; it perfor
 | 0 | 1 | `version` | Layout version, `1` |
 | 1 | 1 | `sequence` | Publication sequence |
 | 2 | 1 | `sd_flags` | Flags below |
-| 3 | 1 | `component_type` | `0` unavailable; `1` SD card after successful mount |
-| 4 | 1 | `bus_mode` | `0` unavailable; `2` SPI or `3` native SDMMC after successful mount, matching identity |
-| 5 | 4 | `bus_clock_hz` | Configured storage bus ceiling after successful mount; zero otherwise |
-| 9 | 1 | `speed_mode` | `0` unavailable; `1` Standard after successful mount |
+| 3 | 1 | `component_type` | `0` unavailable; `1` SD card after hardware initialization |
+| 4 | 1 | `bus_mode` | `0` unavailable; `2` SPI or `3` native SDMMC after hardware initialization, matching identity |
+| 5 | 4 | `bus_clock_hz` | Configured storage bus ceiling after hardware initialization; zero otherwise |
+| 9 | 1 | `speed_mode` | `0` unavailable; `1` Standard after hardware initialization |
 | 10 | 4 | `block_count` | 512-byte sectors; zero unless capacity is valid |
-| 14 | 16 | `cid` | Zero; CID unavailable through the current disk API |
+| 14 | 16 | `cid` | Raw SD identification register in wire byte order; zero unless CID-valid |
 | 30 | 1 | `filesystem_format` | Firmware mount format: enum below; current firmware clears it when unavailable |
 | 31 | 1 | `msc_enabled` | Boolean: USB currently owns the medium |
 | 32 | 1 | `msc_transition_pending` | Boolean: ownership request queued or storage worker busy |
@@ -303,22 +303,27 @@ It reflects the storage worker's detection, mount and ownership state; it perfor
 | 0 | Storage configured |
 | 1 | Presence known |
 | 2 | Present |
-| 3 | Initialized |
-| 4 | CID valid; always clear in the current device |
+| 3 | Hardware initialized; independent of filesystem mounting |
+| 4 | CID valid |
 | 5 | Capacity valid |
 | 6 | Storage sample valid |
 | 7 | Reserved, zero |
 
-An idle absent card reports `sd_flags = 0x43`; an inserted card whose mount failed reports `0x47`.
-Both have zero component/bus/clock/speed/capacity/CID fields and unknown filesystem.
+An idle absent card reports `sd_flags = 0x43`; an inserted card whose hardware initialization failed reports `0x47`.
+Both have zero component/bus/clock/speed/capacity/CID fields and unknown filesystem. A hardware-initialized card with
+valid CID and capacity reports `0x7F` even if mounting fails; its filesystem remains unknown (`0`).
 Detection errors invalidate presence rather than claiming absence. Mount errors are logged to UART.
 During USB ownership or worker activity, sample-valid is clear and only the configured SD flag may remain set.
 Component/bus/clock/speed/capacity/CID fields MUST be zero when sample-valid is clear.
 
-A successful mount sets bits 0-3 and 6, component type `1`, bus mode `3`, speed mode `1`, and the configured
-25 MHz ceiling. This clock is not a measured runtime frequency. Capacity-valid is set only when the sector-count
+A successful hardware initialization sets bits 0-3 and 6, component type `1`, bus mode `3`, speed mode `1`, and the
+configured 25 MHz ceiling. This clock is not a measured runtime frequency. Capacity-valid is set only when the sector-count
 query returns a nonzero count; geometry validation failure releases the medium and reports initialization failure.
 Capacity is `block_count * 512` bytes, not free filesystem space.
+The retained CID supplies manufacturer ID, OEM ID, product name/revision, serial number and manufacturing date.
+It is sampled during SD initialization, not recovered by filesystem access or fabricated after an error.
+Only a nonzero filesystem format indicates a currently mounted firmware volume. Benchmarks require that mount;
+explicit raw USB export requires initialized hardware and valid geometry, not a mount.
 
 Hosts MUST require initialized status for valid capacity, zero capacity when invalid, and zero CID while
 CID-valid is clear. Reserved flags, unsupported bus/speed values and nonboolean MSC bytes are invalid.

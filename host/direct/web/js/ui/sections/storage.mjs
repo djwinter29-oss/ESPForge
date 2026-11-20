@@ -31,14 +31,19 @@ export function deriveStorageViewModel(state, previous = {}) {
   const busy = memory?.configured && memory.sample_valid === false;
   const details = memory?.sample_valid && memory.initialized
     ? { memory, filesystemFormat } : busy && state.connected ? previous.details : null;
-  const label = busy ? "Busy" : memory?.initialized ? "Ready" : memory?.configured ? "Not initialized" : "Unavailable";
+  const label = busy ? "Busy" : memory?.initialized
+    ? filesystemFormat && filesystemFormat !== "unknown" ? "Ready" : "Not mounted"
+    : memory?.configured ? "Not initialized" : "Unavailable";
   const note = !memory ? "Waiting for fresh storage status."
     : !memory.sample_valid ? "" : !memory.configured ? "No SD-card transport configured"
       : memory.presence_known && !memory.present
         ? "No card detected. Check card insertion and SD-card wiring."
         : memory.present && !memory.initialized
           ? "Card detected but not initialized; check UART logs and SD-card wiring."
-          : memory.initialized ? "" : "No card mounted; check card insertion and SD-card wiring.";
+          : memory.initialized
+            ? filesystemFormat && filesystemFormat !== "unknown" ? ""
+              : "Card initialized but filesystem not mounted; check UART logs."
+            : "No card mounted; check card insertion and SD-card wiring.";
   if (busy && details) ({ memory, filesystemFormat } = details);
   const manufacturer = memory?.manufacturer;
   const filesystemLabels = { unknown: "Unknown", fat12: "FAT12", fat16: "FAT16", fat32: "FAT32", exfat: "exFAT" };

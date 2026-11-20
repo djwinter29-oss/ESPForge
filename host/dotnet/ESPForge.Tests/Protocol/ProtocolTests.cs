@@ -268,6 +268,23 @@ public sealed class ProtocolTests
     }
 
     [Fact]
+    public void UnmountedCardRetainsHardwareIdentityCapacityAndBus()
+    {
+        var hardware = HidProtocol.ParseIdentityReport(IdentityReport());
+        var report = StorageReport();
+        report[3] |= 0x10;
+        Convert.FromHexString("1B53444341524431211234567801AAFF").CopyTo(report, 15);
+        report[31] = 0;
+        var memory = HidProtocol.ParseStorageReport(report, hardware).Memory!;
+        Assert.True(memory.Initialized);
+        Assert.Null(memory.FilesystemFormat);
+        Assert.Equal((ulong)2_097_152, memory.CapacityBytes);
+        Assert.Equal((uint)25_000_000, memory.BusClockHz);
+        Assert.Equal("CARD1", memory.Manufacturer!.ProductName);
+        Assert.Equal((uint)0x12345678, memory.Manufacturer.SerialNumber);
+    }
+
+    [Fact]
     public void SharedJsonOptionsKeepWirelessStatesAsSnakeCaseStrings()
     {
         var json = JsonSerializer.SerializeToElement(new WirelessStatusResponse

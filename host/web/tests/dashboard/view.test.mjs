@@ -40,6 +40,21 @@ test("memory summary never infers missing or invalid capacities from the board m
   }
 }));
 
+test("initialized unmounted storage shows hardware details without claiming filesystem readiness", () => withDocument(el => {
+  const state = snapshot();
+  state.filesystem_format = "unknown";
+  state.memory = { ...state.memory, capacity_bytes: 64 * 1024 ** 3, bus_clock_hz: 25000000,
+    manufacturer: { id: 3, product_name: "SD64G", product_revision: "1.0",
+      manufacture_year: 2026, manufacture_month: 11, serial_number: 0x12345678 } };
+  renderServerStatus(state);
+  assert.equal(el("#memory-state").textContent, "Not mounted");
+  assert.match(el("#memory-note").textContent, /initialized but filesystem not mounted/);
+  assert.equal(el("#memory-filesystem").textContent, "Unknown");
+  assert.equal(el("#memory-speed").textContent, "25 MHz");
+  assert.match(el("#memory-product").textContent, /SD64G/);
+  assert.equal(el("#memory-serial").textContent, "12345678");
+}));
+
 test("SPI boards show four bus signals and retain card detection", () => withDocument(el => {
   const state = snapshot();
   renderServerStatus(state);

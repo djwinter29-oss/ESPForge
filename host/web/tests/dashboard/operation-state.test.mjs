@@ -26,7 +26,7 @@ test("RGB controls require fresh known colour and remain independent of storage"
   assert.equal(operationState(state, { wirelessInFlight: true }).canSetLed, false);
 });
 
-test("MSC controls require advertised support, a mounted card, and settled ownership", () => {
+test("MSC controls require advertised support, initialized hardware, and settled ownership", () => {
   const supported = { ...ready, board_configuration: { board_flags: 0x45 } };
   assert.equal(operationState(ready).canEnableMsc, false);
   assert.equal(operationState(supported).canEnableMsc, true);
@@ -42,9 +42,13 @@ test("MSC controls require advertised support, a mounted card, and settled owner
 
 test("benchmark gates require capability and freshness, but cancel allows busy storage", () => {
   const state = { ...ready, hardware: { capabilities: 0xb6 },
+    filesystem_format: "fat32",
+    board_configuration: { board_flags: 0x45 },
     self_test: { active: false }, self_test_stale: false, settings_supported: true,
     settings: { system_clock_mhz: 160, sdcard_profile: 0, radios: 0 } };
   assert.equal(operationState(state).canStartBenchmark, true);
+  assert.equal(operationState({ ...state, filesystem_format: "unknown" }).canStartBenchmark, false);
+  assert.equal(operationState({ ...state, filesystem_format: "unknown" }).canEnableMsc, true);
   assert.equal(operationState(state, { settingsDirty: true }).canSaveSettings, true);
   assert.equal(operationState({ ...state, self_test_stale: true },
     { settingsDirty: true }).canSaveSettings, false);

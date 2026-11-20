@@ -19,7 +19,10 @@ static void clear_media(void)
 {
 	state.initialized = false;
 	state.capacity_valid = false;
+	state.cid_valid = false;
+	memset(state.cid, 0, sizeof(state.cid));
 	state.block_count = 0;
+	state.bus_clock_hz = 0;
 	state.filesystem_format = 0;
 }
 
@@ -88,31 +91,33 @@ void ef_storage_policy_poll(int present, int64_t now_ms, int request)
 			state.msc_enabled = false;
 			clear_media();
 			publish(true);
-			int err = ef_storage_media_open(request == 1, &state.block_count, &state.filesystem_format);
+			int err = ef_storage_media_open(request == 1, &state);
 
 			if (err == 0 && request == 1) {
 				err = ef_storage_usb_refresh();
 			}
 			state.msc_request_rejected = err != 0;
-			state.initialized = err == 0;
 			state.capacity_valid = state.initialized && state.block_count != 0;
-			state.msc_enabled = state.initialized && request == 1;
-			if (err != 0) {
+			state.msc_enabled = err == 0 && state.initialized && request == 1;
+			if (err != 0 && request == 1) {
+				clear_media();
+				(void)ef_storage_media_close();
+			} else if (!state.initialized) {
 				clear_media();
 			}
 		}
 		state.msc_transition_pending = false;
-		retry_at = now_ms + EF_STORAGE_RETRY_MS;
-	} else if (state.present && present && !state.initialized && now_ms >= retry_at) {
+		retry_at = ef_storage_media_time() + EF_STORAGE_RETRY_MS;
+	} else if (state.present && present && !state.msc_enabled &&
+		   (!state.initialized || state.filesystem_format == 0) && now_ms >= retry_at) {
 		publish(true);
-		int err = ef_storage_media_open(false, &state.block_count, &state.filesystem_format);
+		(void)ef_storage_media_open(false, &state);
 
-		state.initialized = err == 0;
 		state.capacity_valid = state.initialized && state.block_count != 0;
-		if (err != 0) {
+		if (!state.initialized) {
 			clear_media();
 		}
-		retry_at = now_ms + EF_STORAGE_RETRY_MS;
+		retry_at = ef_storage_media_time() + EF_STORAGE_RETRY_MS;
 	}
 	publish(false);
 }

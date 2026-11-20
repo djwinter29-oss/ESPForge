@@ -31,11 +31,13 @@ void ef_storage_publish(const ef_storage_t *storage);
 /**
  * @brief Reset the previous medium and open it for exactly one owner.
  * @param usb True initializes raw blocks; false mounts the existing FAT volume without formatting.
- * @param blocks Receives the capacity in 512-byte sectors on success.
- * @param format Receives the filesystem format, or zero for raw USB access.
- * @return Zero on success, otherwise a platform error; failed cleanup prevents a new owner.
+ * @param storage Receives genuine hardware metadata even if filesystem mounting fails.
+ * @return Zero on success, otherwise a platform error. Initialized hardware may have no mounted filesystem.
+ * Failed cleanup prevents a new owner; callers must discard metadata after a failed USB handoff.
  */
-int ef_storage_media_open(bool usb, uint32_t *blocks, uint8_t *format);
+int ef_storage_media_open(bool usb, ef_storage_t *storage);
+/** Monotonic time after blocking media work, used to pace retries from completion. */
+int64_t ef_storage_media_time(void);
 /** Unmount and deinitialize the medium; failures must be logged and returned. */
 int ef_storage_media_close(void);
 /** Restart native USB before a new export so an OS-ejected LUN can be loaded again. */

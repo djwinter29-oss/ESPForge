@@ -81,6 +81,14 @@ An existing CMake cache retains its chosen value, so use a fresh build directory
 See the [benchmark contract](../reference/sdcard.md#optional-storage-benchmark) before authorizing card writes.
 
 Zephyr 4.3.2 and imported module commits are selected by `west.yml`; SDK 0.17.4 is the toolchain.
+Workspace setup applies the tracked patches under `patches/zephyr/v4.3.2/` to that pinned Zephyr checkout.
+The SD patch retains the genuine initialization CID and adds public `DISK_IOCTL_GET_SD_CID` (16-byte buffer in wire
+byte order; `-ENODATA` without an initialized CID). It also propagates SPI CID/CSD read failures.
+Application uses a forward `git apply --check`, or a reverse check for an already-applied patch; mismatches stop setup.
+For an already-initialized workspace, activate its venv and run
+`bash tools/firmware/apply-zephyr-patches.sh "$(west list zephyr -f '{abspath}')"` before a manual target build.
+The helper verifies the workspace checkout and exact pinned commit, including shallow workspaces without tags;
+it never selects an arbitrary dependency checkout.
 The wrappers bootstrap missing prerequisites on Debian/Ubuntu-compatible Linux, including Raspberry Pi OS.
 Missing host packages are installed through `apt-get` with `sudo` when not root; a password may be requested.
 On other systems, install the reported host prerequisites with your package manager and rerun the script.

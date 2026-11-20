@@ -187,7 +187,7 @@ test("storage telemetry, pin rows, and dashboard layout preserve presentation", 
   for (const speedMode of ["standard", 1]) {
     renderStatus({ ...connected, memory: { configured: true, sample_valid: true, initialized: true,
       present: true, bus_clock_hz: 25000000, speed_mode: speedMode } });
-    assert.equal(elements.get("#memory-state").textContent, "Ready");
+    assert.equal(elements.get("#memory-state").textContent, "Not mounted");
     assert.equal(elements.get("#memory-speed").textContent, "25 MHz");
   }
   renderStatus({ ...connected, memory: { configured: true, sample_valid: true, initialized: false } });

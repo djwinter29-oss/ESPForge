@@ -92,8 +92,12 @@ An inserted boot-time card is mounted immediately. Startup continues after a log
 
 A separate worker polls card detection nominally every 50 ms and requires 100 ms stable insertion. Insertion, including
 insertion after startup, mounts the existing FAT volume. Failed initialization/mount attempts retry every
-2 seconds while a card is detected. Successful initialization also requires a nonzero sector count and
-512-byte sectors; failed geometry validation releases the medium rather than advertising usable storage.
+2 seconds after the previous attempt completes while a card is detected. Successful hardware initialization requires a
+nonzero sector count and 512-byte sectors; failed geometry validation releases the medium rather than advertising
+usable storage.
+Hardware metadata is collected before mounting. A failed mount leaves the initialized card's CID, capacity and
+configured bus facts available, with filesystem format unknown. Retries clean up the previous filesystem registration
+and disk references before reinitializing; they do not format, repair or automatically export the card.
 
 An observed removal, even shorter than the debounce period, invalidates current card facts and revokes USB ownership.
 Absence is confirmed after 100 ms stability; raw absence already rejects USB I/O before the worker handles it.
@@ -107,7 +111,7 @@ cleanup is not a verified hardware reset. Power-cycle a card if it cannot be rei
 
 ## USB drive handoff
 
-The dashboard exposes **Enable USB drive** when this firmware advertises MSC and a FAT card is initialized.
+The dashboard exposes **Enable USB drive** when this firmware advertises MSC and card hardware is initialized.
 Native USB presents HID management plus a removable MSC LUN; it has no CDC console.
 Firmware unmounts FAT before exporting raw 512-byte sectors. The native USB device briefly disconnects and
 reconnects on export so an OS-ejected LUN can be loaded again.
@@ -123,16 +127,17 @@ command. See the [USB control contract](usb-hid.md#msc-command-rules) for exact 
 
 ## Status reporting
 
-Report `10` carries live detection/ownership snapshots, mount outcome, filesystem type and available capacity
+Report `10` carries live detection/ownership snapshots, hardware identity, filesystem type and available capacity
 over USB HID and BLE.
 The [USB HID specification](usb-hid.md#report-id-10-storage-status) owns field values, flags and validation.
 Detection distinguishes confirmed absence from an inserted card whose mount failed.
 During media work or USB ownership, the firmware SD sample is invalid and current SD fields are cleared.
 Capacity counts the whole volume in 512-byte sectors, not free space. The reported clock is the configured
-ceiling, not a runtime measurement. CID and negotiated bus state are unavailable.
+ceiling, not a runtime measurement. CID reports manufacturer/product/revision, serial and manufacturing date even
+when no filesystem is mounted. Negotiated bus state is not reported.
 
 The mount error code is **only logged**, not retained in Report `10`. Hosts can distinguish detected absence,
-but cannot distinguish bad SD wiring, an unsupported filesystem or another mount error from this report alone.
+and hardware initialization from a mounted filesystem, but cannot classify a mount error from this report alone.
 Use the UART log for
 diagnosis, and do not label every uninitialized sample "no card".
 

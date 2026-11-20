@@ -183,7 +183,7 @@ int ef_platform_benchmark_request(bool start, uint32_t size_mib)
 		detail = EF_BENCHMARK_ERROR_BUSY;
 	} else if (snapshot.msc_enabled) {
 		detail = EF_BENCHMARK_ERROR_USB;
-	} else if (!snapshot.sample_valid || !snapshot.initialized) {
+	} else if (!snapshot.sample_valid || !snapshot.initialized || snapshot.filesystem_format == 0) {
 		detail = EF_BENCHMARK_ERROR_CARD;
 	} else {
 		ef_storage_t previous = snapshot;
@@ -265,45 +265,69 @@ int ef_storage_media_close(void)
 	return 0;
 }
 
-int ef_storage_media_open(bool usb, uint32_t *blocks, uint8_t *format)
+int64_t ef_storage_media_time(void)
+{
+	return k_uptime_get();
+}
+
+int ef_storage_media_open(bool usb, ef_storage_t *storage)
 {
 	uint32_t sector_size = 0;
 	int err = ef_storage_media_close();
 
+	storage->initialized = false;
+	storage->capacity_valid = false;
+	storage->cid_valid = false;
+	memset(storage->cid, 0, sizeof(storage->cid));
+	storage->block_count = 0;
+	storage->bus_clock_hz = 0;
+	storage->filesystem_format = 0;
 	if (err != 0) {
 		return err;
 	}
 	media_started = true;
-	*blocks = 0;
-	*format = 0;
-	err = usb ? disk_access_init(DISK_NAME) : fs_mount(&mount);
-	if (err == 0 && !usb) {
-		mounted = true;
-		*format = fatfs.fs_type <= 4 ? fatfs.fs_type : 0;
-	}
+	err = disk_access_init(DISK_NAME);
 	if (err == 0) {
-		err = disk_access_ioctl(DISK_NAME, DISK_IOCTL_GET_SECTOR_COUNT, blocks);
+		err = disk_access_ioctl(DISK_NAME, DISK_IOCTL_GET_SECTOR_COUNT, &storage->block_count);
 	}
 	if (err == 0) {
 		err = disk_access_ioctl(DISK_NAME, DISK_IOCTL_GET_SECTOR_SIZE, &sector_size);
 	}
-	if (err == 0 && (*blocks == 0 || sector_size != 512)) {
+	if (err == 0 && (storage->block_count == 0 || sector_size != 512)) {
 		err = -EINVAL;
 	}
 	if (err != 0) {
-		LOG_ERR("SD %s failed: %d", usb ? "export initialization" : "mount", err);
-		if (!mounted && !usb) {
-			/* A failed Zephyr mount can leave FatFs registered even though fs_mount never registered it. */
+		LOG_ERR("SD hardware initialization failed: %d", err);
+		storage->block_count = 0;
+		(void)ef_storage_media_close();
+		return err;
+	}
+	storage->initialized = true;
+	storage->capacity_valid = true;
+	storage->bus_clock_hz = BUS_CLOCK_HZ;
+	err = disk_access_ioctl(DISK_NAME, DISK_IOCTL_GET_SD_CID, storage->cid);
+	if (err == 0) {
+		storage->cid_valid = true;
+	} else {
+		memset(storage->cid, 0, sizeof(storage->cid));
+		LOG_ERR("SD CID unavailable: %d", err);
+	}
+	if (!usb) {
+		err = fs_mount(&mount);
+		if (err != 0) {
+			LOG_ERR("SD mount failed: %d", err);
+			/* FatFs may retain its registration even when Zephyr did not register the mount. */
 			FRESULT result = f_mount(NULL, DISK_NAME ":", 0);
 
 			if (result != FR_OK) {
 				LOG_ERR("SD failed-mount cleanup failed: %d", result);
 			}
+			return err;
 		}
-		(void)ef_storage_media_close();
-		return err;
+		mounted = true;
+		storage->filesystem_format = fatfs.fs_type <= 4 ? fatfs.fs_type : 0;
 	}
-	LOG_INF("SD %s: %u sectors", usb ? "export ready" : "mounted", *blocks);
+	LOG_INF("SD %s: %u sectors", usb ? "export ready" : "mounted", storage->block_count);
 	return 0;
 }
 
@@ -373,7 +397,6 @@ void ef_storage_report(uint8_t sequence, uint8_t out[EF_STORAGE_SIZE])
 	storage = snapshot;
 	k_mutex_unlock(&snapshot_lock);
 	storage.sequence = sequence;
-	storage.bus_clock_hz = storage.initialized ? BUS_CLOCK_HZ : 0;
 	ef_report_storage(&storage, out);
 }
 
