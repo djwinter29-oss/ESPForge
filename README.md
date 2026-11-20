@@ -19,9 +19,6 @@ The first and currently only supported target is **ESP32-S3-DevKitC-1 N16R8**: *
 **8 MB octal PSRAM**. Other MCUs are planned, not yet supported.
 Choose native **four-bit SDMMC** or a separate **SD-over-SPI** firmware image.
 
-> **Formerly ESPForge.** Releases up to v0.0.2 use the `espforge` PyPI package, `ESPForge` USB/BLE names and
-> `espforge-*` release assets. Install `zephyrforge` and reflash the firmware together; the wire protocol is unchanged.
-
 **Start here:** [Firmware releases (choose SD transport)](https://github.com/djwinter29-oss/ZephyrForge/releases/latest) ·
 [Direct dashboard (firmware required)](https://djwinter29-oss.github.io/ZephyrForge/) ·
 [Python host app on PyPI (firmware required)](https://pypi.org/project/zephyrforge/) ·

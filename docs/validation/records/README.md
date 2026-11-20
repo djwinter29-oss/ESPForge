@@ -2,7 +2,7 @@
 
 Keep dated observations here. Every record identifies source/configuration/tool versions,
 what actually ran, what was simulated, and what remains untested.
-Records before the rename to ZephyrForge keep the former ESPForge names, paths and commands as run.
+Dated results apply only to the source revisions and configurations tested, not automatically to the current checkout.
 
 - [Initial software setup](2026-11-07-setup.md)
 - [Native firmware unit-test setup](2026-11-07-ceedling.md)

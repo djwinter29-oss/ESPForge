@@ -3,7 +3,7 @@
 Date: 2026-11-07. Scope: the firmware, Python, .NET and Direct implementation of the
 [USB HID](../../reference/usb-hid.md), [Bluetooth](../../reference/bluetooth.md) and
 [settings](../../reference/settings.md) specifications as amended by the
-[ESPForge implementation reference](../../reference/zephyrforge-implementation.md).
+[implementation reference](../../reference/zephyrforge-implementation.md).
 
 ## What ran
 
@@ -15,7 +15,7 @@ Date: 2026-11-07. Scope: the firmware, Python, .NET and Direct implementation of
 | `node host/web/tests/run-tests.mjs` | 177 tests pass |
 | `node host/direct/tests/run-tests.mjs` | 110 tests pass |
 | Python `unittest` (`host/python/tests`) and Direct server tests | Pass (167 Python tests) |
-| `dotnet test host/dotnet/ESPForge.Tests` | 218 tests pass |
+| .NET host test suite (`dotnet test`) | 218 tests pass |
 | `pyright` | 0 errors |
 | `tools/check_python_wheel.py` | Pass |
 | Browser checks (`host/web/tests/browser/run.py`, `host/direct/tests/browser/run.py`) | Pass with simulated boards |

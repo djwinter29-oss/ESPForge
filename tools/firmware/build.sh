@@ -18,7 +18,16 @@ case "$storage" in
 	*) printf 'Error: --storage must be sdmmc or sd-spi.\n' >&2; exit 1 ;;
 esac
 source "$(dirname "${BASH_SOURCE[0]}")/env.sh"
-python -m west build -b esp32s3_devkitc/esp32s3/procpu "$root/firmware" \
+cache="$root/build/$build/CMakeCache.txt"
+if [[ -f "$cache" ]]; then
+	cached_build="$(sed -n 's/^APPLICATION_BINARY_DIR:PATH=//p' "$cache")"
+	if [[ -n "$cached_build" && "$cached_build" != "$root/build/$build" ]]; then
+		printf 'Build directory moved; cleaning %s before rebuilding.\n' "$root/build/$build"
+		cmake "-DBINARY_DIR=$root/build/$build" "-DSOURCE_DIR=$root/firmware" \
+			-P "$ZEPHYR_BASE/cmake/pristine.cmake"
+	fi
+fi
+python -m west build --pristine auto -b esp32s3_devkitc/esp32s3/procpu "$root/firmware" \
   -d "$root/build/$build" -- \
   -DDTC_OVERLAY_FILE="boards/$overlay" \
   -DZF_ENABLE_STORAGE_BENCHMARK=ON

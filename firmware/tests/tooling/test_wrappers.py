@@ -26,8 +26,14 @@ case "$*" in
         exit "${MOCK_PIP_STATUS:-0}" ;;
     "-m west init "*)
         mkdir -p .west
-        touch .west/config ;;
+        printf '[manifest]\npath = %s\nfile = west.yml\n' "$(basename "$MOCK_ROOT")" > .west/config ;;
+    "-m west config --local manifest.path")
+        sed -n 's/^path = //p' .west/config ;;
+    "-m west config --local manifest.path "*)
+        sed -i "s|^path = .*|path = $6|" .west/config ;;
     "-m west update "*)
+        manifest=$(sed -n 's/^path = //p' .west/config)
+        [[ -f "$manifest/west.yml" ]] || { printf 'Missing west manifest\n' >&2; exit 17; }
         mkdir -p zephyr/scripts modules/hal/espressif/zephyr
         touch zephyr/scripts/requirements-base.txt modules/hal/espressif/zephyr/requirements.txt ;;
     "-m west list zephyr "*)
@@ -53,7 +59,14 @@ case "$*" in
             esac
             shift
         done
+        if [[ -f "$build/CMakeCache.txt" ]] &&
+            ! grep -Fxq "APPLICATION_BINARY_DIR:PATH=$build" "$build/CMakeCache.txt"; then
+            printf 'Build directory moved; cached pristine path is stale\n' >&2
+            exit 18
+        fi
         mkdir -p "$build/zephyr"
+        printf 'APPLICATION_BINARY_DIR:PATH=%s\nAPPLICATION_SOURCE_DIR:PATH=%s/firmware\n' \
+            "$build" "$MOCK_ROOT" > "$build/CMakeCache.txt"
         for file in zephyr.elf runners.yaml; do
             printf 'artifact\n' > "$build/zephyr/$file"
         done
@@ -80,10 +93,11 @@ class WrapperTests(unittest.TestCase):
         self.workspace = Path(temp.name)
         # Confine mocked workspace discovery even when fixtures live beneath a real west workspace.
         (self.workspace / ".west").mkdir()
-        (self.workspace / ".west/config").touch()
+        (self.workspace / ".west/config").write_text("[manifest]\npath = ZephyrForge\nfile = west.yml\n")
         self.root = self.workspace / "ZephyrForge"
         shutil.copytree(TOOLS, self.root / "tools/firmware")
         shutil.copytree(TOOLS.parents[1] / "patches", self.root / "patches")
+        shutil.copy(TOOLS.parents[1] / "west.yml", self.root / "west.yml")
         self.bin = self.workspace / "mock-bin"
         self.bin.mkdir()
         python = self.bin / "python3"
@@ -97,6 +111,17 @@ class WrapperTests(unittest.TestCase):
                             "echo 28af05ca658cbacf745fd5b099566311c58ccb1d; fi\n"
                             "exit 0\n")
             path.chmod(0o755)
+        (self.bin / "cmake").write_text("""#!/usr/bin/env bash
+set -euo pipefail
+printf 'cmake %s\\n' "$*" >> "$MOCK_LOG"
+if [[ "$*" == *"/cmake/pristine.cmake" ]]; then
+    case "$1" in
+        "-DBINARY_DIR=$MOCK_ROOT/build/firmware"|"-DBINARY_DIR=$MOCK_ROOT/build/firmware-sd-spi")
+            rm "${1#-DBINARY_DIR=}/CMakeCache.txt" ;;
+        *) printf 'Refusing to clean outside the selected build\\n' >&2; exit 20 ;;
+    esac
+fi
+""")
         self.log = self.workspace / "commands.log"
         self.env = dict(os.environ, PATH=f"{self.bin}:{os.environ['PATH']}", PYTHON=str(python),
                         HOME=str(self.workspace), MOCK_ROOT=str(self.root), MOCK_LOG=str(self.log))
@@ -175,6 +200,65 @@ esac
         result = self.run_script("flash.sh", "--port", "/dev/mock")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn("-m west build ", self.commands())
+
+    def test_flash_repairs_missing_moved_checkout_before_loading_manifest(self):
+        config = self.workspace / ".west/config"
+        previous = self.workspace / "previous-checkout"
+        for storage, directory in (("sdmmc", "firmware"), ("sd-spi", "firmware-sd-spi")):
+            with self.subTest(storage=storage):
+                self.assertEqual(self.run_script("build.sh", "--storage", storage).returncode, 0)
+                cache = self.root / f"build/{directory}/CMakeCache.txt"
+                current = cache.read_text()
+                cache.write_text(current.replace(str(self.root / "firmware"), str(previous / "firmware")))
+                config.write_text(
+                    "[manifest]\npath = previous-checkout\nfile = west.yml\n[zephyr]\nbase = zephyr\n")
+                self.log.write_text("")
+                result = self.run_script("flash.sh", "--storage", storage, "--port", "/dev/mock", "--dry-run")
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn("path = ZephyrForge", config.read_text())
+                self.assertIn("base = zephyr", config.read_text())
+                calls = self.commands()
+                self.assertLess(calls.index("-m west config --local manifest.path ZephyrForge"),
+                                calls.index("-m west update "))
+                self.assertNotIn("-m west build ", calls)
+                self.assertNotIn("-m west flash ", calls)
+                cache.write_text(current)
+
+    def test_existing_checkout_and_unrelated_missing_manifests_are_not_redirected(self):
+        self.assertEqual(self.run_script("build.sh").returncode, 0)
+        previous = self.workspace / "previous-checkout"
+        previous.mkdir()
+        (previous / "west.yml").touch()
+        cache = self.root / "build/firmware/CMakeCache.txt"
+        cache.write_text(cache.read_text().replace(str(self.root / "firmware"), str(previous / "firmware")))
+        config = self.workspace / ".west/config"
+        for manifest, expected in (("previous-checkout", 0), ("another-project", 17)):
+            with self.subTest(manifest=manifest):
+                content = f"[manifest]\npath = {manifest}\nfile = west.yml\n"
+                config.write_text(content)
+                self.log.write_text("")
+                result = self.run_script("flash.sh", "--port", "/dev/mock", "--dry-run")
+                self.assertEqual(result.returncode, expected, result.stderr)
+                self.assertEqual(config.read_text(), content)
+                self.assertNotIn(f"-m west config --local manifest.path {self.root.name}", self.commands())
+                self.assertNotIn("-m west flash ", self.commands())
+
+    def test_flash_rebuilds_moved_source_cache_without_flashing_in_dry_run(self):
+        self.assertEqual(self.run_script("build.sh").returncode, 0)
+        build = self.root / "build/firmware"
+        (build / "zephyr/zephyr.bin").unlink()
+        old_build = self.workspace / "previous-checkout/build/firmware"
+        old_build.mkdir(parents=True)
+        marker = old_build / "keep"
+        marker.touch()
+        (build / "CMakeCache.txt").write_text(f"APPLICATION_BINARY_DIR:PATH={old_build}\n")
+        self.log.write_text("")
+        result = self.run_script("flash.sh", "--port", "/dev/mock", "--dry-run")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(f"cmake -DBINARY_DIR={build} -DSOURCE_DIR={self.root / 'firmware'}", self.commands())
+        self.assertIn("-m west build ", self.commands())
+        self.assertNotIn("-m west flash ", self.commands())
+        self.assertTrue(marker.exists(), "a cached old build path must never be cleaned")
 
     def test_spi_build_and_flash_use_a_separate_image(self):
         result = self.run_script("build.sh", "--storage", "sd-spi")

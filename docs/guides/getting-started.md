@@ -19,6 +19,11 @@ The script installs missing host packages (requesting `sudo` when needed), creat
 initializes a workspace in the checkout's parent directory if none exists, downloads pinned modules and radio blobs,
 and installs the ESP32-S3 SDK toolchain before building. First use requires network access and several GB of disk space.
 See [build environment options](../development/firmware.md#zephyr-target-build) to choose a Python interpreter or venv.
+For a moved checkout, the wrappers update `manifest.path` only when its directory no longer exists and a local
+firmware build cache identifies that directory as the previous application source. Other manifest checkouts
+are not redirected.
+Rebuilding cleans a relocated build cache in the selected build directory, never at its old cached path,
+and uses West's automatic pristine handling for a moved application source directory.
 The following procedure is an alternative for manual setup.
 
 Install Zephyr's [host prerequisites](https://docs.zephyrproject.org/4.3.0/develop/getting_started/index.html)
